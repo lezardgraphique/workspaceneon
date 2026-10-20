@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
-import { APP_GUIDE, MAILY_PERSONA, MODEL, MODULE_REPLY_SPEC, ai } from '@/lib/gemini.server'
+import { APP_GUIDE, MAILY_PERSONA, MODEL, MODULE_REPLY_SPEC, RESEARCH_SPEC, ai } from '@/lib/gemini.server'
 
 // Screenshots or mockups the user wants Maily to recreate (base64, no data: prefix).
 const Image = z.object({
@@ -24,7 +24,20 @@ const Body = z.object({
   mode: z.enum(['chat', 'build']).default('chat'),
   code: z.string().max(200_000).optional(),
   moduleName: z.string().max(200).optional(),
+  // The attached code was already converted into the editor's module.
+  imported: z.boolean().optional(),
+  // Why the direct conversion of the attached code fell short.
+  issue: z.string().max(500).optional(),
 })
+
+// Google Search and URL reading keep Maily's answers current; the model decides
+// when to use them.
+const TOOLS = [{ googleSearch: {} }, { urlContext: {} }]
+
+interface Source {
+  uri: string
+  title: string
+}
 
 // Streams Maily's answer as plain text chunks. When she builds a module the
 // answer contains a ```neon block that the editor applies.
@@ -34,7 +47,7 @@ export const Route = createFileRoute('/api/maily')({
       POST: async ({ request }) => {
         const parsed = Body.safeParse(await request.json().catch(() => null))
         if (!parsed.success) return Response.json({ error: 'Requête invalide' }, { status: 400 })
-        const { messages, mode, code, moduleName } = parsed.data
+        const { messages, mode, code, moduleName, imported, issue } = parsed.data
 
         const context = code
           ? `\n\nModule actuellement dans l'éditeur « ${moduleName ?? 'Sans titre'} » :\n${code.slice(0, 120_000)}`
@@ -44,8 +57,15 @@ export const Route = createFileRoute('/api/maily')({
             ? `\n\nL'utilisateur est en mode « Modifier le module » : chacun de ses messages est une demande de création ou de modification. Réponds toujours avec le bloc neon complet.`
             : `\n\nL'utilisateur est en mode « Conseil ». S'il te demande de créer, recréer, refaire, reproduire ou modifier le module (ou s'il t'envoie une capture ou du code à recréer), fais-le avec le bloc neon. Sinon réponds sans bloc neon.`
 
-        try {
-          const stream = await ai.models.generateContentStream({
+        const importNote = imported
+          ? `\n\nLe code joint au dernier message a déjà été reconnu, converti et appliqué dans l'éditeur : c'est le module actuel ci-dessous. S'il demande seulement de le transformer ou de l'afficher, ne renvoie PAS de bloc neon : fais un bilan court (type de code reconnu, ce qui est resté en Code libre et pourquoi, 2 ou 3 améliorations concrètes de compatibilité, d'accessibilité ou de modernité). S'il demande aussi des changements, applique-les à ce module avec le bloc neon.`
+          : issue
+            ? `\n\nAnalyse automatique du code joint au dernier message : ${issue}. Recrée-le fidèlement en blocs éditables avec le bloc neon (si des variables {{ module.… }} apparaissent, remplace-les par la valeur par défaut d'un fields.json joint ou par un contenu plausible, et donne le nom du champ en data-field).`
+            : ''
+        const today = new Date().toLocaleDateString('fr-FR', { dateStyle: 'full', timeZone: 'Europe/Paris' })
+
+        const generate = (withTools: boolean) =>
+          ai.models.generateContentStream({
             model: MODEL,
             contents: messages.map((m) => ({
               role: m.role === 'assistant' ? 'model' : 'user',
@@ -55,16 +75,32 @@ export const Route = createFileRoute('/api/maily')({
               ],
             })),
             config: {
-              systemInstruction: `${MAILY_PERSONA}\nTu connais parfaitement l'application. Pour toute question sur son fonctionnement ou sur ce que l'utilisateur peut faire, appuie-toi d'abord sur le GUIDE DE L'APPLICATION : explique le chemin dans l'interface avec les noms exacts des boutons et panneaux, et privilégie les fonctions intégrées (Téléverser, Clients, Aperçu, Exporter…) plutôt que des outils externes. Ne parle pas de HubSpot ni d'une plateforme précise sauf si l'utilisateur le fait.\n\n${APP_GUIDE}\n\n${MODULE_REPLY_SPEC}${modeNote}${context}`,
+              ...(withTools ? { tools: TOOLS } : {}),
+              systemInstruction: `${MAILY_PERSONA}\nNous sommes le ${today}.\nTu connais parfaitement l'application. Pour toute question sur son fonctionnement ou sur ce que l'utilisateur peut faire, appuie-toi d'abord sur le GUIDE DE L'APPLICATION : explique le chemin dans l'interface avec les noms exacts des boutons et panneaux, et privilégie les fonctions intégrées (Téléverser, Clients, Aperçu, Exporter…) plutôt que des outils externes. Ne parle pas de HubSpot ni d'une plateforme précise sauf si l'utilisateur le fait.\n\n${APP_GUIDE}\n\n${RESEARCH_SPEC}\n\n${MODULE_REPLY_SPEC}${importNote || modeNote}${context}`,
             },
+          })
+
+        try {
+          // Fall back to a plain answer if the search tools are refused.
+          const stream = await generate(true).catch((err: unknown) => {
+            console.error('Maily tools unavailable', err)
+            return generate(false)
           })
           const encoder = new TextEncoder()
           return new Response(
             new ReadableStream({
               async start(controller) {
+                const sources = new Map<string, Source>()
                 try {
                   for await (const chunk of stream) {
                     if (chunk.text) controller.enqueue(encoder.encode(chunk.text))
+                    for (const g of chunk.candidates?.[0]?.groundingMetadata?.groundingChunks ?? []) {
+                      if (g.web?.uri) sources.set(g.web.uri, { uri: g.web.uri, title: g.web.title || g.web.domain || 'Source' })
+                    }
+                  }
+                  if (sources.size) {
+                    const list = [...sources.values()].slice(0, 6).map((s) => `- [${s.title.replace(/[[\]]/g, '')}](${s.uri})`)
+                    controller.enqueue(encoder.encode(`\n\n**Sources**\n${list.join('\n')}`))
                   }
                 } catch (err) {
                   console.error('Maily stream error', err)

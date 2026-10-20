@@ -603,9 +603,39 @@ function convertElement(el: Element, inh: Inherit): Block[] {
   return [rawBlock(el.outerHTML)]
 }
 
+// Classic web code styles its markup from <style> sheets: copy those rules
+// into inline styles so the importer sees the colours, sizes and boxes. Rules
+// apply in source order and the element's own inline style always wins.
+// Media queries and pseudo-elements are skipped.
+function inlineStylesheets(doc: Document) {
+  const text = Array.from(doc.querySelectorAll('style'))
+    .map((s) => s.textContent ?? '')
+    .join('\n')
+  if (!text.trim() || typeof CSSStyleSheet === 'undefined') return
+  const sheet = new CSSStyleSheet()
+  try {
+    sheet.replaceSync(text)
+  } catch {
+    return
+  }
+  const acc = new Map<Element, string>()
+  for (const rule of Array.from(sheet.cssRules)) {
+    if (!(rule instanceof CSSStyleRule) || !rule.style.cssText) continue
+    let els: Element[]
+    try {
+      els = Array.from(doc.querySelectorAll(rule.selectorText))
+    } catch {
+      continue
+    }
+    for (const el of els) acc.set(el, `${acc.get(el) ?? ''}${rule.style.cssText}`)
+  }
+  for (const [el, rules] of acc) el.setAttribute('style', `${rules}${el.getAttribute('style') ?? ''}`)
+}
+
 function parseFragment(html: string) {
   const doc = new DOMParser().parseFromString(html.replace(/\{#[\s\S]*?#\}/g, ''), 'text/html')
   sanitize(doc.body)
+  inlineStylesheets(doc)
   return doc.body
 }
 
@@ -638,9 +668,9 @@ export function importHtml(html: string): { sections: Section[]; bg?: string; fo
     } else loose.push(b)
   }
   flush()
-  const fontEl = body.querySelector('[style*="font-family"]')
+  const fontEl = css(body).fontFamily ? body : body.querySelector('[style*="font-family"]')
   const font = fontEl ? css(fontEl).fontFamily.replace(/"/g, "'").replace(/[;{}<>]/g, '') : ''
-  return { sections, bg: wrappers.length > 1 ? wrappers[0] : undefined, font: font || undefined }
+  return { sections, bg: wrappers.length > 1 ? wrappers[0] : bgOf(body), font: font || undefined }
 }
 
 // Parsing assigns fresh ids; carry over ids from the previous tree wherever the

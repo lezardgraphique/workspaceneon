@@ -14,7 +14,7 @@ TanStack Start (React 19, file-based routes, `createServerFn`) · Tailwind 4 (th
 - `src/lib/hubl.ts`: the heart of the two-way sync.
   - `treeToCode` writes email-safe HTML where every node carries `data-neon="<type>"` plus `data-*` settings.
   - `codeToTree` parses it back with DOMParser (browser only) and sanitizes it (no scripts or `on*` attributes). Content without a marker inside a column becomes a `raw` block, so hand-written HuBL survives.
-  - `htmlToBlocks` / `importHtml` convert free HTML/HuBL (no markers) into editable blocks: headings, text, styled links → buttons, images, rules, layout tables → columns, coloured boxes → cards. `{% … %}` statements and unknown elements stay `raw`. `codeToTree` falls back to `importHtml` when the code has no section marker.
+  - `htmlToBlocks` / `importHtml` convert free HTML/HuBL (no markers) into editable blocks (rules from `<style>` sheets are inlined first, so classic class-based CSS keeps its colours and sizes): headings, text, styled links → buttons, images, rules, layout tables → columns, coloured boxes → cards. `{% … %}` statements and unknown elements stay `raw`. `codeToTree` falls back to `importHtml` when the code has no section marker.
   - `reconcileIds` keeps node ids stable across parses so the selection doesn't get lost.
   - `treeToHubSpot` generates the export: text, button and image content becomes `{{ module.field }}` + `fields.json`.
   - Keep `Preview.tsx` visually aligned with the HTML generated here (same metrics).
@@ -31,8 +31,9 @@ TanStack Start (React 19, file-based routes, `createServerFn`) · Tailwind 4 (th
 - `src/components/editor/*`: Structure, FieldsPanel (Champs: label, HuBL name and value per field), Preview (headings, texts and button labels are editable in place once selected), Inspector, CodeEditor (transparent textarea over a highlighted `<pre>`), MailyPanel, ExportDialog.
 - `src/components/Maily.tsx`: the mascot as an animated SVG with moods `happy | thinking | success`.
 - `src/server/modules.functions.ts`: module CRUD (server functions).
-- `src/routes/api.maily.ts`: streams the Maily chat (plain text), modes `chat | build`, with optional images (screenshots/mockups, base64) per message. When Maily creates, recreates or edits the module, her answer contains one ` ```neon ` block holding the full module; `MailyPanel` hides it while streaming and applies it with `applyCode` (undoable). Attached HTML files and long pasted HTML are sent inline in the message. `src/routes/api.generate.ts` only handles text rewrites.
-- Prompts live in `src/lib/gemini.server.ts`: `MAILY_PERSONA`, `APP_GUIDE` (description of every screen and button so Maily can answer questions about the app: **update it when a feature or UI label changes**), `MODULE_REPLY_SPEC` and `FORMAT_SPEC`.
+- `src/lib/recognize.ts`: code sent to Maily (pasted, typed or attached) is detected (`extractCode`), classified and converted locally with `codeToTree` (`recognizeCode`). If the import is complete it is applied at once and Maily only reviews it (`imported` flag); if it is too lossy (mostly raw blocks, `{{ module.… }}` placeholders) the model recreates it (`issue`). In Conseil mode a plain question about code doesn't replace the module (`wantsConversion`).
+- `src/routes/api.maily.ts`: streams the Maily chat (plain text), modes `chat | build`, with optional images (screenshots/mockups, base64) per message. When Maily creates, recreates or edits the module, her answer contains one ` ```neon ` block holding the full module; `MailyPanel` hides it while streaming and applies it with `applyCode` (undoable). Attached HTML files and long pasted HTML are sent inline in the message. Maily has the Gemini `googleSearch` and `urlContext` tools (retried without tools if refused); grounding sources are appended as a **Sources** list. `src/routes/api.generate.ts` only handles text rewrites.
+- Prompts live in `src/lib/gemini.server.ts`: `MAILY_PERSONA`, `APP_GUIDE` (description of every screen and button so Maily can answer questions about the app: **update it when a feature or UI label changes**), `RESEARCH_SPEC`, `MODULE_REPLY_SPEC` and `FORMAT_SPEC`.
 
 ## Conventions
 

@@ -4,6 +4,9 @@ import { Streamdown } from 'streamdown'
 
 import { Maily } from '@/components/Maily'
 import type { MailyMood } from '@/components/Maily'
+import { treeToCode } from '@/lib/hubl'
+import { extractCode, looksLikeCode, recognizeCode, wantsConversion } from '@/lib/recognize'
+import type { ModuleTree } from '@/lib/types'
 
 // A screenshot/mockup or an HTML file sent to Maily, usually to recreate it.
 interface Attachment {
@@ -21,18 +24,21 @@ interface Msg {
   files?: Attachment[]
   building?: boolean
   applied?: boolean
+  // Set when the attached code was already converted locally: the model gets
+  // this summary instead of the code, which is now the editor's module.
+  imported?: string
 }
 
 type Mode = 'chat' | 'build'
 
-const CODE_EXT = /\.(html?|hubl|txt)$/i
+const CODE_EXT = /\.(html?|hubl|txt|json)$/i
 // Images sent to Gemini are downscaled: enough to read a mockup, light to upload.
 const MAX_SIDE = 1400
 // Only the most recent images are resent with the history.
 const IMAGE_HISTORY = 2
 
 async function toAttachment(file: File): Promise<Attachment | null> {
-  if (CODE_EXT.test(file.name) || file.type === 'text/html') {
+  if (CODE_EXT.test(file.name) || file.type === 'text/html' || file.type === 'application/json') {
     return { name: file.name, kind: 'code', text: (await file.text()).slice(0, 140_000) }
   }
   if (!file.type.startsWith('image/') || file.type === 'image/svg+xml') return null
@@ -74,7 +80,9 @@ function toPayload(m: Msg, withImages: boolean) {
   const content =
     m.role === 'assistant'
       ? `${m.content}${m.applied ? '\n\n[Module appliqué dans l\'éditeur]' : ''}`
-      : [m.content, ...code.map((f) => `Fichier joint « ${f.name} » :\n\`\`\`html\n${f.text}\n\`\`\``)].filter(Boolean).join('\n\n')
+      : m.imported
+        ? `${m.content}\n\n[Code joint déjà converti et appliqué dans l'éditeur. ${m.imported.replace(/\*\*/g, '')}]`
+        : [m.content, ...code.map((f) => `Fichier joint « ${f.name} » :\n\`\`\`html\n${f.text}\n\`\`\``)].filter(Boolean).join('\n\n')
   const images = withImages
     ? (m.files ?? []).filter((f) => f.kind === 'image').map((f) => ({ mimeType: f.mimeType!, data: f.data! }))
     : []
@@ -95,6 +103,7 @@ const SUGGESTIONS: Record<Mode, string[]> = {
     'Propose 5 objets d\'email pour ce module',
     'Vérifie l\'accessibilité de ce module',
     'Comment tester le rendu dans Outlook ?',
+    'Quelles sont les tendances design email du moment ?',
     'Comment récupérer mon module pour l\'utiliser ailleurs ?',
   ],
   build: [
@@ -105,10 +114,12 @@ const SUGGESTIONS: Record<Mode, string[]> = {
 }
 
 export function MailyPanel({
+  tree,
   code,
   moduleName,
   applyCode,
 }: {
+  tree: ModuleTree
   code: string
   moduleName: string
   applyCode: (code: string) => string | null
@@ -143,7 +154,7 @@ export function MailyPanel({
     if (!picked.length) return
     try {
       const added = (await Promise.all(picked.map(toAttachment))).filter((f): f is Attachment => !!f)
-      if (added.length < picked.length) push({ role: 'assistant', content: '⚠️ Je lis les images (PNG, JPG, WebP, GIF) et les fichiers HTML.' })
+      if (added.length < picked.length) push({ role: 'assistant', content: '⚠️ Je lis les images (PNG, JPG, WebP, GIF) et les fichiers HTML, HuBL ou JSON.' })
       setFiles((prev) => [...prev, ...added].slice(0, 4))
     } catch (e) {
       push({ role: 'assistant', content: `⚠️ ${(e as Error).message}` })
@@ -154,13 +165,40 @@ export function MailyPanel({
     const content = text.trim()
     if ((!content && !files.length) || loading) return
     setInput('')
-    const sent = files
     setFiles([])
-    const history: Msg[] = [
-      ...messages,
-      { role: 'user', content: content || 'Recrée ce module.', files: sent.length ? sent : undefined },
-    ]
-    setMessages(history)
+
+    // Code typed in the message becomes an attachment, like pasted code.
+    const typed = extractCode(content)
+    const sent = typed ? [...files.slice(0, 3), { name: 'code-colle.html', kind: 'code' as const, text: typed.code }] : files
+    const instruction = typed ? typed.instruction : content
+    const source = sent
+      .filter((f) => f.kind === 'code' && !/\.json$/i.test(f.name))
+      .map((f) => f.text)
+      .join('\n')
+
+    // Recognised code is rendered right away; Maily then reviews it (or
+    // recreates it herself when the direct conversion is too lossy).
+    let requestCode = code
+    let imported: string | undefined
+    let issue: string | undefined
+    if (source && wantsConversion(instruction, mode)) {
+      const rec = recognizeCode(source, tree)
+      if (rec.ok && rec.complete && !applyCode(source)) {
+        imported = rec.summary
+        requestCode = treeToCode(rec.tree, moduleName)
+      } else {
+        issue = rec.ok ? `${rec.kind} reconnu, conversion directe incomplète : ${rec.issue ?? 'application impossible'}` : `${rec.kind} : ${rec.error}`
+      }
+    }
+
+    const userMsg: Msg = {
+      role: 'user',
+      content: instruction || (source ? 'Transforme ce code en rendu.' : 'Recrée ce module.'),
+      files: sent.length ? sent : undefined,
+      imported,
+    }
+    const history: Msg[] = [...messages, userMsg]
+    setMessages(imported ? [...history, { role: 'assistant', content: imported, applied: true }] : history)
     setLoading(true)
     setMood('thinking')
     const ctrl = new AbortController()
@@ -181,8 +219,10 @@ export function MailyPanel({
         body: JSON.stringify({
           messages: history.slice(-40).map((m, i, arr) => toPayload(m, withImages.has(i + history.length - arr.length))),
           mode,
-          code,
+          code: requestCode,
           moduleName,
+          imported: !!imported,
+          issue,
         }),
         signal: ctrl.signal,
       })
@@ -253,14 +293,14 @@ export function MailyPanel({
     >
       {dragging && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-void/80 p-6 text-center text-sm text-cyan">
-          Dépose une capture, une maquette ou un fichier HTML : Maily le recrée.
+          Dépose une capture, une maquette ou un fichier HTML/HuBL : Maily le transforme en rendu.
         </div>
       )}
       <div className="flex items-center gap-3 border-b border-line px-4 py-3">
         <Maily size={48} mood={mood} />
         <div className="min-w-0">
           <p className="font-display font-semibold tracking-wide">NEON AI CHAT</p>
-          <p className="text-xs text-mute">{loading ? 'Maily réfléchit…' : 'Maily · Gemini Flash'}</p>
+          <p className="text-xs text-mute">{loading ? 'Maily réfléchit…' : 'Maily · Gemini Flash · recherche web'}</p>
         </div>
       </div>
 
@@ -279,8 +319,8 @@ export function MailyPanel({
         {messages.length === 0 && (
           <div className="space-y-2 pt-2">
             <p className="text-xs text-mute">
-              Pose-moi n'importe quelle question sur l'appli, ou joins une capture ou un fichier HTML avec le trombone : je le recrée en blocs
-              éditables.
+              Pose-moi n'importe quelle question (je cherche sur le web les infos récentes), colle du code HTML ou HuBL : je le transforme
+              en rendu, ou joins une capture avec le trombone : je la recrée en blocs éditables.
             </p>
             <p className="pt-1 text-xs text-mute">Essaie :</p>
             {SUGGESTIONS[mode].map((s) => (
@@ -363,7 +403,7 @@ export function MailyPanel({
             ref={fileRef}
             type="file"
             multiple
-            accept="image/*,.html,.htm,.hubl,.txt"
+            accept="image/*,.html,.htm,.hubl,.txt,.json"
             className="hidden"
             onChange={(e) => {
               attach(e.target.files)
@@ -391,7 +431,7 @@ export function MailyPanel({
               }
               // Long HTML is kept as an attachment so the textarea stays usable.
               const html = e.clipboardData.getData('text/plain')
-              if (html.length > 1500 && /<\/?(table|div|td|h[1-6]|p|img)\b/i.test(html)) {
+              if (html.length > 300 && looksLikeCode(html)) {
                 e.preventDefault()
                 setFiles((prev) => [...prev, { name: 'code-colle.html', kind: 'code' as const, text: html.slice(0, 140_000) }].slice(0, 4))
               }
@@ -408,7 +448,7 @@ export function MailyPanel({
                 ? 'Précise ce que tu veux (facultatif)…'
                 : mode === 'build'
                   ? 'Décris le module ou la modification…'
-                  : 'Pose ta question ou demande-moi un module…'
+                  : 'Pose ta question, colle du code ou demande-moi un module…'
             }
             className="min-h-10 flex-1 resize-none rounded-lg border border-line bg-void px-3 py-2 text-base outline-none focus:border-violet lg:text-sm"
           />
