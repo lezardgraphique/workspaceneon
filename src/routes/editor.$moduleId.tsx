@@ -389,7 +389,7 @@ function Editor() {
             <FieldsPanel {...treeProps} />
           </div>
           <div className={`${vis('maily', leftTab === 'maily')} min-h-0 w-full flex-1 flex-col bg-space`}>
-            <MailyPanel code={code} moduleName={name} applyCode={applyCode} />
+            <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyCode} />
           </div>
         </aside>
 
