@@ -10,11 +10,14 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as FichiersRouteImport } from './routes/fichiers'
 import { Route as ApercuModuleIdRouteImport } from './routes/apercu.$moduleId'
+import { Route as ApiFilesRouteImport } from './routes/api.files'
 import { Route as ApiGenerateRouteImport } from './routes/api.generate'
 import { Route as ApiImagesRouteImport } from './routes/api.images'
 import { Route as ApiMailyRouteImport } from './routes/api.maily'
 import { Route as EditorModuleIdRouteImport } from './routes/editor.$moduleId'
+import { Route as ApiFilesKeyRouteImport } from './routes/api.files_.$key'
 import { Route as ApiImagesKeyRouteImport } from './routes/api.images_.$key'
 
 const IndexRoute = IndexRouteImport.update({
@@ -22,9 +25,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FichiersRoute = FichiersRouteImport.update({
+  id: '/fichiers',
+  path: '/fichiers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApercuModuleIdRoute = ApercuModuleIdRouteImport.update({
   id: '/apercu/$moduleId',
   path: '/apercu/$moduleId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiFilesRoute = ApiFilesRouteImport.update({
+  id: '/api/files',
+  path: '/api/files',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGenerateRoute = ApiGenerateRouteImport.update({
@@ -47,6 +60,11 @@ const EditorModuleIdRoute = EditorModuleIdRouteImport.update({
   path: '/editor/$moduleId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFilesKeyRoute = ApiFilesKeyRouteImport.update({
+  id: '/api/files_/$key',
+  path: '/api/files/$key',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiImagesKeyRoute = ApiImagesKeyRouteImport.update({
   id: '/api/images_/$key',
   path: '/api/images/$key',
@@ -55,69 +73,90 @@ const ApiImagesKeyRoute = ApiImagesKeyRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/fichiers': typeof FichiersRoute
   '/apercu/$moduleId': typeof ApercuModuleIdRoute
+  '/api/files': typeof ApiFilesRoute
   '/api/generate': typeof ApiGenerateRoute
   '/api/images': typeof ApiImagesRoute
   '/api/maily': typeof ApiMailyRoute
   '/editor/$moduleId': typeof EditorModuleIdRoute
+  '/api/files/$key': typeof ApiFilesKeyRoute
   '/api/images/$key': typeof ApiImagesKeyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/fichiers': typeof FichiersRoute
   '/apercu/$moduleId': typeof ApercuModuleIdRoute
+  '/api/files': typeof ApiFilesRoute
   '/api/generate': typeof ApiGenerateRoute
   '/api/images': typeof ApiImagesRoute
   '/api/maily': typeof ApiMailyRoute
   '/editor/$moduleId': typeof EditorModuleIdRoute
+  '/api/files/$key': typeof ApiFilesKeyRoute
   '/api/images/$key': typeof ApiImagesKeyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/fichiers': typeof FichiersRoute
   '/apercu/$moduleId': typeof ApercuModuleIdRoute
+  '/api/files': typeof ApiFilesRoute
   '/api/generate': typeof ApiGenerateRoute
   '/api/images': typeof ApiImagesRoute
   '/api/maily': typeof ApiMailyRoute
   '/editor/$moduleId': typeof EditorModuleIdRoute
+  '/api/files_/$key': typeof ApiFilesKeyRoute
   '/api/images_/$key': typeof ApiImagesKeyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/fichiers'
     | '/apercu/$moduleId'
+    | '/api/files'
     | '/api/generate'
     | '/api/images'
     | '/api/maily'
     | '/editor/$moduleId'
+    | '/api/files/$key'
     | '/api/images/$key'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/fichiers'
     | '/apercu/$moduleId'
+    | '/api/files'
     | '/api/generate'
     | '/api/images'
     | '/api/maily'
     | '/editor/$moduleId'
+    | '/api/files/$key'
     | '/api/images/$key'
   id:
     | '__root__'
     | '/'
+    | '/fichiers'
     | '/apercu/$moduleId'
+    | '/api/files'
     | '/api/generate'
     | '/api/images'
     | '/api/maily'
     | '/editor/$moduleId'
+    | '/api/files_/$key'
     | '/api/images_/$key'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  FichiersRoute: typeof FichiersRoute
   ApercuModuleIdRoute: typeof ApercuModuleIdRoute
+  ApiFilesRoute: typeof ApiFilesRoute
   ApiGenerateRoute: typeof ApiGenerateRoute
   ApiImagesRoute: typeof ApiImagesRoute
   ApiMailyRoute: typeof ApiMailyRoute
   EditorModuleIdRoute: typeof EditorModuleIdRoute
+  ApiFilesKeyRoute: typeof ApiFilesKeyRoute
   ApiImagesKeyRoute: typeof ApiImagesKeyRoute
 }
 
@@ -130,11 +169,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/fichiers': {
+      id: '/fichiers'
+      path: '/fichiers'
+      fullPath: '/fichiers'
+      preLoaderRoute: typeof FichiersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/apercu/$moduleId': {
       id: '/apercu/$moduleId'
       path: '/apercu/$moduleId'
       fullPath: '/apercu/$moduleId'
       preLoaderRoute: typeof ApercuModuleIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/files': {
+      id: '/api/files'
+      path: '/api/files'
+      fullPath: '/api/files'
+      preLoaderRoute: typeof ApiFilesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/generate': {
@@ -165,6 +218,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EditorModuleIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/files_/$key': {
+      id: '/api/files_/$key'
+      path: '/api/files/$key'
+      fullPath: '/api/files/$key'
+      preLoaderRoute: typeof ApiFilesKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/images_/$key': {
       id: '/api/images_/$key'
       path: '/api/images/$key'
@@ -177,11 +237,14 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  FichiersRoute: FichiersRoute,
   ApercuModuleIdRoute: ApercuModuleIdRoute,
+  ApiFilesRoute: ApiFilesRoute,
   ApiGenerateRoute: ApiGenerateRoute,
   ApiImagesRoute: ApiImagesRoute,
   ApiMailyRoute: ApiMailyRoute,
   EditorModuleIdRoute: EditorModuleIdRoute,
+  ApiFilesKeyRoute: ApiFilesKeyRoute,
   ApiImagesKeyRoute: ApiImagesKeyRoute,
 }
 export const routeTree = rootRouteImport

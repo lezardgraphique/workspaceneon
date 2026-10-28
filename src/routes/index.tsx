@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
-import { ArrowRight, Columns3, Code2, Eye, Heart, Layers, Loader2, MailCheck, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { ArrowRight, Columns3, Code2, Eye, FolderOpen, Heart, Layers, Loader2, MailCheck, Sparkles, Trash2, Wand2 } from 'lucide-react'
 
 import { EmailFrame } from '@/components/EmailFrame'
 import { Maily, NeonLogo } from '@/components/Maily'
@@ -56,11 +56,14 @@ function Library() {
           Neon Sandbox <span className="text-pink">Pro</span>
         </span>
         <span className="ml-1 rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-mute">WEB</span>
+        <Link to="/fichiers" className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-mute hover:border-cyan hover:text-white">
+          <FolderOpen className="size-4 text-cyan" /> <span className="hidden sm:inline">Fichiers</span>
+        </Link>
         <a
           href={KOFI_URL}
           target="_blank"
           rel="noreferrer"
-          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-mute hover:border-pink hover:text-white"
+          className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-mute hover:border-pink hover:text-white"
         >
           <Heart className="size-4 text-pink" /> <span className="hidden sm:inline">Laisser un commentaire</span>
         </a>

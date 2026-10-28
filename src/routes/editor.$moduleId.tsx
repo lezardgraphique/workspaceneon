@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, createFileRoute, notFound } from '@tanstack/react-router'
 import {
   AlertTriangle,
@@ -9,6 +9,7 @@ import {
   Code2,
   ExternalLink,
   Eye,
+  FolderOpen,
   Heart,
   Layers,
   ListChecks,
@@ -34,7 +35,6 @@ import { ClientsDialog } from '@/components/editor/ClientsDialog'
 import { ExportDialog } from '@/components/editor/ExportDialog'
 import { FieldsPanel } from '@/components/editor/FieldsPanel'
 import { Inspector } from '@/components/editor/Inspector'
-import { MailyPanel } from '@/components/editor/MailyPanel'
 import { Preview } from '@/components/editor/Preview'
 import type { DropTarget } from '@/components/editor/Preview'
 import { BLOCK_ICONS, Structure } from '@/components/editor/Structure'
@@ -49,6 +49,9 @@ import { findNode, findPath, insertInCell, moveNode, removeNode, replaceNode, up
 import { BLOCK_LABELS, createBlock } from '@/lib/types'
 import type { ImageBlock, ModuleTree, Section } from '@/lib/types'
 import { getModule, saveModule } from '@/server/modules.functions'
+
+// Maily's panel (chat + Markdown renderer) is the heaviest part: loaded on demand.
+const MailyPanel = lazy(() => import('@/components/editor/MailyPanel').then((m) => ({ default: m.MailyPanel })))
 
 export const Route = createFileRoute('/editor/$moduleId')({
   loader: async ({ params }) => {
@@ -391,6 +394,16 @@ function Editor() {
           <ExternalLink className="size-4" /> <span className="hidden xl:inline">Aperçu</span>
         </button>
         <a
+          href="/fichiers"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Fichiers"
+          title="Fichiers (nouvel onglet)"
+          className="inline-flex shrink-0 items-center rounded-md border border-line px-2 py-1.5 text-mute hover:border-cyan hover:text-cyan"
+        >
+          <FolderOpen className="size-4" />
+        </a>
+        <a
           href={KOFI_URL}
           target="_blank"
           rel="noreferrer"
@@ -430,7 +443,9 @@ function Editor() {
             <FieldsPanel {...treeProps} />
           </div>
           <div className={`${vis('maily', leftTab === 'maily')} min-h-0 w-full flex-1 flex-col bg-space`}>
-            <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyCode} addSection={addSection} />
+            <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="size-5 animate-spin text-cyan" /></div>}>
+              <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyCode} addSection={addSection} />
+            </Suspense>
           </div>
         </aside>
 
