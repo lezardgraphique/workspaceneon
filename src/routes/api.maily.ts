@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
-import { APP_GUIDE, MAILY_PERSONA, MODEL, MODULE_REPLY_SPEC, RESEARCH_SPEC, ai } from '@/lib/gemini.server'
+import { APP_GUIDE, FIELDS_SPEC, MAILY_PERSONA, MODEL, MODULE_REPLY_SPEC, RESEARCH_SPEC, ai } from '@/lib/gemini.server'
 
 // Screenshots or mockups the user wants Maily to recreate (base64, no data: prefix).
 const Image = z.object({
@@ -28,6 +28,10 @@ const Body = z.object({
   imported: z.boolean().optional(),
   // Why the direct conversion of the attached code fell short.
   issue: z.string().max(500).optional(),
+  // Fields of the open module (name, label, type), one per line.
+  fields: z.string().max(8_000).optional(),
+  // Fields parsed from an attached fields.json (JSON array of name/label/type/default).
+  fieldSpecs: z.string().max(20_000).optional(),
 })
 
 // Google Search and URL reading keep Maily's answers current; the model decides
@@ -47,11 +51,14 @@ export const Route = createFileRoute('/api/maily')({
       POST: async ({ request }) => {
         const parsed = Body.safeParse(await request.json().catch(() => null))
         if (!parsed.success) return Response.json({ error: 'Requête invalide' }, { status: 400 })
-        const { messages, mode, code, moduleName, imported, issue } = parsed.data
+        const { messages, mode, code, moduleName, imported, issue, fields, fieldSpecs } = parsed.data
 
         const context = code
           ? `\n\nModule actuellement dans l'éditeur « ${moduleName ?? 'Sans titre'} » :\n${code.slice(0, 120_000)}`
           : ''
+        const fieldsContext =
+          (fields ? `\n\nChamps actuels du module ouvert (nom HuBL exact, libellé, type) :\n${fields}` : '') +
+          (fieldSpecs ? `\n\nfields.json joint par l'utilisateur (noms exacts à respecter) :\n${fieldSpecs}` : '')
         const modeNote =
           mode === 'build'
             ? `\n\nL'utilisateur est en mode « Modifier le module » : chacun de ses messages est une demande de création ou de modification. Réponds toujours avec le bloc neon complet.`
@@ -76,7 +83,7 @@ export const Route = createFileRoute('/api/maily')({
             })),
             config: {
               ...(withTools ? { tools: TOOLS } : {}),
-              systemInstruction: `${MAILY_PERSONA}\nNous sommes le ${today}.\nTu connais parfaitement l'application. Pour toute question sur son fonctionnement ou sur ce que l'utilisateur peut faire, appuie-toi d'abord sur le GUIDE DE L'APPLICATION : explique le chemin dans l'interface avec les noms exacts des boutons et panneaux, et privilégie les fonctions intégrées (Téléverser, Clients, Aperçu, Exporter…) plutôt que des outils externes. Ne parle pas de HubSpot ni d'une plateforme précise sauf si l'utilisateur le fait.\n\n${APP_GUIDE}\n\n${RESEARCH_SPEC}\n\n${MODULE_REPLY_SPEC}${importNote || modeNote}${context}`,
+              systemInstruction: `${MAILY_PERSONA}\nNous sommes le ${today}.\nTu connais parfaitement l'application. Pour toute question sur son fonctionnement ou sur ce que l'utilisateur peut faire, appuie-toi d'abord sur le GUIDE DE L'APPLICATION : explique le chemin dans l'interface avec les noms exacts des boutons et panneaux, et privilégie les fonctions intégrées (Téléverser, Clients, Aperçu, Exporter…) plutôt que des outils externes. Ne parle pas de HubSpot ni d'une plateforme précise sauf si l'utilisateur le fait.\n\n${APP_GUIDE}\n\n${RESEARCH_SPEC}\n\n${MODULE_REPLY_SPEC}\n\n${FIELDS_SPEC}${importNote || modeNote}${context}${fieldsContext}`,
             },
           })
 
