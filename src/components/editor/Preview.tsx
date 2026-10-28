@@ -210,16 +210,26 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
     case 'spacer':
       return node(<div style={{ height: b.height }} />)
     case 'raw':
+      // The tree reaching the preview is already interpreted: show the result.
       return node(
-        <code className="block rounded border border-dashed border-[#bc13fe]/50 bg-[#bc13fe]/5 px-2 py-1 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap text-[#7a0fb0]">
-          {b.html}
-        </code>,
+        b.html.trim() ? (
+          <div dangerouslySetInnerHTML={{ __html: safeHtml(b.html) }} />
+        ) : (
+          <div className="h-3" />
+        ),
         { marginBottom: 12 },
       )
     case 'section':
       return <SectionView s={b} font={font} nested {...p} />
   }
 }
+
+// Raw blocks were sanitized when they entered the tree; this is a last guard.
+const safeHtml = (html: string) =>
+  html
+    .replace(/<\/?(script|iframe|object|embed)\b[^>]*>/gi, '')
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1=$2#$2')
 
 function SectionView({ s, font, nested, ...p }: { s: Section; font: string; nested?: boolean } & Omit<Props, 'tree'>) {
   const stacked = p.mobile && s.behavior === 'stack'

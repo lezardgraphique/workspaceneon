@@ -1,4 +1,5 @@
 import { codeToTree } from '@/lib/hubl'
+import { isLogicBlock } from '@/lib/hubl-render'
 import { validateSyntax } from '@/lib/validator'
 import type { FieldBinding, FieldSpec } from '@/lib/module-fields'
 import type { Block, ModuleTree } from '@/lib/types'
@@ -60,7 +61,8 @@ export function recognizeCode(code: string, current: ModuleTree, specs?: FieldSp
       if (b.type === 'section') {
         st.cards++
         b.cells.forEach(walk)
-      } else {
+      } else if (!isLogicBlock(b)) {
+        // {% if %} / {% endif %} lines are interpreted by the preview, not "free code".
         st.blocks++
         if (b.type === 'raw') st.raw++
       }

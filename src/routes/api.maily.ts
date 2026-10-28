@@ -1,7 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
-import { APP_GUIDE, FIELDS_SPEC, MAILY_PERSONA, MODEL, MODULE_REPLY_SPEC, RESEARCH_SPEC, ai } from '@/lib/gemini.server'
+import { db } from '../../db/index.js'
+import { customBlocks, modules } from '../../db/schema.js'
+import { APP_GUIDE, FIELDS_SPEC, MAILY_PERSONA, SCOPE_SPEC, MODEL, MODULE_REPLY_SPEC, RESEARCH_SPEC, ai } from '@/lib/gemini.server'
 
 // Screenshots or mockups the user wants Maily to recreate (base64, no data: prefix).
 const Image = z.object({
@@ -69,6 +71,16 @@ export const Route = createFileRoute('/api/maily')({
           : issue
             ? `\n\nAnalyse automatique du code joint au dernier message : ${issue}. Recrée-le fidèlement en blocs éditables avec le bloc neon (si des variables {{ module.… }} apparaissent, remplace-les par la valeur par défaut d'un fields.json joint ou par un contenu plausible, et donne le nom du champ en data-field).`
             : ''
+        // What already exists, so Maily reuses it instead of creating a twin.
+        const library = await Promise.all([
+          db.select({ name: modules.name }).from(modules).limit(60),
+          db.select({ name: customBlocks.name, description: customBlocks.description }).from(customBlocks).limit(60),
+        ])
+          .then(
+            ([m, b]) =>
+              `\n\nBIBLIOTHÈQUE ACTUELLE (ne crée jamais un doublon de ces éléments) :\nModules : ${m.map((x) => x.name).join(' ; ') || 'aucun'}\nBlocs personnalisés : ${b.map((x) => (x.description ? `${x.name} (${x.description})` : x.name)).join(' ; ') || 'aucun'}`,
+          )
+          .catch(() => '')
         const today = new Date().toLocaleDateString('fr-FR', { dateStyle: 'full', timeZone: 'Europe/Paris' })
 
         const generate = (withTools: boolean) =>
@@ -82,8 +94,9 @@ export const Route = createFileRoute('/api/maily')({
               ],
             })),
             config: {
+              temperature: 0.4,
               ...(withTools ? { tools: TOOLS } : {}),
-              systemInstruction: `${MAILY_PERSONA}\nNous sommes le ${today}.\nTu connais parfaitement l'application. Pour toute question sur son fonctionnement ou sur ce que l'utilisateur peut faire, appuie-toi d'abord sur le GUIDE DE L'APPLICATION : explique le chemin dans l'interface avec les noms exacts des boutons et panneaux, et privilégie les fonctions intégrées (Téléverser, Clients, Aperçu, Exporter…) plutôt que des outils externes. Ne parle pas de HubSpot ni d'une plateforme précise sauf si l'utilisateur le fait.\n\n${APP_GUIDE}\n\n${RESEARCH_SPEC}\n\n${MODULE_REPLY_SPEC}\n\n${FIELDS_SPEC}${importNote || modeNote}${context}${fieldsContext}`,
+              systemInstruction: `${MAILY_PERSONA}\nNous sommes le ${today}.\nTu connais parfaitement l'application. Pour toute question sur son fonctionnement ou sur ce que l'utilisateur peut faire, appuie-toi d'abord sur le GUIDE DE L'APPLICATION : explique le chemin dans l'interface avec les noms exacts des boutons et panneaux, et privilégie les fonctions intégrées (Téléverser, Clients, Aperçu, Exporter…) plutôt que des outils externes. Ne parle pas de HubSpot ni d'une plateforme précise sauf si l'utilisateur le fait.\n\n${APP_GUIDE}\n\n${RESEARCH_SPEC}\n\n${SCOPE_SPEC}\n\n${MODULE_REPLY_SPEC}\n\n${FIELDS_SPEC}${importNote || modeNote}${library}${context}${fieldsContext}`,
             },
           })
 

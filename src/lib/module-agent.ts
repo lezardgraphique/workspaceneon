@@ -1,4 +1,6 @@
 import { codeToTree, reconcileIds, treeToCode } from '@/lib/hubl'
+import { signature } from '@/lib/custom-blocks'
+import { isLogicBlock } from '@/lib/hubl-render'
 import { validateSyntax } from '@/lib/validator'
 import type { FieldBinding, FieldSpec } from '@/lib/module-fields'
 import type { Block, ModuleTree, Section } from '@/lib/types'
@@ -25,7 +27,7 @@ const countBlocks = (list: Block[]) => {
       if (block.type === 'section') {
         cards++
         block.cells.forEach(walk)
-      } else {
+      } else if (!isLogicBlock(block)) {
         blocks++
         if (block.type === 'raw') raw++
       }
@@ -34,6 +36,25 @@ const countBlocks = (list: Block[]) => {
 
   walk(list)
   return { blocks, raw, cards }
+}
+
+// Identical neighbours (same type and content) are the typical sign of a block
+// added twice instead of edited. Spacers and dividers repeat legitimately.
+export function findDuplicates(tree: ModuleTree): string[] {
+  const found: string[] = []
+  const check = (list: Block[], where: string) => {
+    list.forEach((b, i) => {
+      if (b.type === 'section') b.cells.forEach((c, k) => check(c, `${where} > card ${i + 1}, colonne ${k + 1}`))
+      const prev = list[i - 1]
+      if (!prev || prev.type !== b.type || b.type === 'spacer' || b.type === 'divider' || isLogicBlock(b)) return
+      if (signature(prev) === signature(b)) found.push(`${where} : deux blocs « ${b.type} » identiques se suivent`)
+    })
+  }
+  tree.sections.forEach((s, i) => {
+    if (i > 0 && signature(tree.sections[i - 1]) === signature(s)) found.push(`section ${i + 1} identique à la précédente`)
+    s.cells.forEach((c, k) => check(c, `section ${i + 1}, colonne ${k + 1}`))
+  })
+  return found
 }
 
 export function optimizeModuleTree(tree: ModuleTree): ModuleTree {
@@ -92,6 +113,7 @@ export function validateModuleCode(code: string, current: ModuleTree, specs?: Fi
   for (const i of syntax.issues) {
     ;(i.severity === 'error' ? issues : warnings).push(`Ligne ${i.line} : ${i.message}.`)
   }
+  for (const d of findDuplicates(tree)) issues.push(`Doublon : ${d}. Modifie le bloc existant au lieu d'en ajouter un second.`)
   if (!tree.sections.length) issues.push('Le module n’a aucune section valide.')
   if (tree.width < 320 || tree.width > 900) warnings.push('La largeur du module sort des limites recommandées.')
   if (rawRatio > 0.45) issues.push(`Le code contient trop de blocs libres (${counts.raw}/${counts.blocks}).`)

@@ -225,7 +225,7 @@ export function auditModule(tree: ModuleTree, name: string): { issues: Issue[]; 
         }
         case 'raw':
           if (/\{\{|\{%/.test(b.html))
-            add({ key: 'hubl', level: 'info', title: 'Variables non interprétées', detail: 'Le code {{ … }} / {% … %} s\'affiche tel quel dans ces tests : il sera remplacé à l\'envoi.', clients: ALL, blockId: b.id })
+            add({ key: 'hubl', level: 'info', title: 'HuBL simulé', detail: 'Les variables {{ … }} et les conditions {% … %} sont interprétées ici avec un contact d\'exemple ; à l\'envoi, ce sera le vrai contact.', clients: ALL, blockId: b.id })
           break
         case 'section':
           section(b, bg, mobileColumns)

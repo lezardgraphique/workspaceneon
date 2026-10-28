@@ -4,7 +4,7 @@ import { AlertOctagon, AlertTriangle, ArrowLeft, ChevronRight, ImageOff, Info, M
 import { EmailFrame } from '@/components/EmailFrame'
 import { CLIENTS, auditModule, renderForClient } from '@/lib/clients'
 import type { ClientId, EmailClient, Issue } from '@/lib/clients'
-import { standaloneEmail } from '@/lib/hubl'
+import { previewEmail } from '@/lib/hubl'
 import type { ModuleTree } from '@/lib/types'
 
 // Litmus-style test: the module as rendered by the main email clients, side by
@@ -47,7 +47,7 @@ export function ClientsDialog({
   const [imagesOff, setImagesOff] = useState(false)
   const [focus, setFocus] = useState<ClientId | null>(null)
 
-  const page = useMemo(() => standaloneEmail(tree, name), [tree, name])
+  const page = useMemo(() => previewEmail(tree, name), [tree, name])
   const renders = useMemo(
     () => Object.fromEntries(CLIENTS.map((c) => [c.id, renderForClient(page, c, { imagesOff })])) as Record<ClientId, string>,
     [page, imagesOff],

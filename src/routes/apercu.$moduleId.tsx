@@ -6,7 +6,7 @@ import { EmailFrame } from '@/components/EmailFrame'
 import { NeonLogo } from '@/components/Maily'
 import { ClientsDialog } from '@/components/editor/ClientsDialog'
 import { CLIENTS, renderForClient } from '@/lib/clients'
-import { standaloneEmail } from '@/lib/hubl'
+import { previewEmail } from '@/lib/hubl'
 import { getModule } from '@/server/modules.functions'
 
 // Module preview: the exported HTML exactly as it will be sent or published,
@@ -38,7 +38,7 @@ function ModulePreview() {
   const [testing, setTesting] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  const page = useMemo(() => standaloneEmail(mod.tree, mod.name), [mod])
+  const page = useMemo(() => previewEmail(mod.tree, mod.name), [mod])
   // Dark mode needs the DOM (DOMParser): computed on the client only.
   const html = useMemo(
     () => (dark && typeof DOMParser !== 'undefined' ? renderForClient(page, DARK, { imagesOff: false }) : page),

@@ -4,7 +4,7 @@ import { ArrowRight, Columns3, Code2, Eye, Heart, Layers, Loader2, MailCheck, Sp
 
 import { EmailFrame } from '@/components/EmailFrame'
 import { Maily, NeonLogo } from '@/components/Maily'
-import { standaloneEmail } from '@/lib/hubl'
+import { previewEmail } from '@/lib/hubl'
 import { KOFI_URL } from '@/lib/links'
 import { STARTERS } from '@/lib/templates'
 import { countBlocks } from '@/lib/tree'
@@ -154,7 +154,7 @@ function Library() {
                     aria-label={`Ouvrir ${m.name}`}
                     className="relative block h-56 overflow-hidden border-b border-line bg-white"
                   >
-                    <EmailFrame html={standaloneEmail(m.tree, m.name)} width={m.tree.width + 40} maxHeight={900} title={`Vignette de ${m.name}`} />
+                    <EmailFrame html={previewEmail(m.tree, m.name)} width={m.tree.width + 40} maxHeight={900} title={`Vignette de ${m.name}`} />
                     <span className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/25 to-transparent" />
                   </Link>
                   <div className="flex items-center gap-2 px-4 py-3">

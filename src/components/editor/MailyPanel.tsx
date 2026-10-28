@@ -11,8 +11,12 @@ import { parseFieldsJson } from '@/lib/module-fields'
 import type { FieldSpec } from '@/lib/module-fields'
 import { validateModuleCode } from '@/lib/module-agent'
 import { extractCode, looksLikeCode, recognizeCode, wantsConversion } from '@/lib/recognize'
-import type { ModuleTree } from '@/lib/types'
-import { createModule } from '@/server/modules.functions'
+import type { ModuleTree, Section } from '@/lib/types'
+import { slugify } from '@/lib/custom-blocks'
+import type { CustomBlock } from '@/lib/custom-blocks'
+import { saveCustomBlock } from '@/server/custom-blocks.functions'
+import { createModule, listModules } from '@/server/modules.functions'
+import { refreshCustomBlocks } from './useCustomBlocks'
 
 // A screenshot/mockup or an HTML file sent to Maily, usually to recreate it.
 interface Attachment {
@@ -36,7 +40,9 @@ interface Msg {
   // Sent to the model but not shown (automatic checks)
   hidden?: boolean
   // Modules Maily created in the library from this answer
-  created?: { id: string; name: string }[]
+  created?: { id: string; name: string; existing?: boolean }[]
+  // Custom blocks (library) Maily saved or reused from this answer
+  blocks?: CustomBlock[]
 }
 
 type Mode = 'chat' | 'build'
@@ -73,7 +79,8 @@ async function toAttachment(file: File): Promise<Attachment | null> {
 }
 
 interface NeonBlock {
-  // Set for ```neon new Nom``` : a new module for the library
+  // `new`: a new module for the library; `block`: a reusable custom block
+  kind: 'current' | 'new' | 'block'
   name?: string
   code: string
 }
@@ -95,8 +102,13 @@ function splitReply(acc: string): { text: string; blocks: NeonBlock[]; building:
     const end = after.search(/\n```/)
     text += rest.slice(0, start)
     if (end < 0) return { text: text.trim(), blocks, building: true }
-    const m = /^\s*new\b\s*(.*)$/i.exec(head[1])
-    blocks.push({ name: m ? m[1].trim().replace(/^["«']|["»']$/g, '') || 'Nouveau module' : undefined, code: after.slice(0, end) })
+    const m = /^\s*(new|block)\b\s*(.*)$/i.exec(head[1])
+    const kind = m ? (m[1].toLowerCase() as 'new' | 'block') : 'current'
+    blocks.push({
+      kind,
+      name: m ? m[2].trim().replace(/^["«']|["»']$/g, '') || (kind === 'new' ? 'Nouveau module' : 'Nouveau bloc') : undefined,
+      code: after.slice(0, end),
+    })
     rest = after.slice(end + 4)
   }
 }
@@ -148,11 +160,14 @@ export function MailyPanel({
   code,
   moduleName,
   applyCode,
+  addSection,
 }: {
   tree: ModuleTree
   code: string
   moduleName: string
   applyCode: (code: string, specs?: FieldSpec[]) => string | null
+  // Appends a custom block to the open module; returns a message when it is refused (duplicate)
+  addSection: (section: Section) => string | null
 }) {
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
@@ -254,20 +269,52 @@ export function MailyPanel({
       return
     }
 
-    const created: { id: string; name: string }[] = []
+    const created: { id: string; name: string; existing?: boolean }[] = []
+    const savedBlocks: CustomBlock[] = []
     const notes: string[] = []
     const problems: string[] = []
     let applied = false
+    // Modules already in the library, to never create the same one twice.
+    let library: { id: string; name: string }[] | null = null
     for (const block of reply.blocks) {
-      const label = block.name ? `« ${block.name} »` : 'le module ouvert'
+      const label = block.kind === 'block' ? `le bloc « ${block.name} »` : block.name ? `« ${block.name} »` : 'le module ouvert'
       const check = validateModuleCode(block.code, tree, ctx.specs)
       if (!check.ok || !check.tree) {
         problems.push(`${label} : ${check.issues.join(' ') || check.summary}`)
         continue
       }
-      if (block.name) {
+      if (block.kind === 'block') {
+        if (check.tree.sections.length !== 1) {
+          problems.push(`${label} : un bloc personnalisé contient exactement une section (reçu ${check.tree.sections.length})`)
+          continue
+        }
         try {
-          const rec = await createModule({ data: { name: block.name.slice(0, 120), tree: check.tree } })
+          const res = await saveCustomBlock({ data: { name: block.name!.slice(0, 80), description: '', section: check.tree.sections[0] as never } })
+          savedBlocks.push(res.block)
+          refreshCustomBlocks()
+          notes.push(
+            res.status === 'created'
+              ? `Bloc « ${res.block.name} » ajouté à ta bibliothèque (Structure > Ajouter > Mes blocs)`
+              : res.status === 'updated'
+                ? `Bloc « ${res.block.name} » mis à jour (même nom, pas de doublon)`
+                : `Un bloc identique existe déjà (« ${res.block.name} ») : je l'ai réutilisé, sans doublon`,
+          )
+        } catch {
+          problems.push(`${label} : l'enregistrement dans la bibliothèque a échoué`)
+        }
+        continue
+      }
+      if (block.kind === 'new') {
+        try {
+          library ??= (await listModules()).map((m) => ({ id: m.id, name: m.name }))
+          const twin = library.find((m) => slugify(m.name) === slugify(block.name!))
+          if (twin) {
+            created.push({ id: twin.id, name: twin.name, existing: true })
+            notes.push(`Le module « ${twin.name} » existe déjà : je ne l'ai pas dupliqué (choisis un autre nom pour en créer une variante)`)
+            continue
+          }
+          const rec = await createModule({ data: { name: block.name!.slice(0, 120), tree: check.tree } })
+          library.push({ id: rec.id, name: rec.name })
           created.push({ id: rec.id, name: rec.name })
         } catch {
           problems.push(`${label} : la création dans la bibliothèque a échoué`)
@@ -286,12 +333,12 @@ export function MailyPanel({
       check.warnings.filter((w) => /non liées|normalisés/.test(w)).forEach((w) => notes.push(w))
     }
 
-    const body = reply.text || (created.length || applied ? 'C\'est fait ! ✨' : '')
+    const body = reply.text || (created.length || savedBlocks.length || applied ? 'C\'est fait ! ✨' : '')
     const extra = notes.length ? `\n\n${notes.map((n) => `- ${n}`).join('\n')}` : ''
 
     if (problems.length && attempt < 2) {
       // Automatic correction loop: the engine's findings go back to Maily.
-      setLast({ role: 'assistant', content: `${body}${extra}\n\n🔧 Vérification du moteur : ${problems.join(' ; ')}. Je demande une correction…`, applied, created })
+      setLast({ role: 'assistant', content: `${body}${extra}\n\n🔧 Vérification du moteur : ${problems.join(' ; ')}. Je demande une correction…`, applied, created, blocks: savedBlocks })
       const fix: Msg = {
         role: 'user',
         hidden: true,
@@ -307,8 +354,9 @@ export function MailyPanel({
       content: `${body}${extra}${fail}`,
       applied: applied || undefined,
       created: created.length ? created : undefined,
+      blocks: savedBlocks.length ? savedBlocks : undefined,
     })
-    setMood(applied || created.length ? 'success' : 'happy')
+    setMood(applied || created.length || savedBlocks.length ? 'success' : 'happy')
   }
 
   const send = async (text: string) => {
@@ -465,9 +513,22 @@ export function MailyPanel({
                       rel="noreferrer"
                       className="mt-2 flex items-center gap-1.5 rounded-md border border-cyan/40 bg-cyan/5 px-2 py-1.5 text-xs text-cyan hover:bg-cyan/10"
                     >
-                      <Plus className="size-3.5 shrink-0" /> Module créé : <span className="truncate font-semibold">{c.name}</span>
+                      <Plus className="size-3.5 shrink-0" /> {c.existing ? 'Module existant' : 'Module créé'} : <span className="truncate font-semibold">{c.name}</span>
                       <ExternalLink className="ml-auto size-3.5 shrink-0" /> Ouvrir
                     </a>
+                  ))}
+                  {m.blocks?.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        const refused = addSection(c.section)
+                        push({ role: 'assistant', content: refused ?? `Bloc « ${c.name} » ajouté au module ✨`, applied: !refused })
+                      }}
+                      className="mt-2 flex w-full items-center gap-1.5 rounded-md border border-pink/40 bg-pink/5 px-2 py-1.5 text-left text-xs text-pink hover:bg-pink/10"
+                    >
+                      <Plus className="size-3.5 shrink-0" /> Ajouter « <span className="truncate font-semibold">{c.name}</span> » au module
+                    </button>
                   ))}
                 </>
               ) : (

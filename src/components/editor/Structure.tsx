@@ -16,6 +16,9 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
+import { withNewIds } from '@/lib/custom-blocks'
+import { isLogicBlock } from '@/lib/hubl-render'
+import { useCustomBlocks } from './useCustomBlocks'
 import { BLOCK_LABELS, createBlock, createSection } from '@/lib/types'
 import type { Block, BlockType, Columns, ModuleTree, Section } from '@/lib/types'
 import { duplicateNode, insertInCell, moveNode, removeNode } from '@/lib/tree'
@@ -77,7 +80,7 @@ function Row({ b, depth, p, nested }: { b: Block; depth: number; p: Props; neste
       }`}
     >
       <Icon className={`size-3.5 shrink-0 ${b.type === 'section' ? 'text-cyan' : 'text-mute'}`} />
-      <span className="shrink-0 font-medium">{b.type === 'section' && !nested ? 'Section' : BLOCK_LABELS[b.type]}</span>
+      <span className="shrink-0 font-medium">{b.type === 'section' && !nested ? 'Section' : isLogicBlock(b) ? 'Logique' : BLOCK_LABELS[b.type]}</span>
       <span className="min-w-0 flex-1 truncate text-xs text-mute">{preview(b)}</span>
       <span className="hidden shrink-0 items-center group-hover:flex group-focus-within:flex">
         {[
@@ -103,6 +106,7 @@ function Row({ b, depth, p, nested }: { b: Block; depth: number; p: Props; neste
 
 function AddMenu({ section, cell, depth, p }: { section: Section; cell: number; depth: number; p: Props }) {
   const [open, setOpen] = useState(false)
+  const custom = useCustomBlocks()
   return (
     <div style={{ paddingLeft: 8 + depth * 14 }} className="py-0.5">
       {open ? (
@@ -123,6 +127,25 @@ function AddMenu({ section, cell, depth, p }: { section: Section; cell: number; 
               </button>
             )
           })}
+          {custom.length > 0 && (
+            <>
+              <p className="col-span-2 px-2 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-mute/70">Mes blocs</p>
+              {custom.map((c) => (
+                <button
+                  key={c.id}
+                  title={c.description || c.name}
+                  onClick={() => {
+                    const block = withNewIds(c.section)
+                    p.commit(insertInCell(p.tree, section.id, cell, block), block.id)
+                    setOpen(false)
+                  }}
+                  className="flex items-center gap-1.5 rounded px-2 py-2.5 text-left text-sm text-[#c9c9de] hover:bg-pink/15 hover:text-white lg:py-1 lg:text-xs"
+                >
+                  <Layers className="size-3 shrink-0 text-pink" /> <span className="truncate">{c.name}</span>
+                </button>
+              ))}
+            </>
+          )}
           <button onClick={() => setOpen(false)} className="col-span-2 py-2 text-xs text-mute hover:text-white lg:py-0.5 lg:text-[11px]">
             Annuler
           </button>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, createFileRoute, notFound } from '@tanstack/react-router'
 import {
   AlertTriangle,
@@ -40,11 +40,14 @@ import type { DropTarget } from '@/components/editor/Preview'
 import { BLOCK_ICONS, Structure } from '@/components/editor/Structure'
 import { codeToTree, reconcileIds, treeToCode } from '@/lib/hubl'
 import { uploadImage } from '@/lib/images'
+import { signature, withNewIds } from '@/lib/custom-blocks'
+import { interpretTree, previewScope } from '@/lib/hubl-render'
+import type { SampleContact } from '@/lib/hubl-render'
 import { KOFI_URL } from '@/lib/links'
 import type { FieldSpec } from '@/lib/module-fields'
 import { findNode, findPath, insertInCell, moveNode, removeNode, replaceNode, updateNode } from '@/lib/tree'
 import { BLOCK_LABELS, createBlock } from '@/lib/types'
-import type { ImageBlock, ModuleTree } from '@/lib/types'
+import type { ImageBlock, ModuleTree, Section } from '@/lib/types'
 import { getModule, saveModule } from '@/server/modules.functions'
 
 export const Route = createFileRoute('/editor/$moduleId')({
@@ -86,6 +89,7 @@ function Editor() {
   const [codeJump, setCodeJump] = useState<{ line: number; n: number }>()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [mobile, setMobile] = useState(false)
+  const [contact, setContact] = useState<SampleContact>('known')
   const [leftTab, setLeftTab] = useState<'structure' | 'fields' | 'maily'>('structure')
   const [rightTab, setRightTab] = useState<'inspector' | 'code'>('inspector')
   const [pane, setPane] = useState<Pane>('preview')
@@ -144,6 +148,15 @@ function Editor() {
     const res = codeToTree(generated, tree, specs)
     if (!res.ok) return res.error
     commit(res.tree, null)
+    return null
+  }
+
+  // Used by Maily's custom blocks: appends the section unless the module already has the same one.
+  const addSection = (section: Section): string | null => {
+    const sig = signature(section)
+    if (tree.sections.some((s) => signature(s) === sig)) return 'Ce bloc est déjà dans le module : je ne l\'ai pas ajouté une seconde fois.'
+    const copy = withNewIds(section)
+    commit({ ...tree, sections: [...tree.sections, copy] }, copy.id)
     return null
   }
 
@@ -291,6 +304,9 @@ function Editor() {
     `flex flex-1 items-center justify-center gap-1.5 border-b-2 py-2.5 text-xs font-semibold ${
       active ? 'border-pink text-white' : 'border-transparent text-mute hover:text-white'
     }`
+  // The preview shows the HuBL as the platform would render it; the block being
+  // edited in place keeps its source text.
+  const previewTree = useMemo(() => interpretTree(tree, previewScope(tree, contact), selectedId), [tree, contact, selectedId])
   const treeProps = { tree, selectedId, onSelect: select, commit }
   const selected = selectedId ? findNode(tree, selectedId) : null
   const selectedLabel =
@@ -348,6 +364,16 @@ function Editor() {
             </button>
           ))}
         </div>
+        <select
+          value={contact}
+          onChange={(e) => setContact(e.target.value as SampleContact)}
+          aria-label="Contact d'exemple pour l'aperçu"
+          title="Contact d'exemple : les {{ contact.… }} et les conditions {% if %} sont interprétés"
+          className="ml-1 hidden shrink-0 rounded-md border border-line bg-void px-1.5 py-1.5 text-xs text-mute outline-none hover:border-cyan lg:block"
+        >
+          <option value="known">Contact connu</option>
+          <option value="unknown">Contact inconnu</option>
+        </select>
         <button
           onClick={() => setTesting(true)}
           title="Tester dans les clients de messagerie"
@@ -404,7 +430,7 @@ function Editor() {
             <FieldsPanel {...treeProps} />
           </div>
           <div className={`${vis('maily', leftTab === 'maily')} min-h-0 w-full flex-1 flex-col bg-space`}>
-            <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyCode} />
+            <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyCode} addSection={addSection} />
           </div>
         </aside>
 
@@ -413,10 +439,11 @@ function Editor() {
           <div className={`min-h-0 flex-1 overflow-auto overscroll-contain p-3 sm:p-6 ${showSelectionBar ? 'max-lg:pb-24' : ''}`}>
             <div className="mx-auto overflow-hidden rounded-xl shadow-[0_0_0_1px_#262642,0_20px_60px_-20px_rgba(188,19,254,0.35)]" style={{ maxWidth: mobile ? 420 : tree.width + 80 }}>
               <Preview
-                tree={tree}
+                tree={previewTree}
                 selectedId={selectedId}
-                onSelect={select}
-                onEdit={(id, patch) => commit(updateNode(tree, id, patch))}
+                onSelect={(id) => select(id ? id.split('~')[0] : id)}
+                // Loop clones (id~k) are display-only: edit the source block instead.
+                onEdit={(id, patch) => !id.includes('~') && commit(updateNode(tree, id, patch))}
                 onDropImage={dropImage}
                 mobile={mobile}
               />

@@ -1,5 +1,7 @@
 import { collectFields } from './fields'
 import type { FieldBlock, ModuleField } from './fields'
+import { interpretTree, previewScope } from './hubl-render'
+import type { SampleContact } from './hubl-render'
 import { bindFieldsFromCode } from './module-fields'
 import type { FieldBinding, FieldSpec } from './module-fields'
 import { uid } from './types'
@@ -743,4 +745,11 @@ ${renderModule(tree, new Ctx('sync', tree))}
 </body>
 </html>
 `
+}
+
+// What the platform would render for a sample contact: HuBL interpreted
+// ({% if %} branches resolved, variables replaced). For previews only; the
+// exported files keep the HuBL.
+export function previewEmail(tree: ModuleTree, name: string, contact: SampleContact = 'known'): string {
+  return standaloneEmail(interpretTree(tree, previewScope(tree, contact)), name)
 }
