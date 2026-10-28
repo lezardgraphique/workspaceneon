@@ -29,6 +29,7 @@ import {
 
 import { NeonLogo } from '@/components/Maily'
 import { CodeEditor } from '@/components/editor/CodeEditor'
+import { ValidatorPanel } from '@/components/editor/ValidatorPanel'
 import { ClientsDialog } from '@/components/editor/ClientsDialog'
 import { ExportDialog } from '@/components/editor/ExportDialog'
 import { FieldsPanel } from '@/components/editor/FieldsPanel'
@@ -82,6 +83,7 @@ function Editor() {
   const [codeError, setCodeError] = useState<string | null>(null)
   // True when the code is free HTML (no data-neon markers) converted on the fly.
   const [codeImported, setCodeImported] = useState(false)
+  const [codeJump, setCodeJump] = useState<{ line: number; n: number }>()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [mobile, setMobile] = useState(false)
   const [leftTab, setLeftTab] = useState<'structure' | 'fields' | 'maily'>('structure')
@@ -471,7 +473,8 @@ function Editor() {
                 <RefreshCw className="size-3" /> {codeImported ? 'Appliquer' : 'Reformater'}
               </button>
             </div>
-            <CodeEditor value={code} onChange={onCodeChange} />
+            <CodeEditor value={code} onChange={onCodeChange} jump={codeJump} />
+            <ValidatorPanel code={code} onFix={onCodeChange} onJump={(line) => setCodeJump((j) => ({ line, n: (j?.n ?? 0) + 1 }))} />
           </div>
         </aside>
       </div>

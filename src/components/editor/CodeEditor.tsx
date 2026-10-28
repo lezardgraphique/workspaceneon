@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { esc } from '@/lib/hubl'
 
@@ -29,8 +29,33 @@ export function highlight(code: string) {
   return out + esc(code.slice(last))
 }
 
-export function CodeEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function CodeEditor({
+  value,
+  onChange,
+  jump,
+}: {
+  value: string
+  onChange: (v: string) => void
+  // Select a line (1-based); `n` changes on every request so the same line can be asked twice.
+  jump?: { line: number; n: number }
+}) {
   const preRef = useRef<HTMLPreElement>(null)
+  const taRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    const ta = taRef.current
+    if (!jump || !ta) return
+    const lines = value.split('\n')
+    const idx = Math.min(Math.max(jump.line, 1), lines.length) - 1
+    const start = lines.slice(0, idx).reduce((n, l) => n + l.length + 1, 0)
+    ta.focus()
+    ta.setSelectionRange(start, start + lines[idx].length)
+    const lh = parseFloat(getComputedStyle(ta).lineHeight) || 20
+    ta.scrollTop = Math.max(0, idx * lh - ta.clientHeight / 3)
+    if (preRef.current) preRef.current.scrollTop = ta.scrollTop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump?.n])
+
   const html = useMemo(() => highlight(value) + '\n ', [value])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -52,6 +77,7 @@ export function CodeEditor({ value, onChange }: { value: string; onChange: (v: s
         dangerouslySetInnerHTML={{ __html: html }}
       />
       <textarea
+        ref={taRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}

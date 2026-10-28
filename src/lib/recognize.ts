@@ -1,4 +1,5 @@
 import { codeToTree } from '@/lib/hubl'
+import { validateSyntax } from '@/lib/validator'
 import type { FieldBinding, FieldSpec } from '@/lib/module-fields'
 import type { Block, ModuleTree } from '@/lib/types'
 
@@ -71,8 +72,11 @@ export function recognizeCode(code: string, current: ModuleTree, specs?: FieldSp
   // content) are the only ones the model still has to deal with.
   const binding = res.binding
   const left = binding?.unbound.length ?? 0
+  const syntax = validateSyntax(code)
   const issue =
-    left > 0
+    syntax.errors > 0
+      ? `${plural(syntax.errors, 'erreur de syntaxe', 'erreurs de syntaxe')} dans le code (ligne ${syntax.issues.find((i) => i.severity === 'error')!.line} : ${syntax.issues.find((i) => i.severity === 'error')!.message})`
+      : left > 0
       ? `${plural(left, 'variable', 'variables')} {{ module.… }} (${binding!.unbound.join(', ')}) non liée${left > 1 ? 's' : ''} à un champ`
       : st.blocks && st.raw / st.blocks > 0.5
         ? `${st.raw} blocs sur ${st.blocks} restent en Code libre`

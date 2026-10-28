@@ -1,4 +1,5 @@
 import { codeToTree, reconcileIds, treeToCode } from '@/lib/hubl'
+import { validateSyntax } from '@/lib/validator'
 import type { FieldBinding, FieldSpec } from '@/lib/module-fields'
 import type { Block, ModuleTree, Section } from '@/lib/types'
 
@@ -68,6 +69,7 @@ export function optimizeModuleTree(tree: ModuleTree): ModuleTree {
 }
 
 export function validateModuleCode(code: string, current: ModuleTree, specs?: FieldSpec[]): ModuleAgentStatus {
+  const syntax = validateSyntax(code)
   const parsed = codeToTree(code, current, specs)
   if (!parsed.ok) {
     return {
@@ -87,6 +89,9 @@ export function validateModuleCode(code: string, current: ModuleTree, specs?: Fi
   const issues: string[] = []
   const warnings: string[] = []
 
+  for (const i of syntax.issues) {
+    ;(i.severity === 'error' ? issues : warnings).push(`Ligne ${i.line} : ${i.message}.`)
+  }
   if (!tree.sections.length) issues.push('Le module n’a aucune section valide.')
   if (tree.width < 320 || tree.width > 900) warnings.push('La largeur du module sort des limites recommandées.')
   if (rawRatio > 0.45) issues.push(`Le code contient trop de blocs libres (${counts.raw}/${counts.blocks}).`)
