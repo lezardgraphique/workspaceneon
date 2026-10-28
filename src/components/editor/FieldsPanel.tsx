@@ -114,6 +114,27 @@ function FieldCard({ f, p }: { f: ModuleField; p: Props }) {
           </button>
         )}
       </div>
+      {b.type === 'button' && (
+        <div className="mb-3 grid grid-cols-2 gap-2 pl-6">
+          {(
+            [
+              { k: 'textName', label: 'Nom du texte', ph: `${b.field?.name ?? f.name}_label` },
+              { k: 'linkName', label: 'Nom du lien', ph: `${b.field?.name ?? f.name}_link` },
+            ] as const
+          ).map((o) => (
+            <label key={o.k} className="min-w-0">
+              <span className={caption}>{o.label}</span>
+              <input
+                value={b.field?.[o.k] ?? ''}
+                onChange={(e) => def({ [o.k]: e.target.value.trim() || undefined })}
+                placeholder={o.ph}
+                spellCheck={false}
+                className="w-full rounded border border-line bg-void px-1.5 py-1 font-mono text-base text-[#e3a6ff] outline-none focus:border-violet lg:text-xs"
+              />
+            </label>
+          ))}
+        </div>
+      )}
       <span className={caption}>Valeur</span>
       <Value b={b} set={set} />
     </div>

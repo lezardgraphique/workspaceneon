@@ -9,6 +9,7 @@ import {
   Code2,
   ExternalLink,
   Eye,
+  Heart,
   Layers,
   ListChecks,
   Loader2,
@@ -38,6 +39,8 @@ import type { DropTarget } from '@/components/editor/Preview'
 import { BLOCK_ICONS, Structure } from '@/components/editor/Structure'
 import { codeToTree, reconcileIds, treeToCode } from '@/lib/hubl'
 import { uploadImage } from '@/lib/images'
+import { KOFI_URL } from '@/lib/links'
+import type { FieldSpec } from '@/lib/module-fields'
 import { findNode, findPath, insertInCell, moveNode, removeNode, replaceNode, updateNode } from '@/lib/tree'
 import { BLOCK_LABELS, createBlock } from '@/lib/types'
 import type { ImageBlock, ModuleTree } from '@/lib/types'
@@ -135,8 +138,8 @@ function Editor() {
   }, [code])
 
   // Used by Maily: returns an error message, or null when applied.
-  const applyCode = (generated: string) => {
-    const res = codeToTree(generated, tree)
+  const applyCode = (generated: string, specs?: FieldSpec[]) => {
+    const res = codeToTree(generated, tree, specs)
     if (!res.ok) return res.error
     commit(res.tree, null)
     return null
@@ -359,6 +362,16 @@ function Editor() {
         >
           <ExternalLink className="size-4" /> <span className="hidden xl:inline">Aperçu</span>
         </button>
+        <a
+          href={KOFI_URL}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Laisser un commentaire sur Ko-fi"
+          title="Laisser un commentaire (Ko-fi)"
+          className="inline-flex shrink-0 items-center rounded-md border border-line px-2 py-1.5 text-mute hover:border-pink hover:text-pink"
+        >
+          <Heart className="size-4" />
+        </a>
         <button
           onClick={() => setExporting(true)}
           aria-label="Exporter"

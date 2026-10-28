@@ -8,6 +8,11 @@ export type Align = 'left' | 'center' | 'right'
 export interface FieldDef {
   name: string
   label: string
+  // Buttons expose two fields, the text and the link. Their names default to
+  // `<name>_label` and `<name>_link`; these overrides keep the exact names of a
+  // module imported from existing code (e.g. `cta_text` + `cta_link`).
+  textName?: string
+  linkName?: string
 }
 
 export interface HeadingBlock {

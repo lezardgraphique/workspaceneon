@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Link, createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
-import { ArrowRight, Columns3, Code2, Eye, Layers, Loader2, MailCheck, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { ArrowRight, Columns3, Code2, Eye, Heart, Layers, Loader2, MailCheck, Sparkles, Trash2, Wand2 } from 'lucide-react'
 
 import { EmailFrame } from '@/components/EmailFrame'
 import { Maily, NeonLogo } from '@/components/Maily'
 import { standaloneEmail } from '@/lib/hubl'
+import { KOFI_URL } from '@/lib/links'
 import { STARTERS } from '@/lib/templates'
 import { countBlocks } from '@/lib/tree'
 import { createModule, deleteModule, listModules } from '@/server/modules.functions'
@@ -55,6 +56,14 @@ function Library() {
           Neon Sandbox <span className="text-pink">Pro</span>
         </span>
         <span className="ml-1 rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-mute">WEB</span>
+        <a
+          href={KOFI_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-mute hover:border-pink hover:text-white"
+        >
+          <Heart className="size-4 text-pink" /> <span className="hidden sm:inline">Laisser un commentaire</span>
+        </a>
       </header>
 
       <main className="mx-auto max-w-6xl px-6 pb-24">
@@ -180,6 +189,13 @@ function Library() {
           )}
         </section>
       </main>
+
+      <footer className="mx-auto max-w-6xl px-6 pb-10 text-center text-sm text-mute">
+        Un avis, une idée, un coup de pouce ?{' '}
+        <a href={KOFI_URL} target="_blank" rel="noreferrer" className="text-pink hover:underline">
+          Écris-moi sur Ko-fi
+        </a>
+      </footer>
     </div>
   )
 }

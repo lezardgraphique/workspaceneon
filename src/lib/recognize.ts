@@ -1,4 +1,5 @@
 import { codeToTree } from '@/lib/hubl'
+import type { FieldBinding, FieldSpec } from '@/lib/module-fields'
 import type { Block, ModuleTree } from '@/lib/types'
 
 // Lets Maily recognise code sent in the chat (pasted, typed or attached) and
@@ -44,12 +45,12 @@ function kindOf(code: string): string {
 const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`
 
 export type Recognition =
-  | { ok: true; tree: ModuleTree; kind: string; complete: boolean; summary: string; issue?: string }
+  | { ok: true; tree: ModuleTree; kind: string; complete: boolean; summary: string; issue?: string; binding?: FieldBinding }
   | { ok: false; kind: string; error: string }
 
-export function recognizeCode(code: string, current: ModuleTree): Recognition {
+export function recognizeCode(code: string, current: ModuleTree, specs?: FieldSpec[]): Recognition {
   const kind = kindOf(code)
-  const res = codeToTree(code, current)
+  const res = codeToTree(code, current, specs)
   if (!res.ok) return { ok: false, kind, error: res.error }
 
   const st = { blocks: 0, raw: 0, cards: 0 }
@@ -66,11 +67,13 @@ export function recognizeCode(code: string, current: ModuleTree): Recognition {
   }
   res.tree.sections.forEach((s) => s.cells.forEach(walk))
 
-  // Field placeholders would render as literal {{ module.… }} text.
-  const placeholders = (code.match(/\{\{\s*module\.[\w.]+\s*\}\}/g) ?? []).length
+  // Placeholders that stayed literal text (inside HuBL logic, mixed with other
+  // content) are the only ones the model still has to deal with.
+  const binding = res.binding
+  const left = binding?.unbound.length ?? 0
   const issue =
-    placeholders > 0
-      ? `${plural(placeholders, 'variable', 'variables')} {{ module.… }} à remplacer par du contenu`
+    left > 0
+      ? `${plural(left, 'variable', 'variables')} {{ module.… }} (${binding!.unbound.join(', ')}) non liée${left > 1 ? 's' : ''} à un champ`
       : st.blocks && st.raw / st.blocks > 0.5
         ? `${st.raw} blocs sur ${st.blocks} restent en Code libre`
         : undefined
@@ -80,12 +83,16 @@ export function recognizeCode(code: string, current: ModuleTree): Recognition {
   const raw = st.raw
     ? ` et ${plural(st.raw, 'bloc Code libre', 'blocs Code libre')} (logique HuBL ou éléments non reconnus, conservés tels quels)`
     : ''
+  const fields = binding?.bound.length
+    ? ` ${plural(binding.bound.length, 'champ reconnu', 'champs reconnus')} avec leurs noms exacts (${binding.bound.flatMap((f) => f.exposed).join(', ')}).`
+    : ''
   return {
     ok: true,
     tree: res.tree,
     kind,
+    binding,
     complete: !issue,
     issue,
-    summary: `J'ai reconnu **${kind}** et je l'ai transformé en rendu : ${parts.join(', ')}${raw}.`,
+    summary: `J'ai reconnu **${kind}** et je l'ai transformé en rendu : ${parts.join(', ')}${raw}.${fields}`,
   }
 }

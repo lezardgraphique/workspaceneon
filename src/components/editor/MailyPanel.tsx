@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircle2, FileCode2, Lightbulb, Loader2, MessageCircle, Paperclip, Send, Square, Wand2, X } from 'lucide-react'
+import { CheckCircle2, ExternalLink, FileCode2, Heart, Lightbulb, Loader2, MessageCircle, Paperclip, Plus, Send, Square, Wand2, X } from 'lucide-react'
 import { Streamdown } from 'streamdown'
 
 import { Maily } from '@/components/Maily'
 import type { MailyMood } from '@/components/Maily'
+import { collectFields } from '@/lib/fields'
 import { treeToCode } from '@/lib/hubl'
+import { KOFI_URL } from '@/lib/links'
+import { parseFieldsJson } from '@/lib/module-fields'
+import type { FieldSpec } from '@/lib/module-fields'
+import { validateModuleCode } from '@/lib/module-agent'
 import { extractCode, looksLikeCode, recognizeCode, wantsConversion } from '@/lib/recognize'
 import type { ModuleTree } from '@/lib/types'
+import { createModule } from '@/server/modules.functions'
 
 // A screenshot/mockup or an HTML file sent to Maily, usually to recreate it.
 interface Attachment {
@@ -27,6 +33,10 @@ interface Msg {
   // Set when the attached code was already converted locally: the model gets
   // this summary instead of the code, which is now the editor's module.
   imported?: string
+  // Sent to the model but not shown (automatic checks)
+  hidden?: boolean
+  // Modules Maily created in the library from this answer
+  created?: { id: string; name: string }[]
 }
 
 type Mode = 'chat' | 'build'
@@ -62,15 +72,33 @@ async function toAttachment(file: File): Promise<Attachment | null> {
   return { name: file.name, kind: 'image', url, mimeType: 'image/jpeg', data: url.split(',')[1] }
 }
 
-// Splits Maily's streamed answer into the visible text and the ```neon module.
-function splitReply(acc: string): { text: string; code?: string; building: boolean } {
-  const start = acc.search(/```neon[^\n]*\n?/)
-  if (start < 0) return { text: acc, building: false }
-  const open = acc.slice(start).match(/```neon[^\n]*\n?/)![0]
-  const rest = acc.slice(start + open.length)
-  const end = rest.search(/\n```/)
-  if (end < 0) return { text: acc.slice(0, start).trim(), building: true }
-  return { text: `${acc.slice(0, start)}${rest.slice(end + 4)}`.trim(), code: rest.slice(0, end), building: false }
+interface NeonBlock {
+  // Set for ```neon new Nom``` : a new module for the library
+  name?: string
+  code: string
+}
+
+// Splits Maily's streamed answer into the visible text and its ```neon blocks.
+// A plain ```neon block edits the open module; ```neon new <name> creates one.
+function splitReply(acc: string): { text: string; blocks: NeonBlock[]; building: boolean } {
+  const blocks: NeonBlock[] = []
+  let text = ''
+  let rest = acc
+  for (;;) {
+    const start = rest.search(/```neon[^\n]*(\n|$)/)
+    if (start < 0) {
+      text += rest
+      return { text: text.trim(), blocks, building: false }
+    }
+    const head = rest.slice(start).match(/```neon([^\n]*)\n?/)!
+    const after = rest.slice(start + head[0].length)
+    const end = after.search(/\n```/)
+    text += rest.slice(0, start)
+    if (end < 0) return { text: text.trim(), blocks, building: true }
+    const m = /^\s*new\b\s*(.*)$/i.exec(head[1])
+    blocks.push({ name: m ? m[1].trim().replace(/^["«']|["»']$/g, '') || 'Nouveau module' : undefined, code: after.slice(0, end) })
+    rest = after.slice(end + 4)
+  }
 }
 
 // What the model sees for a past message: attached code inline, applied
@@ -105,8 +133,10 @@ const SUGGESTIONS: Record<Mode, string[]> = {
     'Comment tester le rendu dans Outlook ?',
     'Quelles sont les tendances design email du moment ?',
     'Comment récupérer mon module pour l\'utiliser ailleurs ?',
+    'Crée-moi un nouveau module de témoignage client avec ses champs',
   ],
   build: [
+    'Crée un nouveau module « Bannière promo » avec titre, texte, image et bouton',
     'Crée une newsletter de rentrée avec 3 actus en cards',
     'Passe le module en thème sombre néon',
     'Ajoute une section témoignage client en 2 colonnes',
@@ -122,7 +152,7 @@ export function MailyPanel({
   tree: ModuleTree
   code: string
   moduleName: string
-  applyCode: (code: string) => string | null
+  applyCode: (code: string, specs?: FieldSpec[]) => string | null
 }) {
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
@@ -161,6 +191,126 @@ export function MailyPanel({
     }
   }
 
+  // One round trip with Maily: streams her answer, then validates and applies
+  // each module block. A block that fails the check is sent back to her to fix
+  // (twice at most) instead of reaching the editor.
+  const converse = async (
+    history: Msg[],
+    ctx: { requestCode: string; imported: boolean; issue?: string; specs: FieldSpec[] },
+    attempt: number,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    // Resend only the latest images to keep the request light.
+    const withImages = new Set(
+      history
+        .map((m, i) => (m.files?.some((f) => f.kind === 'image') ? i : -1))
+        .filter((i) => i >= 0)
+        .slice(-IMAGE_HISTORY),
+    )
+    const fields = collectFields(tree)
+      .map((f) => `- ${f.name} (${f.label}) : ${f.block.type}`)
+      .join('\n')
+
+    const res = await fetch('/api/maily', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: history.slice(-40).map((m, i, arr) => toPayload(m, withImages.has(i + history.length - arr.length))),
+        mode,
+        code: ctx.requestCode,
+        moduleName,
+        imported: ctx.imported,
+        issue: ctx.issue,
+        fields,
+        fieldSpecs: ctx.specs.length ? JSON.stringify(ctx.specs).slice(0, 20_000) : undefined,
+      }),
+      signal,
+    })
+    if (!res.ok || !res.body) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error ?? 'Maily est indisponible.')
+    }
+    push({ role: 'assistant', content: '' })
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let acc = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      acc += decoder.decode(value, { stream: true })
+      const part = splitReply(acc)
+      // Hide a ```neon fence that is still arriving.
+      const visible = part.building || part.blocks.length ? part.text : part.text.replace(/`{1,3}(n(e(on?)?)?)?$/, '')
+      setLast({ role: 'assistant', content: visible, building: part.building || part.blocks.length > 0 })
+    }
+
+    const reply = splitReply(acc)
+    if (!reply.blocks.length) {
+      setLast({
+        role: 'assistant',
+        content: reply.text || (reply.building ? '⚠️ La génération du module a été coupée avant la fin. Réessaie.' : ''),
+      })
+      setMood('happy')
+      return
+    }
+
+    const created: { id: string; name: string }[] = []
+    const notes: string[] = []
+    const problems: string[] = []
+    let applied = false
+    for (const block of reply.blocks) {
+      const label = block.name ? `« ${block.name} »` : 'le module ouvert'
+      const check = validateModuleCode(block.code, tree, ctx.specs)
+      if (!check.ok || !check.tree) {
+        problems.push(`${label} : ${check.issues.join(' ') || check.summary}`)
+        continue
+      }
+      if (block.name) {
+        try {
+          const rec = await createModule({ data: { name: block.name.slice(0, 120), tree: check.tree } })
+          created.push({ id: rec.id, name: rec.name })
+        } catch {
+          problems.push(`${label} : la création dans la bibliothèque a échoué`)
+          continue
+        }
+      } else {
+        const error = applyCode(block.code, ctx.specs)
+        if (error) {
+          problems.push(`${label} : ${error}`)
+          continue
+        }
+        applied = true
+      }
+      const bound = check.binding?.bound.flatMap((f) => f.exposed) ?? []
+      if (bound.length) notes.push(`Champs construits pour ${label} : ${bound.join(', ')}`)
+      check.warnings.filter((w) => /non liées|normalisés/.test(w)).forEach((w) => notes.push(w))
+    }
+
+    const body = reply.text || (created.length || applied ? 'C\'est fait ! ✨' : '')
+    const extra = notes.length ? `\n\n${notes.map((n) => `- ${n}`).join('\n')}` : ''
+
+    if (problems.length && attempt < 2) {
+      // Automatic correction loop: the engine's findings go back to Maily.
+      setLast({ role: 'assistant', content: `${body}${extra}\n\n🔧 Vérification du moteur : ${problems.join(' ; ')}. Je demande une correction…`, applied, created })
+      const fix: Msg = {
+        role: 'user',
+        hidden: true,
+        content: `Vérification automatique du moteur : ${problems.join(' ; ')}. Renvoie le module complet corrigé dans un bloc neon (garde \`new\` et le nom pour un module de la bibliothèque, ne renvoie que les modules refusés).`,
+      }
+      const past: Msg = { role: 'assistant', content: `${reply.text}\n\n[Module refusé par la vérification du moteur]`, hidden: true }
+      return converse([...history, past, fix], ctx, attempt + 1, signal)
+    }
+
+    const fail = problems.length ? `\n\n⚠️ Non appliqué : ${problems.join(' ; ')}` : ''
+    setLast({
+      role: 'assistant',
+      content: `${body}${extra}${fail}`,
+      applied: applied || undefined,
+      created: created.length ? created : undefined,
+    })
+    setMood(applied || created.length ? 'success' : 'happy')
+  }
+
   const send = async (text: string) => {
     const content = text.trim()
     if ((!content && !files.length) || loading) return
@@ -175,6 +325,10 @@ export function MailyPanel({
       .filter((f) => f.kind === 'code' && !/\.json$/i.test(f.name))
       .map((f) => f.text)
       .join('\n')
+    // An attached fields.json gives the exact names, labels and defaults.
+    const specs = sent
+      .filter((f) => f.kind === 'code' && /\.json$/i.test(f.name))
+      .flatMap((f) => parseFieldsJson(f.text ?? '') ?? [])
 
     // Recognised code is rendered right away; Maily then reviews it (or
     // recreates it herself when the direct conversion is too lossy).
@@ -182,8 +336,8 @@ export function MailyPanel({
     let imported: string | undefined
     let issue: string | undefined
     if (source && wantsConversion(instruction, mode)) {
-      const rec = recognizeCode(source, tree)
-      if (rec.ok && rec.complete && !applyCode(source)) {
+      const rec = recognizeCode(source, tree, specs)
+      if (rec.ok && rec.complete && !applyCode(source, specs)) {
         imported = rec.summary
         requestCode = treeToCode(rec.tree, moduleName)
       } else {
@@ -204,62 +358,8 @@ export function MailyPanel({
     const ctrl = new AbortController()
     abortRef.current = ctrl
 
-    // Resend only the latest images to keep the request light.
-    const withImages = new Set(
-      history
-        .map((m, i) => (m.files?.some((f) => f.kind === 'image') ? i : -1))
-        .filter((i) => i >= 0)
-        .slice(-IMAGE_HISTORY),
-    )
-
     try {
-      const res = await fetch('/api/maily', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: history.slice(-40).map((m, i, arr) => toPayload(m, withImages.has(i + history.length - arr.length))),
-          mode,
-          code: requestCode,
-          moduleName,
-          imported: !!imported,
-          issue,
-        }),
-        signal: ctrl.signal,
-      })
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error ?? 'Maily est indisponible.')
-      }
-      push({ role: 'assistant', content: '' })
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let acc = ''
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        acc += decoder.decode(value, { stream: true })
-        const part = splitReply(acc)
-        // Hide a ```neon fence that is still arriving.
-        const visible = part.building || part.code ? part.text : part.text.replace(/`{1,3}(n(e(on?)?)?)?$/, '')
-        setLast({ role: 'assistant', content: visible, building: part.building || !!part.code })
-      }
-
-      const reply = splitReply(acc)
-      if (reply.code) {
-        const error = applyCode(reply.code)
-        setLast(
-          error
-            ? { role: 'assistant', content: `${reply.text}\n\n⚠️ Le module généré n'a pas pu être appliqué : ${error}` }
-            : { role: 'assistant', content: reply.text || 'C\'est fait ! J\'ai mis à jour ton module ✨', applied: true },
-        )
-        setMood(error ? 'happy' : 'success')
-      } else {
-        setLast({
-          role: 'assistant',
-          content: reply.text || (reply.building ? '⚠️ La génération du module a été coupée avant la fin. Réessaie.' : ''),
-        })
-        setMood('happy')
-      }
+      await converse(history, { requestCode, imported: !!imported, issue, specs }, 0, ctrl.signal)
     } catch (e) {
       if ((e as Error).name === 'AbortError') {
         setMessages((prev) => prev.map((m) => (m.building ? { ...m, building: false, content: m.content || 'Génération arrêtée.' } : m)))
@@ -319,8 +419,8 @@ export function MailyPanel({
         {messages.length === 0 && (
           <div className="space-y-2 pt-2">
             <p className="text-xs text-mute">
-              Pose-moi n'importe quelle question (je cherche sur le web les infos récentes), colle du code HTML ou HuBL : je le transforme
-              en rendu, ou joins une capture avec le trombone : je la recrée en blocs éditables.
+              Pose-moi n'importe quelle question (je cherche sur le web les infos récentes), colle du code HTML ou HuBL (avec son fields.json si tu l'as) : je le transforme
+              en rendu avec les champs exacts. Je peux aussi créer de nouveaux modules dans ta bibliothèque, ou recréer une capture en blocs éditables.
             </p>
             <p className="pt-1 text-xs text-mute">Essaie :</p>
             {SUGGESTIONS[mode].map((s) => (
@@ -335,7 +435,8 @@ export function MailyPanel({
           </div>
         )}
 
-        {messages.map((m, i) => (
+        {messages.map((m, i) =>
+          m.hidden ? null : (
           <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex gap-2'}>
             {m.role === 'assistant' && <Maily size={26} bob={false} mood={m.applied ? 'success' : 'happy'} className="mt-1 shrink-0" />}
             <div
@@ -356,6 +457,18 @@ export function MailyPanel({
                       <CheckCircle2 className="size-3.5" /> Module appliqué · ↶ pour annuler
                     </p>
                   )}
+                  {m.created?.map((c) => (
+                    <a
+                      key={c.id}
+                      href={`/editor/${c.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 flex items-center gap-1.5 rounded-md border border-cyan/40 bg-cyan/5 px-2 py-1.5 text-xs text-cyan hover:bg-cyan/10"
+                    >
+                      <Plus className="size-3.5 shrink-0" /> Module créé : <span className="truncate font-semibold">{c.name}</span>
+                      <ExternalLink className="ml-auto size-3.5 shrink-0" /> Ouvrir
+                    </a>
+                  ))}
                 </>
               ) : (
                 <>
@@ -365,7 +478,8 @@ export function MailyPanel({
               )}
             </div>
           </div>
-        ))}
+          ),
+        )}
       </div>
 
       <div className="border-t border-line p-3">
@@ -462,6 +576,14 @@ export function MailyPanel({
             </button>
           )}
         </form>
+        <a
+          href={KOFI_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-mute hover:text-pink"
+        >
+          <Heart className="size-3" /> Un commentaire ou un coup de pouce ? Ko-fi
+        </a>
       </div>
     </div>
   )

@@ -1,5 +1,7 @@
 import { collectFields } from './fields'
 import type { FieldBlock, ModuleField } from './fields'
+import { bindFieldsFromCode } from './module-fields'
+import type { FieldBinding, FieldSpec } from './module-fields'
 import { uid } from './types'
 import type { Align, Behavior, Block, Columns, ModuleTree, Section } from './types'
 
@@ -36,15 +38,21 @@ class Ctx {
     this.defs = new Map(mode === 'hubspot' ? collectFields(tree).map((f) => [f.block.id, f]) : [])
   }
   // Registers a fields.json entry for the block and returns its HuBL name.
-  field(b: FieldBlock, suffix: string, labelSuffix: string, type: Field['type'], def: unknown) {
+  field(b: FieldBlock, suffix: string, labelSuffix: string, type: Field['type'], def: unknown, exact?: string) {
     const f = this.defs.get(b.id)!
-    const name = suffix ? `${f.name}_${suffix}` : f.name
+    const name = exact || (suffix ? `${f.name}_${suffix}` : f.name)
     this.fields.push({ name, label: labelSuffix ? `${f.label} · ${labelSuffix}` : f.label, type, default: def })
     return name
   }
   // Custom field definition, kept in the sync format so it survives code edits.
   fieldAttrs(b: FieldBlock): Record<string, string> {
-    return b.field ? { field: b.field.name, label: b.field.label } : {}
+    if (!b.field) return {}
+    return {
+      field: b.field.name,
+      label: b.field.label,
+      ...(b.field.textName ? { 'field-text': b.field.textName } : {}),
+      ...(b.field.linkName ? { 'field-link': b.field.linkName } : {}),
+    }
   }
   attrs(a: Record<string, string | number>) {
     if (this.mode === 'hubspot') return ''
@@ -77,12 +85,15 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
       let href = esc(b.href)
       let label = esc(b.label)
       if (ctx.mode === 'hubspot') {
-        const l = ctx.field(b, 'label', 'texte', 'text', b.label)
-        const u = ctx.field(b, 'link', 'lien', 'link', {
-          url: { content_id: null, type: 'EXTERNAL', href: b.href },
-          open_in_new_tab: true,
-          no_follow: false,
-        })
+        const l = ctx.field(b, 'label', 'texte', 'text', b.label, b.field?.textName)
+        const u = ctx.field(
+          b,
+          'link',
+          'lien',
+          'link',
+          { url: { content_id: null, type: 'EXTERNAL', href: b.href }, open_in_new_tab: true, no_follow: false },
+          b.field?.linkName,
+        )
         href = `{{ module.${u}.url.href }}`
         label = `{{ module.${l} }}`
       }
@@ -229,7 +240,18 @@ function parseBlock(el: Element): Block | null {
   const g = (k: string) => el.getAttribute(`data-${k}`)
   const id = uid()
   const fname = g('field')?.trim()
-  const field = fname ? { field: { name: fname, label: g('label')?.trim() ?? '' } } : {}
+  const textName = g('field-text')?.trim()
+  const linkName = g('field-link')?.trim()
+  const field = fname
+    ? {
+        field: {
+          name: fname,
+          label: g('label')?.trim() ?? '',
+          ...(textName ? { textName } : {}),
+          ...(linkName ? { linkName } : {}),
+        },
+      }
+    : {}
   switch (kind) {
     case 'heading': {
       const lvl = Number(el.tagName.slice(1))
@@ -336,9 +358,13 @@ function parseSection(el: Element): Section {
   }
 }
 
-export type ParseResult = { ok: true; tree: ModuleTree; imported?: boolean } | { ok: false; error: string }
+export type ParseResult =
+  | { ok: true; tree: ModuleTree; imported?: boolean; binding?: FieldBinding }
+  | { ok: false; error: string }
 
-export function codeToTree(code: string, fallback: ModuleTree): ParseResult {
+// `specs` (a fields.json) gives labels and default values to the {{ module.… }} fields
+// found in free code, which become real, exactly named fields of the blocks.
+export function codeToTree(code: string, fallback: ModuleTree, specs?: FieldSpec[]): ParseResult {
   // HuBL comments would otherwise leak into the DOM as text.
   const cleaned = code.replace(/\{#[\s\S]*?#\}/g, '')
   const doc = new DOMParser().parseFromString(`<body>${cleaned}</body>`, 'text/html')
@@ -351,11 +377,14 @@ export function codeToTree(code: string, fallback: ModuleTree): ParseResult {
     if (!imp.sections.length) {
       return { ok: false, error: 'Aucun contenu reconnu — l\'aperçu garde la dernière version valide.' }
     }
-    return {
-      ok: true,
-      imported: true,
-      tree: { width: fallback.width, bg: imp.bg ?? fallback.bg, font: imp.font ?? fallback.font, sections: imp.sections },
+    const imported: ModuleTree = {
+      width: fallback.width,
+      bg: imp.bg ?? fallback.bg,
+      font: imp.font ?? fallback.font,
+      sections: imp.sections,
     }
+    const binding = bindFieldsFromCode(imported, cleaned, specs)
+    return { ok: true, imported: true, tree: binding.tree, binding }
   }
   const g = (k: string) => mod?.getAttribute(`data-${k}`) ?? null
   return {

@@ -1,4 +1,5 @@
 import { codeToTree, reconcileIds, treeToCode } from '@/lib/hubl'
+import type { FieldBinding, FieldSpec } from '@/lib/module-fields'
 import type { Block, ModuleTree, Section } from '@/lib/types'
 
 export type ModuleAgentStatus = {
@@ -9,6 +10,7 @@ export type ModuleAgentStatus = {
   imported: boolean
   kind: string
   tree?: ModuleTree
+  binding?: FieldBinding
   summary: string
 }
 
@@ -65,8 +67,8 @@ export function optimizeModuleTree(tree: ModuleTree): ModuleTree {
   }
 }
 
-export function validateModuleCode(code: string, current: ModuleTree): ModuleAgentStatus {
-  const parsed = codeToTree(code, current)
+export function validateModuleCode(code: string, current: ModuleTree, specs?: FieldSpec[]): ModuleAgentStatus {
+  const parsed = codeToTree(code, current, specs)
   if (!parsed.ok) {
     return {
       ok: false,
@@ -91,6 +93,10 @@ export function validateModuleCode(code: string, current: ModuleTree): ModuleAge
   if (counts.cards === 0) warnings.push('Aucune card/section structurée n’a été détectée.')
   if (counts.blocks === 0) issues.push('Aucun bloc exploitable n’a été reconnu.')
 
+  const unbound = parsed.binding?.unbound ?? []
+  if (unbound.length) warnings.push(`Variables {{ module.… }} non liées à un champ : ${unbound.join(', ')}.`)
+  if (parsed.binding?.inexact.length) warnings.push(`Noms de champs normalisés à l'export : ${parsed.binding.inexact.join(', ')}.`)
+
   if (rawRatio > 0.2) warnings.push('Des éléments HuBL ou HTML non reconnus restent conservés en mode libre.')
 
   const score = Math.max(0, Math.min(100, 100 - issues.length * 28 - warnings.length * 8 - Math.round(rawRatio * 30)))
@@ -104,14 +110,15 @@ export function validateModuleCode(code: string, current: ModuleTree): ModuleAge
     imported: !!parsed.imported,
     kind: parsed.imported ? 'HTML/HuBL importé' : 'module Neon valide',
     tree,
+    binding: parsed.binding,
     summary: ok
       ? `Validation OK : ${tree.sections.length} section${tree.sections.length > 1 ? 's' : ''}, ${counts.blocks} bloc${counts.blocks > 1 ? 's' : ''} reconnus et ${counts.raw} bloc${counts.raw > 1 ? 's' : ''} libre${counts.raw > 1 ? 's' : ''} conservés.`
       : `Le code nécessite une correction avant application : ${issues.join(' ') || 'structure trop instable pour être appliquée.'}`,
   }
 }
 
-export function repairModuleCode(code: string, current: ModuleTree): ModuleAgentStatus {
-  const result = validateModuleCode(code, current)
+export function repairModuleCode(code: string, current: ModuleTree, specs?: FieldSpec[]): ModuleAgentStatus {
+  const result = validateModuleCode(code, current, specs)
   return {
     ...result,
     summary: result.ok
