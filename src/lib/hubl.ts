@@ -3,6 +3,7 @@ import type { FieldBlock, ModuleField } from './fields'
 import { interpretTree, previewScope } from './hubl-render'
 import type { SampleContact } from './hubl-render'
 import { bindFieldsFromCode } from './module-fields'
+import { isSafeUrl, sanitizeHtml as strictHtml } from './sanitize'
 import type { FieldBinding, FieldSpec } from './module-fields'
 import { uid } from './types'
 import type { Align, Behavior, Block, Columns, ModuleTree, Section } from './types'
@@ -76,15 +77,16 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
         ctx.mode === 'hubspot'
           ? `{{ module.${ctx.field(b, '', '', 'text', b.text)} }}`
           : esc(b.text)
-      return `${p}<h${b.level}${ctx.attrs({ neon: 'heading', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size })} style="margin:0 0 12px;font-family:${font};font-size:${b.size}px;line-height:1.25;font-weight:700;color:${b.color};text-align:${b.align};">${content}</h${b.level}>`
+      return `${p}<h${b.level}${ctx.attrs({ neon: 'heading', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size })} style="margin:0 0 12px;font-family:${esc(font)};font-size:${b.size}px;line-height:1.25;font-weight:700;color:${esc(b.color)};text-align:${b.align};">${content}</h${b.level}>`
     }
     case 'text': {
       const content =
         ctx.mode === 'hubspot' ? `{{ module.${ctx.field(b, '', '', 'richtext', b.html)} }}` : b.html
-      return `${p}<div${ctx.attrs({ neon: 'text', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size })} style="margin:0 0 12px;font-family:${font};font-size:${b.size}px;line-height:1.6;color:${b.color};text-align:${b.align};">${content}</div>`
+      return `${p}<div${ctx.attrs({ neon: 'text', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size })} style="margin:0 0 12px;font-family:${esc(font)};font-size:${b.size}px;line-height:1.6;color:${esc(b.color)};text-align:${b.align};">${content}</div>`
     }
     case 'button': {
-      let href = esc(b.href)
+      // javascript:, data: and other schemes never reach the generated code.
+      let href = isSafeUrl(b.href) ? esc(b.href) : '#'
       let label = esc(b.label)
       if (ctx.mode === 'hubspot') {
         const l = ctx.field(b, 'label', 'texte', 'text', b.label, b.field?.textName)
@@ -100,11 +102,11 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
         label = `{{ module.${l} }}`
       }
       return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius })} style="margin:0 0 12px;text-align:${b.align};">
-${p}  <a href="${href}" target="_blank" style="display:inline-block;padding:12px 26px;background:${b.bg};color:${b.color};border-radius:${b.radius}px;font-family:${font};font-size:15px;font-weight:700;text-decoration:none;">${label}</a>
+${p}  <a href="${href}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 26px;background:${esc(b.bg)};color:${esc(b.color)};border-radius:${b.radius}px;font-family:${esc(font)};font-size:15px;font-weight:700;text-decoration:none;">${label}</a>
 ${p}</div>`
     }
     case 'image': {
-      let src = esc(b.src)
+      let src = isSafeUrl(b.src, true) ? esc(b.src) : ''
       let alt = esc(b.alt)
       if (ctx.mode === 'hubspot') {
         const f = ctx.field(b, '', '', 'image', { src: b.src, alt: b.alt, loading: 'lazy' })
@@ -116,7 +118,7 @@ ${p}  <img src="${src}" alt="${alt}" width="${Math.round((avail * b.width) / 100
 ${p}</div>`
     }
     case 'divider':
-      return `${p}<hr${ctx.attrs({ neon: 'divider', color: b.color })} style="border:0;border-top:1px solid ${b.color};margin:16px 0;">`
+      return `${p}<hr${ctx.attrs({ neon: 'divider', color: b.color })} style="border:0;border-top:1px solid ${esc(b.color)};margin:16px 0;">`
     case 'spacer':
       return `${p}<div${ctx.attrs({ neon: 'spacer', height: b.height })} style="height:${b.height}px;line-height:${b.height}px;font-size:0;">&nbsp;</div>`
     case 'raw':
@@ -141,7 +143,7 @@ ${blocks}
 ${p}    </td>`
     })
     .join('\n')
-  return `${p}<table${ctx.attrs({ neon: 'section', columns: s.columns, behavior: s.behavior, bg: s.bg, padding: s.padding, radius: s.radius })} class="${cls}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${s.bg};border-radius:${s.radius}px;border-collapse:separate;${nested ? 'margin:0 0 12px;' : ''}">
+  return `${p}<table${ctx.attrs({ neon: 'section', columns: s.columns, behavior: s.behavior, bg: s.bg, padding: s.padding, radius: s.radius })} class="${cls}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${esc(s.bg)};border-radius:${s.radius}px;border-collapse:separate;${nested ? 'margin:0 0 12px;' : ''}">
 ${p}  <tr>
 ${cells}
 ${p}  </tr>
@@ -152,7 +154,7 @@ function renderModule(tree: ModuleTree, ctx: Ctx): string {
   const body = tree.sections.map((s) => renderSection(s, ctx, 3, tree.font, false, tree.width)).join('\n')
   // The conditional "ghost" table gives Outlook on Windows (which ignores
   // max-width) a fixed width; other clients skip it as a comment.
-  return `<div${ctx.attrs({ neon: 'module', width: tree.width, bg: tree.bg, font: tree.font })} style="background:${tree.bg};padding:24px 0;">
+  return `<div${ctx.attrs({ neon: 'module', width: tree.width, bg: tree.bg, font: tree.font })} style="background:${esc(tree.bg)};padding:24px 0;">
   <!--[if mso]><table role="presentation" width="${tree.width}" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:${tree.width}px;margin:0 auto;">
     <tr><td>
@@ -206,7 +208,8 @@ export function treeToHubSpot(tree: ModuleTree, name: string): HubSpotExport {
     is_available_for_new_content: true,
   }
   return {
-    'module.html': `{# ${name} — généré par Neon Sandbox Pro #}\n${html}\n`,
+    // The name sits in a HuBL comment: it must not be able to close it.
+    'module.html': `{# ${name.replace(/[{}#%]/g, ' ').trim()} — généré par Neon Sandbox Pro #}\n${html}\n`,
     'module.css': `${STACK_CSS}\n`,
     'fields.json': JSON.stringify(fields, null, 2) + '\n',
     'meta.json': JSON.stringify(meta, null, 2) + '\n',
@@ -273,7 +276,7 @@ function parseBlock(el: Element): Block | null {
         id,
         type: 'text',
         ...field,
-        html: el.innerHTML.trim(),
+        html: strictHtml(el.innerHTML.trim()),
         align: asAlign(g('align'), 'left'),
         color: asColor(g('color'), '#3a3a52'),
         size: asNum(g('size'), 16, 8, 64),
@@ -309,7 +312,7 @@ function parseBlock(el: Element): Block | null {
     case 'spacer':
       return { id, type: 'spacer', height: asNum(g('height'), 24, 0, 400) }
     case 'raw':
-      return { id, type: 'raw', html: el.innerHTML.trim() }
+      return { id, type: 'raw', html: strictHtml(el.innerHTML.trim()) }
     case 'section':
       return parseSection(el)
     default:
@@ -466,12 +469,12 @@ const isButtonLink = (el: Element) =>
 const hasBlockChild = (el: Element): boolean =>
   Array.from(el.children).some((c) => !INLINE.has(c.tagName) || isButtonLink(c) || hasBlockChild(c))
 
-const rawBlock = (html: string): Block => ({ id: uid(), type: 'raw', html: html.trim() })
+const rawBlock = (html: string): Block => ({ id: uid(), type: 'raw', html: strictHtml(html.trim()) })
 
 const textBlock = (html: string, s: Inherit): Block => ({
   id: uid(),
   type: 'text',
-  html: html.trim(),
+  html: strictHtml(html.trim()),
   color: s.color ?? '#3a3a52',
   align: s.align ?? 'left',
   size: Math.min(64, Math.max(8, s.size ?? 16)),
@@ -720,11 +723,7 @@ export function reconcileIds(next: ModuleTree, prev: ModuleTree): ModuleTree {
 }
 
 // Sanitize a fragment produced outside the parser (e.g. Maily rewrites).
-export function sanitizeHtml(html: string): string {
-  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
-  sanitize(doc.body)
-  return doc.body.innerHTML
-}
+export const sanitizeHtml = strictHtml
 
 // Self-contained HTML file with real content, for testing in a browser or an
 // email tester before uploading the module to HubSpot.

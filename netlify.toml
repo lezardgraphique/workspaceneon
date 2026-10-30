@@ -5,3 +5,14 @@
   command = "npm run dev"
   targetPort = 3000
   port = 8888
+
+# Static assets bypass the server middleware (src/start.ts), so they get the
+# baseline headers here. Pages and API routes get the full set, CSP included.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"

@@ -3,6 +3,7 @@ import { getStore } from '@netlify/blobs'
 
 import { FILE_TYPES, MAX_FILE_BYTES, PAGE_SIZE, QUOTA_BYTES, extOf, keyTime } from '@/lib/files'
 import type { FileList, StoredFile } from '@/lib/files'
+import { matchesType, readHead } from '@/server/upload-check'
 
 const files = () => getStore('files')
 // Running total, so listing and quota checks never have to read every file.
@@ -43,6 +44,10 @@ export const Route = createFileRoute('/api/files')({
       },
 
       POST: async ({ request }) => {
+        // Refuse oversized bodies before reading them into memory.
+        if (Number(request.headers.get('content-length') ?? 0) > MAX_FILE_BYTES + 64 * 1024) {
+          return Response.json({ error: 'Fichier trop lourd (10 Mo maximum)' }, { status: 413 })
+        }
         const form = await request.formData().catch(() => null)
         const file = form?.get('file')
         if (!(file instanceof File)) return Response.json({ error: 'Aucun fichier reçu' }, { status: 400 })
@@ -50,6 +55,7 @@ export const Route = createFileRoute('/api/files')({
         const type = FILE_TYPES[ext]
         if (!type) return Response.json({ error: `Format .${ext || '?'} non pris en charge` }, { status: 415 })
         if (file.size > MAX_FILE_BYTES) return Response.json({ error: 'Fichier trop lourd (10 Mo maximum)' }, { status: 413 })
+        if (!matchesType(await readHead(file), type)) return Response.json({ error: `Le contenu ne correspond pas au format .${ext}` }, { status: 415 })
         const used = await readUsage()
         if (used + file.size > QUOTA_BYTES) return Response.json({ error: 'Espace de stockage plein (200 Mo) : supprime des fichiers' }, { status: 507 })
 

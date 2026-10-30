@@ -5,6 +5,8 @@ import { z } from 'zod'
 import { db } from '../../db/index.js'
 import { customBlocks } from '../../db/schema.js'
 import { signature, slugify } from '@/lib/custom-blocks'
+import { stripTags } from '@/lib/sanitize'
+import { section as cleanSection } from '@/lib/sanitize-tree'
 import type { CustomBlock } from '@/lib/custom-blocks'
 import type { Section } from '@/lib/types'
 
@@ -20,6 +22,12 @@ const sectionSchema = z
   .object({ type: z.literal('section'), cells: z.array(z.array(z.any())).min(1).max(3) })
   .passthrough()
   .refine((s) => JSON.stringify(s).length < 100_000, 'Bloc trop volumineux')
+  // Rebuilt like a module: nothing unchecked is stored.
+  .transform((s, ctx) => {
+    const clean = cleanSection(s)
+    if (!clean) ctx.addIssue({ code: 'custom', message: 'Bloc invalide' })
+    return clean as Section
+  })
 
 export const listCustomBlocks = createServerFn({ method: 'GET' }).handler(async () => {
   const rows = await db.select().from(customBlocks).orderBy(asc(customBlocks.name))
@@ -31,9 +39,13 @@ export type SaveStatus = 'created' | 'updated' | 'exists'
 // Never creates a duplicate: a block with the same structure is reused whatever
 // its name, and a block with the same name is updated instead of doubled.
 export const saveCustomBlock = createServerFn({ method: 'POST' })
-  .validator(z.object({ name: z.string().trim().min(1).max(80), description: z.string().max(300).default(''), section: sectionSchema }))
+  .validator(z.object({
+      name: z.string().trim().min(1).max(80).transform((n) => stripTags(n).trim() || 'Bloc'),
+      description: z.string().max(300).default('').transform((d) => stripTags(d)),
+      section: sectionSchema,
+    }))
   .handler(async ({ data }): Promise<{ status: SaveStatus; block: CustomBlock }> => {
-    const section = data.section as unknown as Section
+    const section = data.section
     const slug = slugify(data.name) || 'bloc'
     const sig = signature(section)
     const find = async () => {

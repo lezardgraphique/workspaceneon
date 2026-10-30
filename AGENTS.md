@@ -49,4 +49,5 @@ TanStack Start (React 19, file-based routes, `createServerFn`) · Tailwind 4 (th
 - Never pass an API key to `GoogleGenAI`: AI Gateway injects it.
 - Any schema change requires `npx drizzle-kit generate --name …` (migrations go in `netlify/database/migrations`).
 - Starter images are referenced by absolute Image CDN URL (`src/lib/templates.ts`) so they keep working in emails exported to HubSpot.
+- Security (see `SECURITY.md`): never put user/AI HTML in the DOM or in storage without `sanitizeHtml` (`src/lib/sanitize.ts`, allow-list, keeps HuBL tokens); trees reaching the server go through `sanitizeTree` (`sanitize-tree.ts`, wired in the `treeSchema`/`sectionSchema` transforms) so new block fields must be added there too; `src/start.ts` holds the CSRF check, security headers/CSP and rate limits (`src/server/rate-limit.ts`): a new external origin (script, font, image host) needs a CSP update; uploads must pass `matchesType` (`upload-check.ts`).
 - No authentication: the app is personal and anyone with the URL can see and edit the modules. Add Netlify Identity if it needs to be locked down.

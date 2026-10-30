@@ -4,6 +4,8 @@ import { z } from 'zod'
 
 import { db } from '../../db/index.js'
 import { modules } from '../../db/schema.js'
+import { sanitizeTree } from '@/lib/sanitize-tree'
+import { stripTags } from '@/lib/sanitize'
 import type { ModuleRecord, ModuleTree } from '@/lib/types'
 
 const toRecord = (row: typeof modules.$inferSelect): ModuleRecord => ({
@@ -14,16 +16,25 @@ const toRecord = (row: typeof modules.$inferSelect): ModuleRecord => ({
   updatedAt: row.updatedAt.toISOString(),
 })
 
-// The tree is validated structurally on the client (it is produced by our own
-// editor); here we only bound its shape and size.
+// Anyone can call these endpoints, so the tree is never trusted: it is rebuilt
+// block by block (known types, clamped values, sanitized HTML and URLs) before
+// being stored, whatever the editor sends.
 const treeSchema = z
   .object({
     width: z.number(),
     bg: z.string(),
     font: z.string(),
-    sections: z.array(z.any()),
+    sections: z.array(z.any()).max(200),
   })
   .refine((t) => JSON.stringify(t).length < 500_000, 'Module trop volumineux')
+  .transform((t) => sanitizeTree(t))
+
+const nameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .transform((n) => stripTags(n).trim() || 'Sans titre')
 
 export const listModules = createServerFn({ method: 'GET' }).handler(async () => {
   const rows = await db.select().from(modules).orderBy(desc(modules.updatedAt))
@@ -38,7 +49,7 @@ export const getModule = createServerFn({ method: 'GET' })
   })
 
 export const createModule = createServerFn({ method: 'POST' })
-  .validator(z.object({ name: z.string().trim().min(1).max(120), tree: treeSchema }))
+  .validator(z.object({ name: nameSchema, tree: treeSchema }))
   .handler(async ({ data }) => {
     const [row] = await db.insert(modules).values({ name: data.name, tree: data.tree }).returning()
     return toRecord(row)
@@ -46,7 +57,7 @@ export const createModule = createServerFn({ method: 'POST' })
 
 export const saveModule = createServerFn({ method: 'POST' })
   .validator(
-    z.object({ id: z.uuid(), name: z.string().trim().min(1).max(120), tree: treeSchema }),
+    z.object({ id: z.uuid(), name: nameSchema, tree: treeSchema }),
   )
   .handler(async ({ data }) => {
     const [row] = await db

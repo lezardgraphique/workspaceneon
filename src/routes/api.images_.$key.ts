@@ -16,6 +16,8 @@ export const Route = createFileRoute('/api/images_/$key')({
             'Content-Type': type,
             'Cache-Control': 'public, max-age=31536000, immutable',
             'X-Content-Type-Options': 'nosniff',
+            'Content-Security-Policy': "default-src 'none'; sandbox",
+            'Cross-Origin-Resource-Policy': 'cross-origin',
           },
         })
       },

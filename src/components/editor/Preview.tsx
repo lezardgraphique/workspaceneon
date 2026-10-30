@@ -3,6 +3,7 @@ import { ImageIcon } from 'lucide-react'
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 
 import { firstImage } from '@/lib/images'
+import { isSafeUrl, sanitizeHtml } from '@/lib/sanitize'
 
 import { BLOCK_LABELS } from '@/lib/types'
 import type { Block, ModuleTree, Section } from '@/lib/types'
@@ -66,7 +67,8 @@ function Editable({
     const el = ref.current
     if (!el || document.activeElement === el) return
     if (rich) {
-      if (el.innerHTML !== latest.current) el.innerHTML = latest.current
+      const clean = sanitizeHtml(latest.current)
+      if (el.innerHTML !== clean) el.innerHTML = clean
     } else if (el.textContent !== latest.current) el.textContent = latest.current
   }
   useLayoutEffect(sync)
@@ -162,7 +164,7 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
       return node(
         <div
           style={{ fontFamily: font, fontSize: b.size, lineHeight: 1.6, color: b.color, textAlign: b.align }}
-          dangerouslySetInnerHTML={{ __html: b.html || '&nbsp;' }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(b.html) || '&nbsp;' }}
         />,
         { marginBottom: 12 },
       )
@@ -193,7 +195,7 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
       return node(
         <div style={{ textAlign: b.align, lineHeight: 0 }}>
           {b.src ? (
-            <img src={b.src} alt={b.alt} style={{ display: 'inline-block', width: `${b.width}%`, maxWidth: '100%', height: 'auto' }} />
+            <img src={isSafeUrl(b.src, true) ? b.src : ''} alt={b.alt} style={{ display: 'inline-block', width: `${b.width}%`, maxWidth: '100%', height: 'auto' }} />
           ) : (
             <div
               style={{ width: `${b.width}%`, display: 'inline-flex' }}
@@ -213,7 +215,7 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
       // The tree reaching the preview is already interpreted: show the result.
       return node(
         b.html.trim() ? (
-          <div dangerouslySetInnerHTML={{ __html: safeHtml(b.html) }} />
+          <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(b.html) }} />
         ) : (
           <div className="h-3" />
         ),
@@ -223,13 +225,6 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
       return <SectionView s={b} font={font} nested {...p} />
   }
 }
-
-// Raw blocks were sanitized when they entered the tree; this is a last guard.
-const safeHtml = (html: string) =>
-  html
-    .replace(/<\/?(script|iframe|object|embed)\b[^>]*>/gi, '')
-    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1=$2#$2')
 
 function SectionView({ s, font, nested, ...p }: { s: Section; font: string; nested?: boolean } & Omit<Props, 'tree'>) {
   const stacked = p.mobile && s.behavior === 'stack'

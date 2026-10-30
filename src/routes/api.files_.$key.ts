@@ -21,7 +21,10 @@ export const Route = createFileRoute('/api/files_/$key')({
             // Keys are random and never rewritten.
             'Cache-Control': 'public, max-age=31536000, immutable',
             'X-Content-Type-Options': 'nosniff',
-            'Content-Security-Policy': 'sandbox',
+            // `sandbox` blocks the browser's PDF viewer, so PDFs get a policy
+            // that forbids everything else instead.
+            'Content-Security-Policy': type === 'application/pdf' ? "default-src 'none'; style-src 'unsafe-inline'" : "default-src 'none'; sandbox",
+            'Cross-Origin-Resource-Policy': 'cross-origin',
           },
         })
       },

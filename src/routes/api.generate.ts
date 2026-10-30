@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
+import { sanitizeHtml, stripTags } from '@/lib/sanitize'
 import { MAILY_PERSONA, MODEL, ai, stripFences } from '@/lib/gemini.server'
 
 // Rewrites the text of a single block. Whole-module generation goes through
@@ -31,7 +32,9 @@ ${data.text}
 Renvoie uniquement le nouveau texte${data.html ? ' (HTML inline autorisé : strong, em, br, a ; conserve les variables HuBL {{ ... }})' : ' en texte brut, sans guillemets'}.`,
             config: { systemInstruction: MAILY_PERSONA },
           })
-          return Response.json({ text: stripFences(res.text ?? '') })
+          const text = stripFences(res.text ?? '')
+          // The reply ends up in a block: keep only what that block may hold.
+          return Response.json({ text: data.html ? sanitizeHtml(text) : stripTags(text) })
         } catch (err) {
           console.error('Generate error', err)
           return Response.json({ error: 'Maily n\'a pas pu générer de réponse.' }, { status: 502 })
