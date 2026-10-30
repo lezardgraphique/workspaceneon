@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { guardedFetch } from '@/lib/session-guard'
 import { CheckCircle2, ExternalLink, FileCode2, Heart, Lightbulb, Loader2, MessageCircle, Paperclip, Plus, Send, Square, Wand2, X } from 'lucide-react'
 import { Streamdown } from 'streamdown'
 
@@ -226,7 +227,7 @@ export function MailyPanel({
       .map((f) => `- ${f.name} (${f.label}) : ${f.block.type}`)
       .join('\n')
 
-    const res = await fetch('/api/maily', {
+    const res = await guardedFetch('/api/maily', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

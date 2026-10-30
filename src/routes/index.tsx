@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { ArrowRight, Columns3, Code2, Eye, FolderOpen, Heart, Layers, Loader2, MailCheck, Sparkles, Trash2, Wand2 } from 'lucide-react'
 
+import { AccountMenu } from '@/components/AccountMenu'
 import { EmailFrame } from '@/components/EmailFrame'
 import { Maily, NeonLogo } from '@/components/Maily'
 import { previewEmail } from '@/lib/hubl'
@@ -67,6 +68,7 @@ function Library() {
         >
           <Heart className="size-4 text-pink" /> <span className="hidden sm:inline">Laisser un commentaire</span>
         </a>
+        <AccountMenu />
       </header>
 
       <main className="mx-auto max-w-6xl px-6 pb-24">

@@ -53,5 +53,5 @@ export function formatSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} Mo`
 }
 
-// Keys sort chronologically: <time in base 36>-<uuid>.<ext>
-export const keyTime = (key: string) => new Date(Number.parseInt(key.split('-')[0], 36))
+// Keys sort chronologically within an account: [<owner tag>_]<time in base 36>-<random>.<ext>
+export const keyTime = (key: string) => new Date(Number.parseInt(key.split('-')[0].split('_').pop()!, 36))

@@ -1,9 +1,10 @@
 import { createServerFn } from '@tanstack/react-start'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '../../db/index.js'
 import { modules } from '../../db/schema.js'
+import { legacyOwner, requireUser } from '@/server/auth.server'
 import { sanitizeTree } from '@/lib/sanitize-tree'
 import { stripTags } from '@/lib/sanitize'
 import type { ModuleRecord, ModuleTree } from '@/lib/types'
@@ -36,22 +37,29 @@ const nameSchema = z
   .max(120)
   .transform((n) => stripTags(n).trim() || 'Sans titre')
 
+// Every query below is scoped to the signed-in account: an id belonging to
+// someone else behaves exactly like an id that doesn't exist.
 export const listModules = createServerFn({ method: 'GET' }).handler(async () => {
-  const rows = await db.select().from(modules).orderBy(desc(modules.updatedAt))
+  const user = await requireUser()
+  await legacyOwner(user)
+  const rows = await db.select().from(modules).where(eq(modules.userId, user.id)).orderBy(desc(modules.updatedAt))
   return rows.map(toRecord)
 })
 
 export const getModule = createServerFn({ method: 'GET' })
   .validator(z.object({ id: z.uuid() }))
   .handler(async ({ data }) => {
-    const [row] = await db.select().from(modules).where(eq(modules.id, data.id))
+    const user = await requireUser()
+    await legacyOwner(user)
+    const [row] = await db.select().from(modules).where(and(eq(modules.id, data.id), eq(modules.userId, user.id)))
     return row ? toRecord(row) : null
   })
 
 export const createModule = createServerFn({ method: 'POST' })
   .validator(z.object({ name: nameSchema, tree: treeSchema }))
   .handler(async ({ data }) => {
-    const [row] = await db.insert(modules).values({ name: data.name, tree: data.tree }).returning()
+    const user = await requireUser()
+    const [row] = await db.insert(modules).values({ userId: user.id, name: data.name, tree: data.tree }).returning()
     return toRecord(row)
   })
 
@@ -60,10 +68,11 @@ export const saveModule = createServerFn({ method: 'POST' })
     z.object({ id: z.uuid(), name: nameSchema, tree: treeSchema }),
   )
   .handler(async ({ data }) => {
+    const user = await requireUser()
     const [row] = await db
       .update(modules)
       .set({ name: data.name, tree: data.tree, updatedAt: new Date() })
-      .where(eq(modules.id, data.id))
+      .where(and(eq(modules.id, data.id), eq(modules.userId, user.id)))
       .returning()
     return row ? toRecord(row) : null
   })
@@ -71,6 +80,7 @@ export const saveModule = createServerFn({ method: 'POST' })
 export const deleteModule = createServerFn({ method: 'POST' })
   .validator(z.object({ id: z.uuid() }))
   .handler(async ({ data }) => {
-    await db.delete(modules).where(eq(modules.id, data.id))
+    const user = await requireUser()
+    await db.delete(modules).where(and(eq(modules.id, data.id), eq(modules.userId, user.id)))
     return { ok: true }
   })

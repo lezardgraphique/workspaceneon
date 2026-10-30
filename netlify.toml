@@ -6,6 +6,31 @@
   targetPort = 3000
   port = 8888
 
+# Platform-level rate limiting (Netlify applies it before the app runs, so it
+# also protects against floods the in-app limiter in src/server/rate-limit.ts
+# can't see across instances). Rules go first-match: the costly AI route, then
+# the rest of the API. Two rules fit every Netlify plan. Check the deploy log
+# ("rate limit" in post-processing) to confirm both were accepted.
+[[redirects]]
+  from = "/api/maily"
+  to = "/api/maily"
+  status = 200
+  force = true
+  [redirects.rate_limit]
+    window_limit = 20
+    window_size = 60
+    aggregate_by = ["ip", "domain"]
+
+[[redirects]]
+  from = "/api/*"
+  to = "/api/:splat"
+  status = 200
+  force = true
+  [redirects.rate_limit]
+    window_limit = 120
+    window_size = 60
+    aggregate_by = ["ip", "domain"]
+
 # Static assets bypass the server middleware (src/start.ts), so they get the
 # baseline headers here. Pages and API routes get the full set, CSP included.
 [[headers]]

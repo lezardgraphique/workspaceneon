@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { guardedFetch } from '@/lib/session-guard'
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Copy, Loader2, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -135,7 +136,7 @@ function MailyRewrite({ text, html, onResult }: { text: string; html: boolean; o
     setBusy(instruction)
     setError('')
     try {
-      const res = await fetch('/api/generate', {
+      const res = await guardedFetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind: 'rewrite', text, instruction, html }),

@@ -1,6 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
+import { eq } from 'drizzle-orm'
+
+import { sessionUser, unauthorized } from '@/server/auth.server'
 import { db } from '../../db/index.js'
 import { customBlocks, modules } from '../../db/schema.js'
 import { APP_GUIDE, FIELDS_SPEC, MAILY_PERSONA, SCOPE_SPEC, MODEL, MODULE_REPLY_SPEC, RESEARCH_SPEC, ai } from '@/lib/gemini.server'
@@ -51,6 +54,8 @@ export const Route = createFileRoute('/api/maily')({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const user = await sessionUser()
+        if (!user) return unauthorized()
         const parsed = Body.safeParse(await request.json().catch(() => null))
         if (!parsed.success) return Response.json({ error: 'Requête invalide' }, { status: 400 })
         const { messages, mode, code, moduleName, imported, issue, fields, fieldSpecs } = parsed.data
@@ -73,8 +78,8 @@ export const Route = createFileRoute('/api/maily')({
             : ''
         // What already exists, so Maily reuses it instead of creating a twin.
         const library = await Promise.all([
-          db.select({ name: modules.name }).from(modules).limit(60),
-          db.select({ name: customBlocks.name, description: customBlocks.description }).from(customBlocks).limit(60),
+          db.select({ name: modules.name }).from(modules).where(eq(modules.userId, user.id)).limit(60),
+          db.select({ name: customBlocks.name, description: customBlocks.description }).from(customBlocks).where(eq(customBlocks.userId, user.id)).limit(60),
         ])
           .then(
             ([m, b]) =>

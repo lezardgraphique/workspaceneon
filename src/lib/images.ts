@@ -1,5 +1,7 @@
 // Image upload (Netlify Blobs via /api/images). Only formats every email
 // client displays are kept: WebP, HEIC… are converted to JPEG in the browser.
+import { guard } from '@/lib/session-guard'
+
 
 export const IMAGE_TYPES: Record<string, string> = {
   jpg: 'image/jpeg',
@@ -43,7 +45,7 @@ export async function uploadImage(file: File): Promise<string> {
   if (!isImageFile(file)) throw new Error('Choisis un fichier image (JPG, PNG, GIF, WebP…)')
   const body = new FormData()
   body.append('file', await prepare(file))
-  const res = await fetch('/api/images', { method: 'POST', body })
+  const res = guard(await fetch('/api/images', { method: 'POST', body }))
   const json = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
   if (!res.ok || !json.url) throw new Error(json.error ?? 'Échec du téléversement')
   return json.url

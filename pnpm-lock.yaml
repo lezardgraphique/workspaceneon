@@ -21,6 +21,9 @@ importers:
       '@netlify/database':
         specifier: ^2.0.1
         version: 2.0.1
+      '@netlify/identity':
+        specifier: ^2.0.0
+        version: 2.0.0
       '@tailwindcss/vite':
         specifier: 4.2.2
         version: 4.2.2(vite@8.3.4(@types/node@22.20.5)(esbuild@0.28.1)(jiti@2.7.0)(yaml@2.9.1))
@@ -802,6 +805,10 @@ packages:
 
   '@netlify/headers@3.0.3':
     resolution: {integrity: sha512-WsCnWNJhmjHMN+bCI3PkFFMO9abggh/5E+SyLD2Z+75ye3+MnIkljMx4j35eYpiOXooZD+lPud2eHkgHixC8Ew==}
+    engines: {node: '>=22.12.0'}
+
+  '@netlify/identity@2.0.0':
+    resolution: {integrity: sha512-AX2zdazgfa9M/L22kgC5TpuVgofz9ZkK0W7JRIqmW/In6LyW6HzLS2K9a3CPXlfcjWm1JqEdmXoXze3VIjes6Q==}
     engines: {node: '>=22.12.0'}
 
   '@netlify/images@2.0.3':
@@ -2969,6 +2976,9 @@ packages:
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
     engines: {node: '>= 0.4'}
+
+  gotrue-js@1.0.1:
+    resolution: {integrity: sha512-ZynwwM4bEo2y5yNWO3/Ynbx1AvQz9ONJSM9tB1jpooAvDPevGdvgeFP3NwM59FAlkd0szSkQRAhjINMkJSDfAQ==}
 
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
@@ -5717,6 +5727,10 @@ snapshots:
     dependencies:
       '@netlify/headers-parser': 10.1.1
 
+  '@netlify/identity@2.0.0':
+    dependencies:
+      gotrue-js: 1.0.1
+
   '@netlify/images@2.0.3(@netlify/blobs@11.1.4)(srvx@1.0.5)':
     dependencies:
       ipx: 3.1.1(@netlify/blobs@11.1.4)(srvx@1.0.5)
@@ -8035,6 +8049,8 @@ snapshots:
   google-logging-utils@1.1.3: {}
 
   gopd@1.2.0: {}
+
+  gotrue-js@1.0.1: {}
 
   graceful-fs@4.2.11: {}
 

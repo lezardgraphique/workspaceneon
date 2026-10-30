@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { guard } from '@/lib/session-guard'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { Check, Copy, Download, FileText, FolderOpen, Loader2, Trash2, Upload } from 'lucide-react'
 
+import { AccountMenu } from '@/components/AccountMenu'
 import { NeonLogo } from '@/components/Maily'
 import { FILE_TYPES, MAX_FILE_BYTES, PAGE_SIZE, formatSize, isImageType } from '@/lib/files'
 import type { FileList, StoredFile } from '@/lib/files'
@@ -30,7 +32,7 @@ function FilesPage() {
   const load = useCallback(async (offset = 0) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/files?offset=${offset}&limit=${PAGE_SIZE}`)
+      const res = guard(await fetch(`/api/files?offset=${offset}&limit=${PAGE_SIZE}`))
       if (!res.ok) throw new Error()
       const data: FileList = await res.json()
       setFiles((prev) => (offset ? [...prev, ...data.files] : data.files))
@@ -60,7 +62,7 @@ function FilesPage() {
       }
       const form = new FormData()
       form.set('file', file)
-      const res = await fetch('/api/files', { method: 'POST', body: form }).catch(() => null)
+      const res = await fetch('/api/files', { method: 'POST', body: form }).then(guard).catch(() => null)
       if (!res?.ok) failed.push(`${file.name} : ${(await res?.json().catch(() => null))?.error ?? 'échec de l\'envoi'}`)
     }
     setBusy(null)
@@ -72,7 +74,7 @@ function FilesPage() {
     setConfirm(null)
     setFiles((prev) => prev.filter((x) => x.key !== f.key))
     setTotal((t) => t - 1)
-    await fetch(`/api/files/${f.key}`, { method: 'DELETE' }).catch(() => {})
+    await fetch(`/api/files/${f.key}`, { method: 'DELETE' }).then(guard).catch(() => {})
     void load()
   }
 
@@ -96,6 +98,7 @@ function FilesPage() {
         <Link to="/" className="ml-auto text-sm text-mute hover:text-white">
           ← Mes modules
         </Link>
+        <AccountMenu />
       </header>
 
       <main className="mx-auto max-w-6xl px-6 pb-20">

@@ -10,6 +10,7 @@
     "@google/genai": "^2.29.1",
     "@netlify/blobs": "11.1.4",
     "@netlify/database": "^2.0.1",
+    "@netlify/identity": "^2.0.0",
     "@tailwindcss/vite": "4.2.2",
     "@tanstack/react-devtools": "0.10.2",
     "@tanstack/react-router": "1.170.44",

@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ConnexionRouteImport } from './routes/connexion'
 import { Route as FichiersRouteImport } from './routes/fichiers'
 import { Route as ApercuModuleIdRouteImport } from './routes/apercu.$moduleId'
 import { Route as ApiFilesRouteImport } from './routes/api.files'
@@ -23,6 +24,11 @@ import { Route as ApiImagesKeyRouteImport } from './routes/api.images_.$key'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnexionRoute = ConnexionRouteImport.update({
+  id: '/connexion',
+  path: '/connexion',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FichiersRoute = FichiersRouteImport.update({
@@ -73,6 +79,7 @@ const ApiImagesKeyRoute = ApiImagesKeyRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/connexion': typeof ConnexionRoute
   '/fichiers': typeof FichiersRoute
   '/apercu/$moduleId': typeof ApercuModuleIdRoute
   '/api/files': typeof ApiFilesRoute
@@ -85,6 +92,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/connexion': typeof ConnexionRoute
   '/fichiers': typeof FichiersRoute
   '/apercu/$moduleId': typeof ApercuModuleIdRoute
   '/api/files': typeof ApiFilesRoute
@@ -98,6 +106,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/connexion': typeof ConnexionRoute
   '/fichiers': typeof FichiersRoute
   '/apercu/$moduleId': typeof ApercuModuleIdRoute
   '/api/files': typeof ApiFilesRoute
@@ -112,6 +121,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/connexion'
     | '/fichiers'
     | '/apercu/$moduleId'
     | '/api/files'
@@ -124,6 +134,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/connexion'
     | '/fichiers'
     | '/apercu/$moduleId'
     | '/api/files'
@@ -136,6 +147,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/connexion'
     | '/fichiers'
     | '/apercu/$moduleId'
     | '/api/files'
@@ -149,6 +161,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ConnexionRoute: typeof ConnexionRoute
   FichiersRoute: typeof FichiersRoute
   ApercuModuleIdRoute: typeof ApercuModuleIdRoute
   ApiFilesRoute: typeof ApiFilesRoute
@@ -167,6 +180,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connexion': {
+      id: '/connexion'
+      path: '/connexion'
+      fullPath: '/connexion'
+      preLoaderRoute: typeof ConnexionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/fichiers': {
@@ -237,6 +257,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ConnexionRoute: ConnexionRoute,
   FichiersRoute: FichiersRoute,
   ApercuModuleIdRoute: ApercuModuleIdRoute,
   ApiFilesRoute: ApiFilesRoute,

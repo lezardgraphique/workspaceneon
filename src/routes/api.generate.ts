@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
+import { sessionUser, unauthorized } from '@/server/auth.server'
 import { sanitizeHtml, stripTags } from '@/lib/sanitize'
 import { MAILY_PERSONA, MODEL, ai, stripFences } from '@/lib/gemini.server'
 
@@ -17,6 +18,7 @@ export const Route = createFileRoute('/api/generate')({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        if (!(await sessionUser())) return unauthorized()
         const parsed = Body.safeParse(await request.json().catch(() => null))
         if (!parsed.success) return Response.json({ error: 'Requête invalide' }, { status: 400 })
         const data = parsed.data

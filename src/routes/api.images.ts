@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { getStore } from '@netlify/blobs'
 
+import { sessionUser, unauthorized } from '@/server/auth.server'
 import { IMAGE_TYPES } from '@/lib/images'
 import { matchesType, readHead } from '@/server/upload-check'
 
@@ -13,6 +14,7 @@ export const Route = createFileRoute('/api/images')({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        if (!(await sessionUser())) return unauthorized()
         if (Number(request.headers.get('content-length') ?? 0) > MAX_BYTES + 64 * 1024) {
           return Response.json({ error: 'Image trop lourde (5 Mo maximum)' }, { status: 413 })
         }

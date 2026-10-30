@@ -2,8 +2,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import { getStore } from '@netlify/blobs'
 
 import { FILE_TYPES, INLINE_TYPES, extOf } from '@/lib/files'
+import { sessionUser, unauthorized } from '@/server/auth.server'
+import { FILE_KEY as KEY, ownsFile, readUsage, writeUsage } from '@/server/file-owner'
 
-const KEY = /^[0-9a-z]{9}-[\w]{12}\.[a-z0-9]+$/
 
 export const Route = createFileRoute('/api/files_/$key')({
   server: {
@@ -30,14 +31,16 @@ export const Route = createFileRoute('/api/files_/$key')({
       },
 
       DELETE: async ({ params }) => {
+        const user = await sessionUser()
+        if (!user) return unauthorized()
         if (!KEY.test(params.key)) return Response.json({ error: 'Clé invalide' }, { status: 400 })
+        // Someone else's file behaves like a missing one.
+        if (!(await ownsFile(params.key, user))) return Response.json({ ok: true })
         const store = getStore('files')
         const m = await store.getMetadata(params.key).catch(() => null)
         if (!m) return Response.json({ ok: true })
         await store.delete(params.key)
-        const usage = getStore('files-meta')
-        const used = ((await usage.get('usage', { type: 'json' }).catch(() => null)) as { bytes: number } | null)?.bytes ?? 0
-        await usage.setJSON('usage', { bytes: Math.max(0, used - Number((m.metadata as { size?: number }).size ?? 0)) })
+        await writeUsage(user, (await readUsage(user)) - Number((m.metadata as { size?: number }).size ?? 0))
         return Response.json({ ok: true })
       },
     },

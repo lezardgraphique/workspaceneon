@@ -1,4 +1,6 @@
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
+import { HeadContent, Scripts, createRootRoute, redirect } from '@tanstack/react-router'
+
+import { getSession } from '@/server/session.functions'
 
 import '../styles.css'
 
@@ -7,6 +9,13 @@ const siteDescription =
   "L'éditeur de modules email et web avec synchronisation code ↔ visuel en temps réel, conversion de HTML en blocs modifiables, layouts multi-colonnes, cards imbriquées et Maily, l'assistante IA marketing."
 
 export const Route = createRootRoute({
+  // The whole app is behind the sign-in page. This is only the front door:
+  // every server function and API route checks the session again.
+  beforeLoad: async ({ location }) => {
+    const user = await getSession()
+    if (!user && !location.pathname.startsWith('/connexion')) throw redirect({ to: '/connexion' })
+    return { user }
+  },
   head: () => ({
     meta: [
       { charSet: 'utf-8' },
