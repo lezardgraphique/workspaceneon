@@ -130,9 +130,15 @@ function Connexion() {
   }
 
   return (
-    <div className="neon-grid min-h-screen overflow-x-hidden">
-      <div className="mx-auto grid min-h-screen max-w-6xl items-center gap-12 px-4 py-10 lg:grid-cols-[1fr_1.1fr] lg:gap-16 lg:px-8">
-        <div className="mx-auto w-full max-w-sm">
+    <div className="neon-grid relative min-h-screen overflow-x-hidden">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <span className="auth-tile left-[6%] top-[8%] size-14" style={{ '--tile': '#ff007f', '--r': '-8deg' } as React.CSSProperties} />
+        <span className="auth-tile right-[8%] top-[14%] h-10 w-20" style={{ '--tile': '#00e5ff', '--r': '6deg', animationDelay: '1.2s' } as React.CSSProperties} />
+        <span className="auth-tile bottom-[10%] left-[10%] h-12 w-24" style={{ '--tile': '#bc13fe', '--r': '5deg', animationDelay: '2.4s' } as React.CSSProperties} />
+        <span className="auth-tile bottom-[16%] right-[6%] size-16" style={{ '--tile': '#ff007f', '--r': '-4deg', animationDelay: '0.6s' } as React.CSSProperties} />
+      </div>
+      <div className="relative mx-auto grid min-h-screen max-w-6xl items-center gap-12 px-4 py-10 lg:grid-cols-[1fr_1.1fr] lg:gap-16 lg:px-8">
+        <div className="auth-rise mx-auto w-full max-w-sm">
           <div className="mb-6 flex items-center justify-center gap-3">
             <NeonLogo size={34} />
             <span className="font-display text-lg font-semibold tracking-wide">
@@ -143,7 +149,7 @@ function Connexion() {
             <Maily size={96} mood="happy" />
           </div>
 
-          <form onSubmit={submit} className="space-y-4 rounded-xl border border-line bg-panel/80 p-6 backdrop-blur">
+          <form onSubmit={submit} className="auth-card auth-rise auth-rise-2 space-y-4 p-6">
             <h1 className="font-display text-xl font-bold">{title}</h1>
 
             {needsEmail && (
@@ -211,7 +217,7 @@ function Connexion() {
           <p className="mt-4 text-center text-xs text-mute">Chaque compte a son propre espace : personne d'autre ne voit tes modules ni tes fichiers.</p>
         </div>
 
-        <div className="hidden pb-12 lg:block">
+        <div className="auth-rise auth-rise-3 hidden pb-12 lg:block">
           <h2 className="mb-10 max-w-md font-display text-3xl leading-tight font-bold">
             Tes modules, <span className="neon-text">à la vitesse de la lumière.</span>
           </h2>

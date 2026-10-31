@@ -5,7 +5,7 @@ import { AuthError, login, updateUser } from '@netlify/identity'
 import { Check, Loader2, KeyRound } from 'lucide-react'
 
 import { AccountMenu } from '@/components/AccountMenu'
-import { NeonLogo } from '@/components/Maily'
+import { AppHeader } from '@/components/AppHeader'
 
 export const Route = createFileRoute('/compte')({
   head: () => ({ meta: [{ title: 'Mon compte · Neon Sandbox Pro' }] }),
@@ -57,18 +57,12 @@ function Compte() {
 
   return (
     <div className="neon-grid min-h-screen">
-      <header className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-5">
-        <Link to="/" className="flex items-center gap-3" aria-label="Retour à Mes modules">
-          <NeonLogo size={30} />
-          <span className="font-display text-lg font-semibold tracking-wide">
-            Neon Sandbox <span className="text-pink">Pro</span>
-          </span>
-        </Link>
-        <Link to="/" className="ml-auto text-sm text-mute hover:text-white">
+      <AppHeader>
+        <Link to="/" className="hidden text-sm text-mute hover:text-white sm:inline">
           ← Mes modules
         </Link>
         <AccountMenu />
-      </header>
+      </AppHeader>
 
       <main className="mx-auto max-w-md px-6 pb-20">
         <h1 className="font-display text-3xl font-bold">Mon compte</h1>

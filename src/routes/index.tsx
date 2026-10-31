@@ -3,8 +3,9 @@ import { Link, createFileRoute, useNavigate, useRouter } from '@tanstack/react-r
 import { ArrowRight, Columns3, Code2, Eye, FolderOpen, Heart, Layers, Loader2, MailCheck, Sparkles, Trash2, Wand2 } from 'lucide-react'
 
 import { AccountMenu } from '@/components/AccountMenu'
+import { AppHeader, headerButton } from '@/components/AppHeader'
 import { EmailFrame } from '@/components/EmailFrame'
-import { Maily, NeonLogo } from '@/components/Maily'
+import { Maily } from '@/components/Maily'
 import { previewEmail } from '@/lib/hubl'
 import { KOFI_URL } from '@/lib/links'
 import { STARTERS } from '@/lib/templates'
@@ -51,25 +52,21 @@ function Library() {
 
   return (
     <div className="min-h-screen neon-grid">
-      <header className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-5">
-        <NeonLogo size={34} />
-        <span className="font-display text-lg font-semibold tracking-wide">
-          Neon Sandbox <span className="text-pink">Pro</span>
-        </span>
-        <span className="ml-1 rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-mute">WEB</span>
-        <Link to="/fichiers" className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-mute hover:border-cyan hover:text-white">
+      <AppHeader web>
+        <Link to="/fichiers" aria-label="Fichiers" className={`${headerButton} hover:border-cyan hover:text-white`}>
           <FolderOpen className="size-4 text-cyan" /> <span className="hidden sm:inline">Fichiers</span>
         </Link>
         <a
           href={KOFI_URL}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-mute hover:border-pink hover:text-white"
+          aria-label="Laisser un commentaire"
+          className={`${headerButton} hover:border-pink hover:text-white`}
         >
           <Heart className="size-4 text-pink" /> <span className="hidden sm:inline">Laisser un commentaire</span>
         </a>
         <AccountMenu />
-      </header>
+      </AppHeader>
 
       <main className="mx-auto max-w-6xl px-6 pb-24">
         <section className="relative grid items-center gap-10 py-12 md:grid-cols-[1.4fr_1fr] md:py-20">

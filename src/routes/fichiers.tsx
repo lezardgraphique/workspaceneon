@@ -4,7 +4,7 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { Check, Copy, Download, FileText, FolderOpen, Loader2, Trash2, Upload } from 'lucide-react'
 
 import { AccountMenu } from '@/components/AccountMenu'
-import { NeonLogo } from '@/components/Maily'
+import { AppHeader } from '@/components/AppHeader'
 import { FILE_TYPES, MAX_FILE_BYTES, PAGE_SIZE, formatSize, isImageType } from '@/lib/files'
 import type { FileList, StoredFile } from '@/lib/files'
 
@@ -88,18 +88,12 @@ function FilesPage() {
 
   return (
     <div className="min-h-screen neon-grid">
-      <header className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-5">
-        <Link to="/" className="flex items-center gap-3" aria-label="Retour à Mes modules">
-          <NeonLogo size={30} />
-          <span className="font-display text-lg font-semibold tracking-wide">
-            Neon Sandbox <span className="text-pink">Pro</span>
-          </span>
-        </Link>
-        <Link to="/" className="ml-auto text-sm text-mute hover:text-white">
+      <AppHeader>
+        <Link to="/" className="hidden text-sm text-mute hover:text-white sm:inline">
           ← Mes modules
         </Link>
         <AccountMenu />
-      </header>
+      </AppHeader>
 
       <main className="mx-auto max-w-6xl px-6 pb-20">
         <div className="mb-6 flex flex-wrap items-end gap-4">
