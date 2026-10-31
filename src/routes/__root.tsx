@@ -1,5 +1,6 @@
 import { HeadContent, Scripts, createRootRoute, redirect } from '@tanstack/react-router'
 
+import { AuthLinkRedirect } from '@/components/AuthLinkRedirect'
 import { getSession } from '@/server/session.functions'
 
 import '../styles.css'
@@ -48,6 +49,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <AuthLinkRedirect />
         {children}
         <Scripts />
       </body>

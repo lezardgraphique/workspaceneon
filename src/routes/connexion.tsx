@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { AuthError, acceptInvite, getUser, handleAuthCallback, login, refreshSession, requestPasswordRecovery, signup, updateUser } from '@netlify/identity'
 import { Loader2, LogIn } from 'lucide-react'
 
@@ -8,10 +8,6 @@ import { NeonLogo } from '@/components/Maily'
 import { getSession } from '@/server/session.functions'
 
 export const Route = createFileRoute('/connexion')({
-  // Already signed in: nothing to do here (unless a link from an e-mail is being processed).
-  beforeLoad: async () => {
-    if (await getSession()) throw redirect({ to: '/' })
-  },
   head: () => ({ meta: [{ title: 'Connexion · Neon Sandbox Pro' }] }),
   component: Connexion,
 })
@@ -68,7 +64,9 @@ function Connexion() {
     handleAuthCallback()
       .then(async (res) => {
         if (!res) {
-          await restoreSession()
+          // No e-mail link to process: signed in already → home, otherwise try to renew a lapsed session.
+          if (await getSession().catch(() => null)) window.location.replace('/')
+          else await restoreSession()
           return
         }
         if (res.type === 'recovery') {

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useRouteContext } from '@tanstack/react-router'
+import { Link, useRouteContext } from '@tanstack/react-router'
 import { logout } from '@netlify/identity'
 import { Loader2, LogOut, User } from 'lucide-react'
 
@@ -21,9 +21,10 @@ export function AccountMenu() {
 
   return (
     <div className="flex items-center gap-2 text-sm text-mute">
-      <span className="hidden max-w-[14rem] items-center gap-1.5 truncate md:inline-flex" title={user.email}>
-        <User className="size-4 shrink-0 text-violet" /> <span className="truncate">{user.email}</span>
-      </span>
+      <Link to="/compte" className="inline-flex max-w-[14rem] items-center gap-1.5 truncate rounded-md border border-line px-3 py-1.5 hover:border-violet hover:text-white" title={`Mon compte · ${user.email}`}>
+        <User className="size-4 shrink-0 text-violet" /> <span className="hidden truncate md:inline">{user.email}</span>
+        <span className="md:hidden">Compte</span>
+      </Link>
       <button
         onClick={out}
         disabled={busy}
