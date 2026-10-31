@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { AuthError, acceptInvite, handleAuthCallback, login, requestPasswordRecovery, signup, updateUser } from '@netlify/identity'
+import { AuthError, acceptInvite, getUser, handleAuthCallback, login, refreshSession, requestPasswordRecovery, signup, updateUser } from '@netlify/identity'
 import { Loader2, LogIn } from 'lucide-react'
 
 import { NeonLogo } from '@/components/Maily'
@@ -33,6 +33,24 @@ function message(err: unknown): string {
   return 'Opération impossible pour le moment. Réessaie dans un instant.'
 }
 
+// The access token lasts about an hour; the refresh token kept by the browser
+// lasts much longer. Coming back later, the server only sees an expired token
+// and sends us here: renew it silently instead of asking for the password again.
+// Tried once per 30 s so a refusal can never loop.
+async function restoreSession() {
+  try {
+    const last = Number(sessionStorage.getItem('neon-restore') ?? 0)
+    if (Date.now() - last < 30_000) return
+    sessionStorage.setItem('neon-restore', String(Date.now()))
+  } catch {
+    return
+  }
+  const user = await getUser().catch(() => null)
+  if (!user) return
+  await refreshSession().catch(() => null)
+  window.location.replace('/')
+}
+
 const field =
   'w-full rounded-md border border-line bg-void px-3 py-2.5 text-base text-white placeholder:text-mute focus:border-cyan focus:outline-none lg:text-sm'
 
@@ -48,8 +66,11 @@ function Connexion() {
   // Links in e-mails (confirmation, recovery, invitation) land here with a token in the URL hash.
   useEffect(() => {
     handleAuthCallback()
-      .then((res) => {
-        if (!res) return
+      .then(async (res) => {
+        if (!res) {
+          await restoreSession()
+          return
+        }
         if (res.type === 'recovery') {
           setMode('reset')
           setInfo('Choisis ton nouveau mot de passe.')
@@ -125,7 +146,7 @@ function Connexion() {
           {needsEmail && (
             <label className="block text-sm">
               <span className="mb-1 block text-mute">Adresse e-mail</span>
-              <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className={field} />
+              <input type="email" name="email" id="email" required autoComplete="username" autoCapitalize="none" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} className={field} />
             </label>
           )}
           {needsPassword && (
@@ -133,6 +154,8 @@ function Connexion() {
               <span className="mb-1 block text-mute">{mode === 'login' ? 'Mot de passe' : `Mot de passe (${MIN_PASSWORD} caractères minimum)`}</span>
               <input
                 type="password"
+                name="password"
+                id="password"
                 required
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 value={password}
