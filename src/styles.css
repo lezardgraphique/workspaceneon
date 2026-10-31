@@ -172,3 +172,15 @@ body {
 .maily-md code { font-family: var(--font-mono); font-size: 0.85em; background: rgb(255 255 255 / 0.07); padding: 1px 4px; border-radius: 4px; }
 .maily-md pre { background: var(--color-void); padding: 8px; border-radius: 8px; overflow-x: auto; }
 .maily-md strong { color: #fff; }
+
+/* Sign-in illustration: floating chips, switched off for reduced motion */
+@keyframes auth-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+.auth-float { animation: auth-float 5s ease-in-out infinite; }
+.auth-float-2 { animation: auth-float 6.5s ease-in-out infinite 0.8s; }
+.auth-float-3 { animation: auth-float 5.6s ease-in-out infinite 1.6s; }
+@media (prefers-reduced-motion: reduce) {
+  .auth-float, .auth-float-2, .auth-float-3, .maily-bob, .maily-wing-l, .maily-wing-r, .maily-trail { animation: none; }
+}

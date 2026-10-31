@@ -4,7 +4,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { AuthError, acceptInvite, getUser, handleAuthCallback, login, refreshSession, requestPasswordRecovery, signup, updateUser } from '@netlify/identity'
 import { Loader2, LogIn } from 'lucide-react'
 
-import { NeonLogo } from '@/components/Maily'
+import { AuthIllustration } from '@/components/AuthIllustration'
+import { Maily, NeonLogo } from '@/components/Maily'
 import { getSession } from '@/server/session.functions'
 
 export const Route = createFileRoute('/connexion')({
@@ -129,81 +130,93 @@ function Connexion() {
   }
 
   return (
-    <div className="neon-grid flex min-h-screen items-center justify-center px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 flex items-center justify-center gap-3">
-          <NeonLogo size={34} />
-          <span className="font-display text-lg font-semibold tracking-wide">
-            Neon Sandbox <span className="text-pink">Pro</span>
-          </span>
+    <div className="neon-grid min-h-screen overflow-x-hidden">
+      <div className="mx-auto grid min-h-screen max-w-6xl items-center gap-12 px-4 py-10 lg:grid-cols-[1fr_1.1fr] lg:gap-16 lg:px-8">
+        <div className="mx-auto w-full max-w-sm">
+          <div className="mb-6 flex items-center justify-center gap-3">
+            <NeonLogo size={34} />
+            <span className="font-display text-lg font-semibold tracking-wide">
+              Neon Sandbox <span className="text-pink">Pro</span>
+            </span>
+          </div>
+          <div className="mb-5 flex justify-center lg:hidden" aria-hidden="true">
+            <Maily size={96} mood="happy" />
+          </div>
+
+          <form onSubmit={submit} className="space-y-4 rounded-xl border border-line bg-panel/80 p-6 backdrop-blur">
+            <h1 className="font-display text-xl font-bold">{title}</h1>
+
+            {needsEmail && (
+              <label className="block text-sm">
+                <span className="mb-1 block text-mute">Adresse e-mail</span>
+                <input type="email" name="email" id="email" required autoComplete="username" autoCapitalize="none" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} className={field} />
+              </label>
+            )}
+            {needsPassword && (
+              <label className="block text-sm">
+                <span className="mb-1 block text-mute">{mode === 'login' ? 'Mot de passe' : `Mot de passe (${MIN_PASSWORD} caractères minimum)`}</span>
+                <input
+                  type="password"
+                  name="password"
+                  id="password"
+                  required
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={field}
+                />
+              </label>
+            )}
+
+            {error && (
+              <p role="alert" className="rounded-md border border-pink/40 bg-pink/10 px-3 py-2 text-sm text-pink">
+                {error}
+              </p>
+            )}
+            {info && (
+              <p role="status" className="rounded-md border border-cyan/40 bg-cyan/10 px-3 py-2 text-sm text-cyan">
+                {info}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-pink px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60"
+            >
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <LogIn className="size-4" />}
+              {{ login: 'Se connecter', signup: 'Créer mon compte', forgot: 'Envoyer le lien', reset: 'Enregistrer', invite: 'Créer mon compte' }[mode]}
+            </button>
+
+            <div className="flex flex-wrap justify-between gap-2 text-sm text-mute">
+              {mode === 'login' ? (
+                <>
+                  <button type="button" onClick={() => go('signup')} className="hover:text-white">
+                    Créer un compte
+                  </button>
+                  <button type="button" onClick={() => go('forgot')} className="hover:text-white">
+                    Mot de passe oublié ?
+                  </button>
+                </>
+              ) : (
+                (mode === 'signup' || mode === 'forgot') && (
+                  <button type="button" onClick={() => go('login')} className="hover:text-white">
+                    ← Retour à la connexion
+                  </button>
+                )
+              )}
+            </div>
+          </form>
+
+          <p className="mt-4 text-center text-xs text-mute">Chaque compte a son propre espace : personne d'autre ne voit tes modules ni tes fichiers.</p>
         </div>
 
-        <form onSubmit={submit} className="space-y-4 rounded-xl border border-line bg-panel/80 p-6 backdrop-blur">
-          <h1 className="font-display text-xl font-bold">{title}</h1>
-
-          {needsEmail && (
-            <label className="block text-sm">
-              <span className="mb-1 block text-mute">Adresse e-mail</span>
-              <input type="email" name="email" id="email" required autoComplete="username" autoCapitalize="none" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} className={field} />
-            </label>
-          )}
-          {needsPassword && (
-            <label className="block text-sm">
-              <span className="mb-1 block text-mute">{mode === 'login' ? 'Mot de passe' : `Mot de passe (${MIN_PASSWORD} caractères minimum)`}</span>
-              <input
-                type="password"
-                name="password"
-                id="password"
-                required
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={field}
-              />
-            </label>
-          )}
-
-          {error && (
-            <p role="alert" className="rounded-md border border-pink/40 bg-pink/10 px-3 py-2 text-sm text-pink">
-              {error}
-            </p>
-          )}
-          {info && (
-            <p role="status" className="rounded-md border border-cyan/40 bg-cyan/10 px-3 py-2 text-sm text-cyan">
-              {info}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-pink px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60"
-          >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <LogIn className="size-4" />}
-            {{ login: 'Se connecter', signup: 'Créer mon compte', forgot: 'Envoyer le lien', reset: 'Enregistrer', invite: 'Créer mon compte' }[mode]}
-          </button>
-
-          <div className="flex flex-wrap justify-between gap-2 text-sm text-mute">
-            {mode === 'login' ? (
-              <>
-                <button type="button" onClick={() => go('signup')} className="hover:text-white">
-                  Créer un compte
-                </button>
-                <button type="button" onClick={() => go('forgot')} className="hover:text-white">
-                  Mot de passe oublié ?
-                </button>
-              </>
-            ) : (
-              (mode === 'signup' || mode === 'forgot') && (
-                <button type="button" onClick={() => go('login')} className="hover:text-white">
-                  ← Retour à la connexion
-                </button>
-              )
-            )}
-          </div>
-        </form>
-
-        <p className="mt-4 text-center text-xs text-mute">Chaque compte a son propre espace : personne d'autre ne voit tes modules ni tes fichiers.</p>
+        <div className="hidden pb-12 lg:block">
+          <h2 className="mb-10 max-w-md font-display text-3xl leading-tight font-bold">
+            Tes modules, <span className="neon-text">à la vitesse de la lumière.</span>
+          </h2>
+          <AuthIllustration />
+        </div>
       </div>
     </div>
   )
