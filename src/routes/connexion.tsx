@@ -60,6 +60,14 @@ function Connexion() {
   const [info, setInfo] = useState('')
   const [inviteToken, setInviteToken] = useState('')
 
+  // The sign-in screen never scrolls: lock the page behind it.
+  useEffect(() => {
+    const els = [document.documentElement, document.body]
+    const prev = els.map((e) => e.style.overflow)
+    els.forEach((e) => (e.style.overflow = 'hidden'))
+    return () => els.forEach((e, i) => (e.style.overflow = prev[i]))
+  }, [])
+
   // Links in e-mails (confirmation, recovery, invitation) land here with a token in the URL hash.
   useEffect(() => {
     handleAuthCallback()
@@ -130,16 +138,16 @@ function Connexion() {
   }
 
   return (
-    <div className="neon-grid relative h-dvh overflow-x-hidden overflow-y-auto">
+    <div className="neon-grid fixed inset-0 overflow-hidden overscroll-none">
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
         <span className="auth-tile left-[6%] top-[8%] size-14" style={{ '--tile': '#ff007f', '--r': '-8deg' } as React.CSSProperties} />
         <span className="auth-tile right-[8%] top-[14%] h-10 w-20" style={{ '--tile': '#00e5ff', '--r': '6deg', animationDelay: '1.2s' } as React.CSSProperties} />
         <span className="auth-tile bottom-[10%] left-[10%] h-12 w-24" style={{ '--tile': '#bc13fe', '--r': '5deg', animationDelay: '2.4s' } as React.CSSProperties} />
         <span className="auth-tile bottom-[16%] right-[6%] size-16" style={{ '--tile': '#ff007f', '--r': '-4deg', animationDelay: '0.6s' } as React.CSSProperties} />
       </div>
-      <div className="relative mx-auto grid min-h-full max-w-6xl items-center gap-6 px-4 py-4 lg:grid-cols-[1fr_1.1fr] lg:gap-16 lg:px-8">
+      <div className="relative mx-auto grid h-full max-w-6xl items-center gap-6 px-4 py-4 lg:grid-cols-[1fr_1.1fr] lg:gap-16 lg:px-8">
         <div className="auth-rise mx-auto w-full max-w-sm">
-          <div className="mb-4 flex items-center justify-center gap-3">
+          <div className="mb-3 flex items-center justify-center gap-3 [@media(max-height:600px)]:hidden">
             <NeonLogo size={34} />
             <span className="font-display text-lg font-semibold tracking-wide">
               Neon Sandbox <span className="text-pink">Pro</span>
@@ -149,7 +157,7 @@ function Connexion() {
             <Maily size={96} mood="happy" />
           </div>
 
-          <form onSubmit={submit} className="auth-card auth-rise auth-rise-2 space-y-3 p-5 sm:space-y-4 sm:p-6">
+          <form onSubmit={submit} className="auth-card auth-rise auth-rise-2 space-y-3 p-5 [@media(max-height:600px)]:space-y-2 [@media(max-height:600px)]:p-4 sm:space-y-4 sm:p-6">
             <h1 className="font-display text-xl font-bold">{title}</h1>
 
             {needsEmail && (
