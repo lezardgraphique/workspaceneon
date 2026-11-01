@@ -36,4 +36,7 @@ Réglages Netlify à connaître (tableau de bord, *Identity*) : **Registration**
 
 ## Garder le projet à jour
 
-Lance `pnpm audit --prod` avant chaque mise en production et mets à jour les dépendances signalées.
+- Dependabot (`.github/dependabot.yml`) ouvre chaque lundi une demande de mise à jour groupée des dépendances.
+- Le workflow `.github/workflows/securite.yml` lance `pnpm audit --audit-level=high`, le typage et le build à chaque envoi, sur chaque demande de fusion et chaque lundi ; il échoue dès qu'une faille haute ou critique est connue.
+- Les alertes restantes de gravité faible viennent d'outils de développement (`@netlify/dev`) sans correctif publié ; elles ne sont pas embarquées dans l'application en ligne.
+- Avant une mise en production, lance aussi `pnpm audit` à la main.
