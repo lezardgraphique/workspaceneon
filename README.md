@@ -1,5 +1,7 @@
 # Neon Sandbox Pro — Web
 
+[![Soutenir sur Ko-fi](https://img.shields.io/badge/Ko--fi-Soutenir-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/thomaslzg75)
+
 Neon Sandbox Pro is an email module editor built for HubSpot (HuBL). This is the web version of the Kotlin Multiplatform app (workspace_neon), and it runs in any browser, on desktop or mobile.
 
 ## Features
