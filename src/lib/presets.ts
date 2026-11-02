@@ -1,5 +1,5 @@
 import { createBlock, createSection } from './types'
-import type { Block, ButtonBlock, ImageBlock, Section, TextBlock } from './types'
+import type { Block, ButtonBlock, ImageBlock, RawBlock, Section, TextBlock } from './types'
 
 // Ready-made blocks offered in Structure > Ajouter. They are plain cards made of
 // the usual blocks, so they stay editable, exportable to HuBL and parsed back.
@@ -18,23 +18,29 @@ function card(columns: 1 | 2 | 3, cells: Block[][], patch: Partial<Section> = {}
   return { ...createSection(columns, true), ...patch, cells }
 }
 
+// Round icons are PNG files served by the app (e-mail clients do not show SVG).
+const ICONS = 'https://workspaceneon.netlify.app/social'
 const NETWORKS = [
-  { label: 'LinkedIn', bg: '#0a66c2', href: 'https://www.linkedin.com/' },
-  { label: 'Facebook', bg: '#1877f2', href: 'https://www.facebook.com/' },
-  { label: 'Instagram', bg: '#c13584', href: 'https://www.instagram.com/' },
+  { name: 'LinkedIn', file: 'linkedin', href: 'https://www.linkedin.com/' },
+  { name: 'Facebook', file: 'facebook', href: 'https://www.facebook.com/' },
+  { name: 'Instagram', file: 'instagram', href: 'https://www.instagram.com/' },
+  { name: 'YouTube', file: 'youtube', href: 'https://www.youtube.com/' },
 ]
+
+// The usual social bar: a centred row of round icons, each one a link. Table
+// layout so it holds in Outlook; the links are edited in the code.
+const socialBar = () =>
+  `<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto"><tbody><tr>${NETWORKS.map(
+    (n) =>
+      `<td style="padding:0 6px"><a href="${n.href}" target="_blank" rel="noopener noreferrer"><img src="${ICONS}/${n.file}.png" width="36" height="36" alt="${n.name}" style="display:block;border:0;border-radius:50%"></a></td>`,
+  ).join('')}</tr></tbody></table>`
 
 export const PRESETS: Preset[] = [
   {
     id: 'social',
     label: 'Social',
-    hint: 'Trois boutons vers tes réseaux',
-    build: () =>
-      card(
-        3,
-        NETWORKS.map((n) => [button({ label: n.label, href: n.href, bg: n.bg, align: 'center', radius: 6 })]),
-        { behavior: 'side', bg: '#ffffff', padding: 8, radius: 0 },
-      ),
+    hint: 'Rangée d’icônes rondes vers tes réseaux',
+    build: () => card(1, [[{ ...(createBlock('raw') as RawBlock), html: socialBar() }]], { bg: '#ffffff', padding: 12, radius: 0 }),
   },
   {
     id: 'video',
