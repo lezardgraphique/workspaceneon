@@ -93,6 +93,17 @@ body {
   opacity: 0;
 }
 
+/* Touch drag (long press) in the preview */
+.neon-dragging {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.neon-node[data-dragging='true'] {
+  opacity: 0.35;
+  outline: 2px dashed var(--color-pink);
+}
+
 /* In-place editing of headings, texts and button labels */
 .neon-editable {
   min-height: 1em;

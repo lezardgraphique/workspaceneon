@@ -80,6 +80,34 @@ export function moveNode(tree: ModuleTree, id: string, dir: -1 | 1): ModuleTree 
   })
 }
 
+export type MoveTarget = { before: string } | { after: string } | { section: string; cell: number }
+
+// Deepest nesting a module accepts (see sanitize-tree.ts): top-level = level 0.
+const MAX_LEVEL = 4
+const sectionHeight = (b: Block): number => (b.type === 'section' ? 1 + Math.max(0, ...b.cells.flat().map(sectionHeight)) : 0)
+
+// Move a block (or a whole section) next to another block, or into a cell, at
+// any depth. Returns the tree unchanged when the move is impossible: onto
+// itself, inside its own content, or deeper than a module can nest.
+export function moveNodeTo(tree: ModuleTree, id: string, target: MoveTarget): ModuleTree {
+  const node = findNode(tree, id)
+  if (!node) return tree
+  const anchor = 'before' in target ? target.before : 'after' in target ? target.after : target.section
+  if (anchor === id || findPath(tree, anchor).includes(id)) return tree
+  // Level the moved block would sit at = number of sections around the spot.
+  const around = 'section' in target ? findPath(tree, target.section).length : findPath(tree, anchor).length - 1
+  if (node.type === 'section' && around + sectionHeight(node) - 1 > MAX_LEVEL) return tree
+  const removed = removeNode(tree, id)
+  if ('section' in target) return insertInCell(removed, target.section, target.cell, node)
+  return mapLists(removed, (list) => {
+    const i = list.findIndex((b) => b.id === anchor)
+    if (i < 0) return list
+    const copy = [...list]
+    copy.splice('before' in target ? i : i + 1, 0, node)
+    return copy
+  })
+}
+
 function cloneWithIds<T extends Block>(b: T): T {
   if (b.type === 'section') {
     return { ...b, id: uid(), cells: b.cells.map((c) => c.map(cloneWithIds)) } as T

@@ -45,7 +45,7 @@ import { interpretTree, previewScope } from '@/lib/hubl-render'
 import type { SampleContact } from '@/lib/hubl-render'
 import { KOFI_URL } from '@/lib/links'
 import type { FieldSpec } from '@/lib/module-fields'
-import { findNode, findPath, insertInCell, moveNode, removeNode, replaceNode, updateNode } from '@/lib/tree'
+import { findNode, findPath, insertInCell, moveNode, moveNodeTo, removeNode, replaceNode, updateNode } from '@/lib/tree'
 import { BLOCK_LABELS, createBlock } from '@/lib/types'
 import type { ImageBlock, ModuleTree, Section } from '@/lib/types'
 import { getModule, saveModule } from '@/server/modules.functions'
@@ -474,6 +474,7 @@ function Editor() {
                 // Loop clones (id~k) are display-only: edit the source block instead.
                 onEdit={(id, patch) => !id.includes('~') && commit(updateNode(tree, id, patch))}
                 onDropImage={dropImage}
+                onMove={(id, target) => commit(moveNodeTo(tree, id, target), id)}
                 mobile={mobile}
               />
             </div>
