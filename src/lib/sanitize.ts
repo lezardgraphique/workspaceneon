@@ -86,6 +86,10 @@ const textToken = (t: string) => (/<[a-zA-Z/!?]/.test(t) ? t.replace(/&/g, '&amp
 // In tag position (between attributes) a token must not be able to end the tag or open a value.
 const tagTokenOk = (t: string) => !/[<>"'`]/.test(t)
 
+// A DOM round trip writes the comparison operators of HuBL ({% if n > 0 %}) as
+// &gt; / &lt;, which HubSpot would not understand: put them back inside the tag.
+const unescapeOperators = (t: string) => t.replace(/&gt;/g, '>').replace(/&lt;/g, '<')
+
 const cache = new Map<string, string>()
 
 export function sanitizeHtml(html: string): string {
@@ -97,7 +101,7 @@ export function sanitizeHtml(html: string): string {
   const source = html
     .replace(/[]/g, '')
     .replace(/\{#[\s\S]*?#\}/g, '')
-    .replace(HUBL, (t) => `${PH_OPEN}${tokens.push(t) - 1}${PH_CLOSE}`)
+    .replace(HUBL, (t) => `${PH_OPEN}${tokens.push(unescapeOperators(t)) - 1}${PH_CLOSE}`)
   const back = (s: string, fn: (t: string) => string) => s.replace(PH, (_m, i: string) => fn(tokens[Number(i)]))
 
   let out = ''

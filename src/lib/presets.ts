@@ -60,7 +60,40 @@ export const PRESETS: Preset[] = [
   {
     id: 'countdown',
     label: 'Compte à rebours',
-    hint: 'Image animée qui décompte à l’ouverture (champ date)',
+    hint: 'Jours restants calculés à l’envoi + date de fin (fiable partout)',
+    build: () => {
+      // Pure HTML + HuBL: HubSpot computes the days left when the e-mail is sent,
+      // so nothing depends on an image server, on image blocking or on Apple's
+      // image pre-loading. The end date written under it is always exact.
+      const c = (f: string) => `{{ module.${f}.color }}`
+      const num = `font-size:44px;line-height:48px;font-weight:700;color:${c('couleur_chiffres')}`
+      const lab = `font-size:13px;line-height:18px;color:${c('couleur_texte')}`
+      const cell = `padding:14px 22px;background:${c('couleur_cases')};border-radius:{{ module.rayon|int }}px`
+      const tile = (n: string, l: string) => `<td align="center" style="${cell}"><div style="${num}">${n}</div><div style="${lab}">${l}</div></td>`
+      const table = (cells: string) => `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto"><tbody><tr>${cells}</tr></tbody></table>`
+      const html = [
+        '{% set reste = module.date_fin - local_dt|unixtimestamp %}',
+        '{% if reste > 0 %}',
+        '{% set jours = (reste / 86400000)|int %}',
+        '{% set heures = ((reste % 86400000) / 3600000)|int %}',
+        '<div style="text-align:center;font-family:Arial,Helvetica,sans-serif">',
+        `{% if module.texte_avant %}<p style="margin:0 0 10px;font-size:16px;line-height:22px;color:${c('couleur_texte')}">{{ module.texte_avant }}</p>{% endif %}`,
+        // Whole tables inside the {% if %}: a condition between two cells would be
+        // moved out of the table by the HTML parser.
+        `{% if module.afficher_heures %}${table(tile('{{ jours }}', '{% if jours > 1 %}jours{% else %}jour{% endif %}') + '<td width="12" style="width:12px"></td>' + tile('{{ heures }}', '{% if heures > 1 %}heures{% else %}heure{% endif %}'))}{% else %}${table(tile('{{ jours }}', '{% if jours > 1 %}jours{% else %}jour{% endif %}'))}{% endif %}`,
+        `{% if module.afficher_date_fin %}<p style="margin:10px 0 0;font-size:13px;line-height:18px;color:${c('couleur_texte')}">Jusqu'au {{ module.date_fin|format_datetime("d MMMM yyyy 'à' HH:mm", "Europe/Paris", "fr") }}</p>{% endif %}`,
+        '</div>',
+        '{% else %}',
+        `<p style="margin:0;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:22px;font-weight:700;color:${c('couleur_chiffres')}">{{ module.message_fin }}</p>`,
+        '{% endif %}',
+      ].join('\n')
+      return card(1, [[{ ...(createBlock('raw') as RawBlock), html }]], { bg: '#ffffff', padding: 16, radius: 0 })
+    },
+  },
+  {
+    id: 'countdown-gif',
+    label: 'Compte à rebours animé (image)',
+    hint: 'Image qui défile 60 s à l’ouverture (dépend de la messagerie)',
     build: () => {
       // The image is drawn by the app (/countdown.gif) at the moment the e-mail
       // is opened and ticks every second. Every setting is a {{ module.x }}

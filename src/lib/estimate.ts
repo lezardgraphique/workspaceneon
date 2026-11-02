@@ -113,7 +113,7 @@ function buttonEstimate(tree: ModuleTree, b: ButtonBlock, base: number): Estimat
   const items = all(tree)
   const buttons = items.filter((x) => x.b.type === 'button')
   const top = items.find((x) => x.b.id === b.id)?.top ?? 0
-  const hasCountdown = items.some((x) => x.b.type === 'raw' && /countdown\.gif/.test(x.b.html))
+  const hasCountdown = items.some((x) => x.b.type === 'raw' && /countdown\.gif|local_dt\s*\|\s*unixtimestamp/.test(x.b.html))
   const parts: { f: Factor; w: number }[] = []
   const tips: string[] = []
   const add = (label: string, effect: 1 | 0 | -1, w: number, tip?: string) => {
@@ -181,7 +181,7 @@ function headingEstimate(tree: ModuleTree, b: HeadingBlock, base: number): Estim
   return build('open', 'Ouverture estimée si repris comme objet', base, parts, tips, first ? 'Le taux d’ouverture dépend de l’objet et du pré-en-tête : reprends ce titre comme objet.' : 'Ce titre n’est pas le premier du module : l’estimation vaut s’il sert d’objet.')
 }
 
-function countdownEstimate(tree: ModuleTree, id: string, base: number): Estimate {
+function countdownEstimate(tree: ModuleTree, id: string, base: number, animated: boolean): Estimate {
   const items = all(tree)
   const parts: { f: Factor; w: number }[] = [{ f: { label: 'Urgence visible (compte à rebours)', effect: 1 }, w: 1.12 }]
   const tips: string[] = []
@@ -212,8 +212,13 @@ function countdownEstimate(tree: ModuleTree, id: string, base: number): Estimate
   const nextButton = items.slice(idx + 1).some((x) => x.b.type === 'button')
   if (nextButton) add('Bouton juste après', 1, 1.05)
   else if (!items.some((x) => x.b.type === 'button')) add('Aucun bouton à côté', -1, 0.75, 'Ajoute un bouton juste sous le compte à rebours : c’est lui qui transforme l’urgence en clic.')
-  tips.push('Passe les chiffres en rouge sur les dernières heures (réglage « Seuil d’urgence ») pour renforcer l’effet.')
-  tips.push('Le compte à rebours défile 60 secondes à l’ouverture puis se fige : garde-le comme repère visuel, pas comme seule raison d’agir.')
+  if (animated) {
+    tips.push('Passe les chiffres en rouge sur les dernières heures (réglage « Seuil d’urgence ») pour renforcer l’effet.')
+    tips.push('Le compte à rebours défile 60 secondes à l’ouverture puis se fige, et Outlook n’en montre que la première image : garde-le comme repère visuel, pas comme seule raison d’agir.')
+  } else {
+    tips.push('Les jours sont calculés à l’envoi : un message ouvert plus tard affiche un nombre un peu ancien. La date de fin écrite dessous reste toujours exacte, garde-la affichée.')
+    tips.push('Envoie un second rappel dans les dernières 24 h : le nombre de jours y sera frais et l’urgence réelle.')
+  }
   return build('click', 'Clic estimé du module avec ce compte à rebours', base, parts, tips, 'Effet indicatif : les tests publiés sur les comptes à rebours restent peu concluants et varient selon la cible.')
 }
 
@@ -248,7 +253,7 @@ export function estimateBlock(tree: ModuleTree, node: Block, sector: Sector = DE
     case 'image':
       return imageEstimate(tree, node, s.click)
     case 'raw':
-      if (/countdown\.gif/.test(node.html)) return countdownEstimate(tree, node.id, s.click)
+      if (/countdown\.gif|local_dt\s*\|\s*unixtimestamp/.test(node.html)) return countdownEstimate(tree, node.id, s.click, /countdown\.gif/.test(node.html))
       if (/\/social\//.test(node.html)) return socialEstimate(s.click)
       return null
     default:
@@ -269,7 +274,7 @@ export function estimateModule(tree: ModuleTree, sector: Sector = DEFAULT_SECTOR
   } else {
     const per = buttons.map((b) => buttonEstimate(tree, b, s.click))
     const best = per.reduce((a, b) => (b.value > a.value ? b : a))
-    const hasCountdown = items.some((b) => b.type === 'raw' && /countdown\.gif/.test(b.html))
+    const hasCountdown = items.some((b) => b.type === 'raw' && /countdown\.gif|local_dt\s*\|\s*unixtimestamp/.test(b.html))
     click = { ...best, title: 'Clic estimé du module', factors: best.factors, tips: [...new Set([...per.flatMap((e) => e.tips)])].slice(0, 6), note: hasCountdown ? 'Compte à rebours inclus dans l’estimation (effet indicatif).' : undefined }
   }
 

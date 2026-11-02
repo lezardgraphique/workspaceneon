@@ -75,6 +75,24 @@ const FILTERS: Record<string, (v: unknown, ...a: unknown[]) => unknown> = {
     return (Number.isNaN(d.getTime()) ? new Date() : d).toLocaleDateString('fr-FR')
   },
   format_date: (v) => FILTERS.datetimeformat(v),
+  // HubSpot: a datetime to milliseconds since 1970 (local_dt is already that here).
+  unixtimestamp: (v) => (typeof v === 'number' ? v : Date.parse(toStr(v)) || Date.now()),
+  // format_datetime(pattern, timezone, locale) with the usual Java letters.
+  format_datetime: (v, pattern = 'd MMMM yyyy', tz = 'Europe/Paris', locale = 'fr') => {
+    const ms = typeof v === 'number' ? v : Date.parse(toStr(v))
+    if (!Number.isFinite(ms)) return ''
+    try {
+      const parts = new Intl.DateTimeFormat(toStr(locale) || 'fr', { timeZone: toStr(tz) || 'Europe/Paris', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(ms)
+      const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+      const short = new Intl.DateTimeFormat(toStr(locale) || 'fr', { timeZone: toStr(tz) || 'Europe/Paris', month: 'short' }).format(ms)
+      const month2 = new Intl.DateTimeFormat('en', { timeZone: toStr(tz) || 'Europe/Paris', month: '2-digit' }).format(ms)
+      return toStr(pattern).replace(/'([^']*)'|yyyy|MMMM|MMM|MM|dd|d|HH|mm/g, (m, lit) =>
+        lit !== undefined ? lit : m === 'yyyy' ? get('year') : m === 'MMMM' ? get('month') : m === 'MMM' ? short : m === 'MM' ? month2 : m === 'dd' ? get('day').padStart(2, '0') : m === 'd' ? get('day') : m === 'HH' ? get('hour') : get('minute'),
+      )
+    } catch {
+      return ''
+    }
+  },
 }
 
 const FUNCTIONS: Record<string, (...a: unknown[]) => unknown> = {
@@ -335,6 +353,7 @@ export function compileExpr(src: string): Fn {
           return () => null
       }
       const name = t.v
+      if (name === 'local_dt') return (s) => (name in s ? s[name] : Date.now())
       return (s) => (name in s ? s[name] : name in FUNCTIONS ? FUNCTIONS[name] : undefined)
     }
     if (t.v === '(') {

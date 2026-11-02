@@ -89,6 +89,7 @@ function inferType(name: string, u: Use): ExtraFieldType {
   if (paths.length) return 'group'
   if (u.ctx.some((c) => /countdown\.gif\?to=$/i.test(c))) return 'datetime'
   if (choiceOf(u)) return 'choice'
+  if (u.filters.has('unixtimestamp') || u.filters.has('format_datetime')) return 'datetime' // a deadline compared with now, or shown with its time
   if ([...u.filters].some((f) => DATE_FILTERS.has(f))) return 'date'
   if (!u.out && u.cond) return 'boolean'
   if ([...u.filters].some((f) => NUMBER_FILTERS.has(f)) || /^(nombre|count|qty|quantite|prix|price|montant|amount|number)\b|_(count|price|prix|nombre|montant)$/.test(name)) return 'number'
@@ -136,14 +137,16 @@ export function defaultFor(f: Pick<ExtraField, 'name' | 'type' | 'children' | 'r
             : /^(langue|lang)$/i.test(f.name)
               ? 'fr'
               : /^message_fin/i.test(f.name)
-                ? "C'est parti !"
-                : label
+                ? "L'offre est terminée"
+                : /^texte_avant/i.test(f.name)
+                  ? 'Plus que'
+                  : label
     case 'richtext':
       return `<p>${label}</p>`
     case 'number':
       return numberFor(f.name)
     case 'boolean':
-      return !/(separateur|bordure|border)/i.test(f.name)
+      return !/(separateur|bordure|border|heures|minutes)/i.test(f.name)
     case 'link':
       return LINK_DEFAULT
     case 'image':
@@ -179,6 +182,9 @@ const KNOWN_LABELS: Record<string, string> = {
   seuil_urgence_heures: 'Seuil d’urgence en heures (0 = aucun)',
   couleur_alerte: 'Couleur d’urgence',
   message_fin: 'Message affiché à la fin',
+  texte_avant: 'Texte au-dessus du compte à rebours',
+  afficher_heures: 'Afficher aussi les heures (valeur au moment de l’envoi)',
+  afficher_date_fin: 'Afficher la date de fin',
 }
 
 function build(name: string, u: Use, children?: ExtraField[], repeater?: boolean): ExtraField {
