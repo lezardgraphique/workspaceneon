@@ -31,12 +31,12 @@ function Library() {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
 
-  const start = async (key: string) => {
+  const start = async (key: string, withMaily = false) => {
     const starter = STARTERS.find((s) => s.key === key)!
     setBusy(key)
     try {
       const mod = await createModule({ data: { name: starter.key === 'blank' ? 'Nouveau module' : starter.name, tree: starter.build() } })
-      await navigate({ to: '/editor/$moduleId', params: { moduleId: mod.id } })
+      await navigate({ to: '/editor/$moduleId', params: { moduleId: mod.id }, search: withMaily ? { maily: 1 } : {} })
     } finally {
       setBusy(null)
     }
@@ -88,6 +88,14 @@ function Library() {
                 {busy === 'newsletter' ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
                 Créer un module
               </button>
+              <button
+                onClick={() => start('blank', true)}
+                disabled={!!busy}
+                className="inline-flex items-center gap-2 rounded-lg border border-cyan/60 px-5 py-3 font-display font-semibold text-cyan transition hover:bg-cyan/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan disabled:opacity-60"
+              >
+                {busy === 'blank' ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                Parler à Maily
+              </button>
               {modules.length > 0 && (
                 <a href="#mes-modules" className="inline-flex items-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold hover:border-cyan">
                   Mes modules ({modules.length})
@@ -98,10 +106,18 @@ function Library() {
           <div className="relative mx-auto flex aspect-square w-full max-w-sm items-center justify-center">
             <div className="absolute inset-6 rounded-full bg-violet/25 blur-3xl" />
             <div className="absolute inset-0 rounded-[28%] border border-cyan/20" />
-            <Maily size={260} mood="happy" />
-            <div className="absolute -bottom-2 left-1/2 w-max -translate-x-1/2 rounded-full border border-line bg-night/90 px-4 py-1.5 text-sm">
-              Salut, moi c'est <span className="font-semibold text-cyan">Maily</span> 👋
-            </div>
+            <button
+              type="button"
+              onClick={() => start('blank', true)}
+              disabled={!!busy}
+              aria-label="Parler à Maily : crée un module vide et ouvre son chat"
+              className="relative rounded-[28%] transition hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan active:scale-95 disabled:opacity-60 motion-reduce:transition-none motion-reduce:hover:scale-100"
+            >
+              <Maily size={260} mood="happy" decorative />
+            </button>
+            <p className="absolute -bottom-2 left-1/2 w-max max-w-full -translate-x-1/2 rounded-full border border-line bg-night/90 px-4 py-1.5 text-sm">
+              Salut, moi c'est <span className="font-semibold text-cyan">Maily</span> 👋 <span className="text-mute">Touche-moi pour discuter</span>
+            </p>
           </div>
         </section>
 
@@ -143,7 +159,7 @@ function Library() {
           <h2 className="font-display text-2xl font-semibold">Mes modules</h2>
           {modules.length === 0 ? (
             <div className="mt-5 flex items-center gap-4 rounded-xl border border-dashed border-line p-6 text-mute">
-              <Maily size={56} mood="thinking" />
+              <Maily size={56} mood="thinking" decorative />
               <p>Aucun module pour l'instant. Choisis un modèle ci-dessus pour commencer.</p>
             </div>
           ) : (

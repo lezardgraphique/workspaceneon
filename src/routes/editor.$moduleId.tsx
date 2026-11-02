@@ -54,6 +54,8 @@ import { getModule, saveModule } from '@/server/modules.functions'
 const MailyPanel = lazy(() => import('@/components/editor/MailyPanel').then((m) => ({ default: m.MailyPanel })))
 
 export const Route = createFileRoute('/editor/$moduleId')({
+  // ?maily=1: open straight on Maily's chat (the "Parler à Maily" button of the home page).
+  validateSearch: (search: Record<string, unknown>): { maily?: 1 } => (search.maily === 1 || search.maily === '1' ? { maily: 1 } : {}),
   loader: async ({ params }) => {
     const mod = await getModule({ data: { id: params.moduleId } }).catch(() => null)
     if (!mod) throw notFound()
@@ -83,6 +85,7 @@ const opensKeyboard = (el: EventTarget | null) =>
 
 function Editor() {
   const initial = Route.useLoaderData()
+  const openMaily = !!Route.useSearch().maily
   const [name, setName] = useState(initial.name)
   const [tree, setTree] = useState<ModuleTree>(initial.tree)
   const [code, setCode] = useState(() => treeToCode(initial.tree, initial.name))
@@ -95,9 +98,9 @@ function Editor() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [mobile, setMobile] = useState(false)
   const [contact, setContact] = useState<SampleContact>('known')
-  const [leftTab, setLeftTab] = useState<'structure' | 'fields' | 'maily'>('structure')
+  const [leftTab, setLeftTab] = useState<'structure' | 'fields' | 'maily'>(openMaily ? 'maily' : 'structure')
   const [rightTab, setRightTab] = useState<'inspector' | 'code'>('inspector')
-  const [pane, setPane] = useState<Pane>('preview')
+  const [pane, setPane] = useState<Pane>(openMaily ? 'maily' : 'preview')
   const [exporting, setExporting] = useState(false)
   const [testing, setTesting] = useState(false)
   const [save, setSave] = useState<SaveState>('saved')

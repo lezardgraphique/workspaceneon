@@ -27,11 +27,14 @@ export function Maily({
   mood = 'happy',
   size = 64,
   bob = true,
+  decorative = false,
   className = '',
 }: {
   mood?: MailyMood
   size?: number
   bob?: boolean
+  // Inside a labelled button or next to text that already says it: hidden from screen readers.
+  decorative?: boolean
   className?: string
 }) {
   // Several Maily can share a page; ids must be unique or a hidden one steals the gradient.
@@ -44,8 +47,9 @@ export function Maily({
       width={size}
       height={(size * 96) / 120}
       className={`${bob ? 'maily-bob' : ''} ${mood === 'thinking' ? 'maily-thinking' : ''} ${className}`}
-      role="img"
-      aria-label={`Maily (${mood === 'happy' ? 'contente' : mood === 'thinking' ? 'réfléchit' : 'succès'})`}
+      {...(decorative
+        ? { 'aria-hidden': true }
+        : { role: 'img', 'aria-label': `Maily (${mood === 'happy' ? 'contente' : mood === 'thinking' ? 'réfléchit' : 'succès'})` })}
     >
       <defs>
         <filter id={glow} x="-50%" y="-50%" width="200%" height="200%">
