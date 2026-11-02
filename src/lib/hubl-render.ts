@@ -602,7 +602,8 @@ export function previewScope(tree: ModuleTree, contact: SampleContact = 'known')
 // Tree preview
 // ---------------------------------------------------------------------------
 
-const STATEMENT = /^\s*(?:\{#[\s\S]*?#\}|\{%[\s\S]*?%\})\s*$/
+// One statement only: no `%}` / `#}` inside, so `{% if x %}Bonjour{% endif %}` is content, not logic.
+const STATEMENT = /^\s*(?:\{#(?:(?!#\})[\s\S])*#\}|\{%(?:(?!%\})[\s\S])*%\})\s*$/
 
 // A raw block that is a single {% … %} statement or {# … #} comment: the logic
 // around other blocks, not content.
@@ -610,7 +611,7 @@ export const isLogicBlock = (b: Block): boolean => b.type === 'raw' && STATEMENT
 
 function statementOf(b: Block): { name: string; rest: string } | null {
   if (b.type !== 'raw') return null
-  const m = /^\s*\{%-?\s*([\s\S]*?)\s*-?%\}\s*$/.exec(b.html)
+  const m = /^\s*\{%-?\s*((?:(?!%\})[\s\S])*?)\s*-?%\}\s*$/.exec(b.html)
   if (!m) return null
   const name = m[1].split(/\s+/)[0]
   return { name, rest: m[1].slice(name.length).trim() }
