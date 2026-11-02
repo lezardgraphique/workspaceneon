@@ -71,6 +71,7 @@ const TYPE_LABEL: Record<ExtraFieldType, string> = {
   color: 'Couleur',
   date: 'Date',
   datetime: 'Date et heure',
+  choice: 'Liste de choix',
   group: 'Groupe',
 }
 
@@ -95,6 +96,16 @@ function ExtraValue({ f, set }: { f: ExtraField; set: (v: Json) => void }) {
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={d === true} onChange={(e) => set(e.target.checked)} className="size-4 accent-pink" /> Activé
         </label>
+      )
+    case 'choice':
+      return (
+        <select className={input} value={String(d)} onChange={(e) => set(e.target.value)} aria-label="Valeur">
+          {(f.options ?? []).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
       )
     case 'date':
     case 'datetime':
@@ -164,7 +175,7 @@ function ExtraFieldCard({ f, p }: { f: ExtraField; p: Props }) {
           aria-label="Type du champ"
           className="shrink-0 rounded-full border border-line bg-void px-2 py-0.5 text-[11px] text-mute outline-none focus:border-cyan"
         >
-          {(Object.keys(TYPE_LABEL) as ExtraFieldType[]).map((t) => (
+          {(Object.keys(TYPE_LABEL) as ExtraFieldType[]).filter((t) => t !== 'choice' || f.type === 'choice').map((t) => (
             <option key={t} value={t}>
               {TYPE_LABEL[t]}
             </option>

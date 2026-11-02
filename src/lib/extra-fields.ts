@@ -44,6 +44,43 @@ function collect(text: string, root: string, base: number, into: Map<string, Use
   }
 }
 
+// Drop-down settings of the countdown picture, recognised by where the variable
+// sits in the address (…&lang={{ module.langue }}), whatever its name.
+const CHOICES: { re: RegExp; options: { value: string; label: string }[]; default: string }[] = [
+  {
+    re: /[?&;]u=$/,
+    default: 'dhms',
+    options: [
+      { value: 'dhms', label: 'Jours, heures, minutes, secondes' },
+      { value: 'hms', label: 'Heures, minutes, secondes' },
+      { value: 'ms', label: 'Minutes, secondes' },
+      { value: 'dhm', label: 'Jours, heures, minutes' },
+      { value: 'dh', label: 'Jours, heures' },
+    ],
+  },
+  {
+    re: /[?&;]lang=$/,
+    default: 'fr',
+    options: [
+      { value: 'fr', label: 'Français' },
+      { value: 'en', label: 'English' },
+      { value: 'es', label: 'Español' },
+      { value: 'de', label: 'Deutsch' },
+      { value: 'it', label: 'Italiano' },
+    ],
+  },
+  {
+    re: /[?&;]st=$/,
+    default: 'plein',
+    options: [
+      { value: 'plein', label: 'Cases pleines' },
+      { value: 'contour', label: 'Contour seul' },
+      { value: 'sans_fond', label: 'Sans fond (chiffres seuls)' },
+    ],
+  },
+]
+const choiceOf = (u: Use) => CHOICES.find((c) => u.ctx.some((x) => c.re.test(x)))
+
 function inferType(name: string, u: Use): ExtraFieldType {
   const paths = [...u.paths]
   if (paths.some((p) => IMAGE_PATHS.has(p))) return 'image'
@@ -51,6 +88,7 @@ function inferType(name: string, u: Use): ExtraFieldType {
   if (paths.some((p) => COLOR_PATHS.has(p))) return 'color'
   if (paths.length) return 'group'
   if (u.ctx.some((c) => /countdown\.gif\?to=$/i.test(c))) return 'datetime'
+  if (choiceOf(u)) return 'choice'
   if ([...u.filters].some((f) => DATE_FILTERS.has(f))) return 'date'
   if (!u.out && u.cond) return 'boolean'
   if ([...u.filters].some((f) => NUMBER_FILTERS.has(f)) || /^(nombre|count|qty|quantite|prix|price|montant|amount|number)\b|_(count|price|prix|nombre|montant)$/.test(name)) return 'number'
@@ -70,7 +108,7 @@ const LINK_DEFAULT: Json = { url: { type: 'EXTERNAL', href: 'https://example.com
 
 // A believable colour for the preview: light for a background, dark for a text.
 const colorFor = (name: string) =>
-  /(bg|background|fond)/i.test(name)
+  /(bg|background|fond|cases)/i.test(name)
     ? '#f4f4fa'
     : /(text|texte|font|police)/i.test(name)
       ? '#3a3a52'
@@ -85,7 +123,7 @@ const colorFor = (name: string) =>
 const numberFor = (name: string) =>
   /(prix|price|montant|amount)/i.test(name) ? 49 : /(seuil|urgence)/i.test(name) ? 24 : /rayon|radius|arrondi/i.test(name) ? 10 : /taille|size/i.test(name) ? 6 : /ecart|espace|gap/i.test(name) ? 12 : /epaisseur|width/i.test(name) ? 2 : 1
 
-export function defaultFor(f: Pick<ExtraField, 'name' | 'type' | 'children' | 'repeater'>): Json {
+export function defaultFor(f: Pick<ExtraField, 'name' | 'type' | 'children' | 'repeater' | 'default' | 'options'>): Json {
   const label = humanize(f.name)
   switch (f.type) {
     case 'text':
@@ -112,6 +150,8 @@ export function defaultFor(f: Pick<ExtraField, 'name' | 'type' | 'children' | 'r
       return { src: '', alt: label, width: 600, height: 300 }
     case 'color':
       return { color: colorFor(f.name), opacity: 100 }
+    case 'choice':
+      return f.default ?? f.options?.[0]?.value ?? ''
     case 'date':
     case 'datetime':
       // One week from now, to the minute.
@@ -123,22 +163,44 @@ export function defaultFor(f: Pick<ExtraField, 'name' | 'type' | 'children' | 'r
   }
 }
 
+// Readable labels for the settings the countdown preset exposes.
+const KNOWN_LABELS: Record<string, string> = {
+  date_fin: 'Date et heure de fin',
+  unites: 'Unités affichées',
+  afficher_libelles: 'Afficher les libellés (jours, heures…)',
+  langue: 'Langue des libellés',
+  afficher_separateur: 'Séparateur « : » entre les cases',
+  style_cases: 'Style des cases',
+  couleur_cases: 'Couleur des cases',
+  couleur_chiffres: 'Couleur des chiffres',
+  couleur_texte: 'Couleur des libellés',
+  rayon: 'Arrondi des cases (px)',
+  taille: 'Taille des chiffres (2 à 8)',
+  seuil_urgence_heures: 'Seuil d’urgence en heures (0 = aucun)',
+  couleur_alerte: 'Couleur d’urgence',
+  message_fin: 'Message affiché à la fin',
+}
+
 function build(name: string, u: Use, children?: ExtraField[], repeater?: boolean): ExtraField {
   const type: ExtraFieldType = repeater || children?.length ? 'group' : inferType(name, u)
-  const field: ExtraField = { name, label: humanize(name), type }
+  const field: ExtraField = { name, label: KNOWN_LABELS[name] && ['datetime', 'choice', 'boolean', 'color', 'number', 'text'].includes(type) && !children ? KNOWN_LABELS[name] : humanize(name), type }
   if (type === 'group') {
     field.children = children?.length ? children : [...u.paths].map((p) => ({ name: p, label: humanize(p), type: 'text' as const, default: humanize(p) }))
     if (!field.children.length) field.children = [{ name: 'texte', label: 'Texte', type: 'text', default: 'Texte' }]
     if (repeater) field.repeater = true
   }
-  field.default = defaultFor(field)
+  const choice = type === 'choice' ? choiceOf(u) : undefined
+  if (choice) {
+    field.options = choice.options
+    field.default = choice.default
+  } else field.default = defaultFor(field)
   return field
 }
 
 // fields.json types → ours.
 const SPEC_TYPE: Record<string, ExtraFieldType> = {
   text: 'text', richtext: 'richtext', number: 'number', boolean: 'boolean', link: 'link', url: 'link', image: 'image',
-  color: 'color', date: 'date', datetime: 'datetime', group: 'group',
+  color: 'color', date: 'date', datetime: 'datetime', choice: 'choice', group: 'group',
 }
 
 export function analyzeFieldRefs(code: string, specs: FieldSpec[] = []): ExtraField[] {
@@ -240,6 +302,9 @@ export function hubspotField(f: ExtraField): Record<string, unknown> {
       children: (f.children ?? []).map(hubspotField),
       default: f.repeater ? [item, item] : item,
     }
+  }
+  if (f.type === 'choice') {
+    return { ...base, display_width: null, multiple: false, display: 'select', choices: (f.options ?? []).map((o) => [o.value, o.label]), default: f.default ?? defaultFor(f) }
   }
   return { ...base, default: f.default ?? defaultFor(f) }
 }

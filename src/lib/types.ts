@@ -111,7 +111,7 @@ export type BlockType = Block['type']
 // fields.json. The variable itself stays in the content.
 export type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
 
-export type ExtraFieldType = 'text' | 'richtext' | 'number' | 'boolean' | 'link' | 'image' | 'color' | 'date' | 'datetime' | 'group'
+export type ExtraFieldType = 'text' | 'richtext' | 'number' | 'boolean' | 'link' | 'image' | 'color' | 'date' | 'datetime' | 'choice' | 'group'
 
 export interface ExtraField {
   name: string
@@ -119,6 +119,8 @@ export interface ExtraField {
   type: ExtraFieldType
   // Value in the shape of fields.json (text, number, { url: … } for a link…).
   default?: Json
+  // choice: the allowed values (a drop-down), the default is one of them.
+  options?: { value: string; label: string }[]
   // group: fields of one item; repeater = used in a {% for %} loop.
   children?: ExtraField[]
   repeater?: boolean

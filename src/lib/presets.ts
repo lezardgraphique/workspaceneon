@@ -68,26 +68,23 @@ export const PRESETS: Preset[] = [
       // size, language, urgency colour, end message…).
       const col = (f: string) => `{{ module.${f}.color|replace('#', '') }}`
       const flag = (f: string) => `{% if module.${f} %}1{% else %}0{% endif %}`
-      const unit = (f: string, u: string) => `{% if module.${f} %}${u}{% endif %}`
       const params = [
         'to={{ module.date_fin }}',
-        `u=${unit('afficher_jours', 'd')}${unit('afficher_heures', 'h')}${unit('afficher_minutes', 'm')}${unit('afficher_secondes', 's')}`,
+        'u={{ module.unites }}',
         `lab=${flag('afficher_libelles')}`,
-        'lang={{ module.langue|urlencode }}',
+        'lang={{ module.langue }}',
         `sep=${flag('afficher_separateur')}`,
-        `bg=${col('couleur_fond')}`,
+        'st={{ module.style_cases }}',
+        `bg=${col('couleur_cases')}`,
         `fg=${col('couleur_chiffres')}`,
         `lb=${col('couleur_texte')}`,
-        `bd={% if module.afficher_bordure %}${col('couleur_bordure')}{% else %}none{% endif %}`,
-        'bw={{ module.epaisseur_bordure|int }}',
         'r={{ module.rayon|int }}',
         's={{ module.taille|int }}',
-        'g={{ module.ecart|int }}',
         'urg={{ module.seuil_urgence_heures|int }}',
         `al=${col('couleur_alerte')}`,
         'end={{ module.message_fin|urlencode }}',
       ].join('&amp;')
-      const html = `<div style="text-align:center"><img src="${SITE}/countdown.gif?${params}" width="468" height="120" alt="Compte à rebours" style="display:inline-block;max-width:100%;height:auto;border:0"></div>`
+      const html = `<div style="text-align:center"><img src="${SITE}/countdown.gif?${params}" alt="Compte à rebours" style="display:inline-block;max-width:100%;height:auto;border:0"></div>`
       return card(1, [[{ ...(createBlock('raw') as RawBlock), html }]], { bg: '#ffffff', padding: 12, radius: 0 })
     },
   },

@@ -137,8 +137,9 @@ export function section(raw: unknown, depth = 0, count: { n: number } = { n: 0 }
 
 // Extra module fields (variables of the code): names, types and default values
 // rebuilt from a closed list, whatever was sent.
-const FIELD_TYPES = new Set<string>(['text', 'richtext', 'number', 'boolean', 'link', 'image', 'color', 'date', 'datetime', 'group'])
+const FIELD_TYPES = new Set<string>(['text', 'richtext', 'number', 'boolean', 'link', 'image', 'color', 'date', 'datetime', 'choice', 'group'])
 const FIELD_NAME = /^[A-Za-z_]\w{0,59}$/
+const CHOICE_VALUE = /^[\w-]{1,40}$/
 const bigNum = (v: unknown, min: number, max: number): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : undefined)
 
 function fieldDefault(type: ExtraFieldType, v: unknown): Json | undefined {
@@ -154,6 +155,8 @@ function fieldDefault(type: ExtraFieldType, v: unknown): Json | undefined {
     case 'date':
     case 'datetime':
       return bigNum(v, 0, 4_102_444_800_000)
+    case 'choice':
+      return typeof v === 'string' && CHOICE_VALUE.test(v) ? v : undefined
     case 'link': {
       if (!isObj(v)) return undefined
       const u = isObj(v.url) ? v.url : {}
@@ -180,6 +183,14 @@ function extraField(raw: unknown, leaf = false): ExtraField | null {
   const out: ExtraField = { name, label: stripTags(str(raw.label, 100)) || name, type }
   const d = fieldDefault(type, raw.default)
   if (d !== undefined) out.default = d
+  if (type === 'choice') {
+    out.options = (Array.isArray(raw.options) ? raw.options : [])
+      .slice(0, 12)
+      .map((o) => (isObj(o) && typeof o.value === 'string' && CHOICE_VALUE.test(o.value) ? { value: o.value, label: stripTags(str(o.label, 80)) || o.value } : null))
+      .filter((o): o is { value: string; label: string } => !!o)
+    if (!out.options.length) return null
+    if (typeof out.default !== 'string' || !out.options.some((o) => o.value === out.default)) out.default = out.options[0].value
+  }
   if (type === 'group') {
     out.children = (Array.isArray(raw.children) ? raw.children : []).slice(0, 20).map((c) => extraField(c, true)).filter((c): c is ExtraField => !!c)
     if (raw.repeater === true) out.repeater = true

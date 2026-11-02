@@ -8,8 +8,9 @@ const { GIFEncoder } = gifenc
 // server draws at the moment it is opened: 60 frames, one per second, showing
 // the time left from then on.
 
-const W = 468
-const H = 120
+// Biggest picture the e-mail can show; the real one is cropped to its content.
+const MAX_W = 468
+const MAX_H = 120
 const FRAMES = 60
 
 const GLYPHS: Record<string, string[]> = {
@@ -119,8 +120,13 @@ export function cleanEnd(v: string): string {
 
 const rgb = (hex: string): [number, number, number] => [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)]
 
+interface Canvas {
+  w: number
+  h: number
+}
+
 // Draws `text` with its top-left corner at (x, y).
-function text(px: Uint8Array, s: string, x: number, y: number, scale: number, color: number, gap = 1): void {
+function text(px: Uint8Array, cv: Canvas, s: string, x: number, y: number, scale: number, color: number, gap = 1): void {
   let cx = x
   for (const ch of s) {
     const g = GLYPHS[ch]
@@ -130,8 +136,8 @@ function text(px: Uint8Array, s: string, x: number, y: number, scale: number, co
         if (row[c] !== '#') continue
         for (let dy = 0; dy < scale; dy++) {
           const yy = y + r * scale + dy
-          if (yy < 0 || yy >= H) continue
-          px.fill(color, yy * W + cx + c * scale, yy * W + cx + (c + 1) * scale)
+          if (yy < 0 || yy >= cv.h) continue
+          px.fill(color, yy * cv.w + cx + c * scale, yy * cv.w + cx + (c + 1) * scale)
         }
       }
     })
@@ -141,22 +147,22 @@ function text(px: Uint8Array, s: string, x: number, y: number, scale: number, co
 const widthOf = (s: string, scale: number, gap = 1) => (s.length ? s.length * 5 * scale + (s.length - 1) * gap * scale : 0)
 
 // A rounded rectangle, optionally with a border ring (palette index `ring`).
-function tile(px: Uint8Array, x0: number, y0: number, w: number, h: number, r: number, fill: number, ring: number | null, bw: number): void {
-  const inside = (x: number, y: number, rx: number, ox: number, ww: number, hh: number) => {
-    const dx = Math.max(rx - (x - ox), x - ox - (ww - 1 - rx), 0)
-    const dy = Math.max(rx - (y - ox), y - ox - (hh - 1 - rx), 0)
+function tile(px: Uint8Array, cv: Canvas, x0: number, y0: number, w: number, h: number, r: number, fill: number, ring: number | null, bw: number): void {
+  const inside = (x: number, y: number, rx: number, ww: number, hh: number) => {
+    const dx = Math.max(rx - x, x - (ww - 1 - rx), 0)
+    const dy = Math.max(rx - y, y - (hh - 1 - rx), 0)
     return dx * dx + dy * dy <= rx * rx
   }
   const rr = Math.min(r, Math.floor(Math.min(w, h) / 2))
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (!inside(x, y, rr, 0, w, h)) continue
+      if (!inside(x, y, rr, w, h)) continue
       let idx = fill
       if (ring !== null) {
-        const inner = x >= bw && y >= bw && x < w - bw && y < h - bw && inside(x - bw, y - bw, Math.max(0, rr - bw), 0, w - 2 * bw, h - 2 * bw)
+        const inner = x >= bw && y >= bw && x < w - bw && y < h - bw && inside(x - bw, y - bw, Math.max(0, rr - bw), w - 2 * bw, h - 2 * bw)
         if (!inner) idx = ring
       }
-      px[(y0 + y) * W + x0 + x] = idx
+      px[(y0 + y) * cv.w + x0 + x] = idx
     }
   }
 }
@@ -167,8 +173,15 @@ export function countdownGif(target: number, now: number, style: CountdownStyle)
   const units = st.units.length ? st.units : DEFAULT_STYLE.units
   const labelOf = (u: Unit) => LABELS[st.lang][u]
   const left0 = Math.max(0, Math.floor((target - now) / 1000))
-  const dayDigits = Math.max(2, String(Math.min(999, Math.floor(left0 / 86400))).length)
-  const lenOf = (u: Unit) => (u === 'd' ? dayDigits : 2)
+  // Value of each unit; one that is not shown rolls into the next (no days: hours go past 24).
+  const shown = (u: Unit, left: number) => {
+    if (u === 'd') return Math.min(9999, Math.floor(left / 86400))
+    if (u === 'h') return units.includes('d') ? Math.floor((left % 86400) / 3600) : Math.min(9999, Math.floor(left / 3600))
+    if (u === 'm') return units.includes('h') ? Math.floor((left % 3600) / 60) : Math.min(9999, Math.floor(left / 60))
+    return units.includes('m') ? left % 60 : Math.min(9999, left)
+  }
+  // Digits needed: the biggest value is the first frame's.
+  const lenOf = (u: Unit) => Math.max(2, String(shown(u, left0)).length)
 
   // Pick the biggest digit size that still fits in the picture.
   const geometry = (s: number) => {
@@ -183,47 +196,48 @@ export function countdownGif(target: number, now: number, style: CountdownStyle)
     return { s, ls, padX, padY, sepScale, gap, tw, th, total: units.length * tw + (units.length - 1) * gap }
   }
   let g = geometry(Math.min(8, Math.max(2, st.scale)))
-  while ((g.total > W || g.th > H) && g.s > 2) g = geometry(g.s - 1)
+  while ((g.total > MAX_W || g.th > MAX_H) && g.s > 2) g = geometry(g.s - 1)
 
-  const x0 = Math.max(0, Math.round((W - g.total) / 2))
-  const y0 = Math.max(0, Math.round((H - g.th) / 2))
+  // End message: one wide tile, same height as the countdown or taller if needed.
+  const endMsg = cleanEnd(st.end)
+  let es = g.s
+  if (endMsg) while (es > 2 && widthOf(endMsg, es) + 6 * es > MAX_W) es--
+  const endW = endMsg ? Math.min(MAX_W, widthOf(endMsg, es) + 6 * es) : 0
+  const endH = endMsg ? Math.min(MAX_H, 7 * es + Math.round(es * 4.6)) : 0
+
+  // The picture is cropped to its content: no empty margins around the tiles.
+  const cv: Canvas = { w: Math.max(g.total, endW), h: Math.max(g.th, endH) }
+  const x0 = Math.round((cv.w - g.total) / 2)
+  const y0 = Math.round((cv.h - g.th) / 2)
   const tileIdx = st.tile ? 1 : 0
   const ring = st.border ? 4 : null
   const palette = [[0, 0, 0], rgb(st.tile ?? '000000'), rgb(st.digits), rgb(st.label), rgb(st.border ?? '000000'), rgb(st.alert ?? st.digits)]
 
-  const base = new Uint8Array(W * H)
+  const base = new Uint8Array(cv.w * cv.h)
   units.forEach((u, t) => {
     const tx = x0 + t * (g.tw + g.gap)
-    tile(base, tx, y0, g.tw, g.th, st.radius, tileIdx, ring, st.borderWidth)
+    tile(base, cv, tx, y0, g.tw, g.th, st.radius, tileIdx, ring, st.borderWidth)
     if (st.labels) {
       const l = labelOf(u)
-      text(base, l, tx + Math.round((g.tw - widthOf(l, g.ls)) / 2), y0 + g.padY + 7 * g.s + Math.round(g.s * 1.6), g.ls, 3)
+      text(base, cv, l, tx + Math.round((g.tw - widthOf(l, g.ls)) / 2), y0 + g.padY + 7 * g.s + Math.round(g.s * 1.6), g.ls, 3)
     }
     if (st.separator && t < units.length - 1) {
       const sx = tx + g.tw + Math.round((g.gap - 5 * g.sepScale) / 2)
-      text(base, ':', sx, y0 + g.padY + Math.round((7 * g.s - 7 * g.sepScale) / 2), g.sepScale, 2)
+      text(base, cv, ':', sx, y0 + g.padY + Math.round((7 * g.s - 7 * g.sepScale) / 2), g.sepScale, 2)
     }
   })
 
-  // Expired: either zeros, or the end message on one wide tile.
-  const endMsg = cleanEnd(st.end)
   const endFrame = (): Uint8Array => {
-    const px = new Uint8Array(W * H)
-    let es = Math.min(8, Math.max(2, st.scale))
-    const pad = 3 * es
-    while (es > 2 && widthOf(endMsg, es) + 2 * pad > W) es--
-    const w = Math.min(W, widthOf(endMsg, es) + 2 * Math.round(es * 3))
-    const h = Math.min(H, 7 * es + 2 * Math.round(es * 2.3))
-    const ex = Math.round((W - w) / 2)
-    const ey = Math.round((H - h) / 2)
-    tile(px, ex, ey, w, h, st.radius, tileIdx, ring, st.borderWidth)
-    text(px, endMsg, ex + Math.round((w - widthOf(endMsg, es)) / 2), ey + Math.round((h - 7 * es) / 2), es, st.alert ? 5 : 2)
+    const px = new Uint8Array(cv.w * cv.h)
+    const ex = Math.round((cv.w - endW) / 2)
+    const ey = Math.round((cv.h - endH) / 2)
+    tile(px, cv, ex, ey, endW, endH, st.radius, tileIdx, ring, st.borderWidth)
+    text(px, cv, endMsg, ex + Math.round((endW - widthOf(endMsg, es)) / 2), ey + Math.round((endH - 7 * es) / 2), es, st.alert ? 5 : 2)
     return px
   }
 
   const gif = GIFEncoder()
-  const expiredAtStart = left0 === 0
-  const frames = expiredAtStart ? 1 : FRAMES
+  const frames = left0 === 0 ? 1 : FRAMES
   for (let k = 0; k < frames; k++) {
     const left = Math.max(0, Math.floor((target - (now + k * 1000)) / 1000))
     let px: Uint8Array
@@ -231,25 +245,17 @@ export function countdownGif(target: number, now: number, style: CountdownStyle)
       px = endFrame()
     } else {
       px = base.slice()
-      const value = (u: Unit) => (u === 'd' ? Math.min(999, Math.floor(left / 86400)) : u === 'h' ? Math.floor((left % 86400) / 3600) : u === 'm' ? Math.floor((left % 3600) / 60) : left % 60)
-      // A unit that is not shown rolls into the next one (no days: hours go past 24).
-      const shown = (u: Unit) => {
-        if (u === 'h' && !units.includes('d')) return Math.min(999, Math.floor(left / 3600))
-        if (u === 'm' && !units.includes('h')) return Math.min(999, Math.floor(left / 60))
-        if (u === 's' && !units.includes('m')) return Math.min(999, left)
-        return value(u)
-      }
       const urgent = st.alert !== null && st.alertHours > 0 && left < st.alertHours * 3600
       units.forEach((u, t) => {
-        const str = String(shown(u)).padStart(lenOf(u), '0')
+        const str = String(shown(u, left)).padStart(lenOf(u), '0')
         const tx = x0 + t * (g.tw + g.gap)
-        text(px, str, tx + Math.round((g.tw - widthOf(str, g.s)) / 2), y0 + g.padY, g.s, urgent ? 5 : 2)
+        text(px, cv, str, tx + Math.round((g.tw - widthOf(str, g.s)) / 2), y0 + g.padY, g.s, urgent ? 5 : 2)
       })
     }
-    gif.writeFrame(px, W, H, { palette, delay: 1000, transparent: true, transparentIndex: 0, repeat: k === 0 ? -1 : undefined })
+    gif.writeFrame(px, cv.w, cv.h, { palette, delay: 1000, transparent: true, transparentIndex: 0, repeat: k === 0 ? -1 : undefined })
   }
   gif.finish()
   return gif.bytes()
 }
 
-export const COUNTDOWN_SIZE = { width: W, height: H }
+export const COUNTDOWN_MAX_SIZE = { width: MAX_W, height: MAX_H }

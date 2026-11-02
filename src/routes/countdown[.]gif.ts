@@ -10,6 +10,7 @@ import type { CountdownStyle, Lang } from '@/server/countdown-gif'
 //   /countdown.gif?to=<ms timestamp or ISO date>
 //     &bg=f4f4fa|none &fg=ff007f &lb=3a3a52 &bd=d9d9e8|none &al=e5322d|none
 //     &r=10 (rounded corners) &bw=2 (border) &s=6 (digit size 2-8) &g=12 (gap)
+//     &st=plein|contour|sans_fond (look of the tiles, uses bg as their colour)
 //     &u=dhms (units shown) &lab=1 &lang=fr|en|es|de|it &sep=0 &urg=24 (hours)
 //     &end=C'est parti ! (message once over)
 const HEX = /^[0-9a-f]{6}$/i
@@ -33,11 +34,19 @@ function parseStyle(q: URLSearchParams): CountdownStyle {
   const D = DEFAULT_STYLE
   const units = (['d', 'h', 'm', 's'] as const).filter((u) => (q.get('u') ?? '').toLowerCase().includes(u))
   const lang = (q.get('lang') ?? '').toLowerCase().slice(0, 2) as Lang
+  // `st` is the simple way: one colour (bg) used as the fill, the outline, or not at all.
+  const look = q.get('st')
+  const bg = color(q.get('bg'), D.tile)
+  const tiles =
+    look === 'contour' ? { tile: null, border: bg ?? D.tile }
+    : look === 'sans_fond' ? { tile: null, border: null }
+    : look === 'plein' ? { tile: bg, border: null }
+    : { tile: bg, border: color(q.get('bd'), D.border) }
   return {
-    tile: color(q.get('bg'), D.tile),
+    tile: tiles.tile,
     digits: color(q.get('fg'), D.digits) ?? D.digits,
     label: color(q.get('lb'), D.label) ?? D.label,
-    border: color(q.get('bd'), D.border),
+    border: tiles.border,
     alert: color(q.get('al'), D.alert),
     alertHours: int(q.get('urg'), D.alertHours, 0, 720),
     radius: int(q.get('r'), D.radius, 0, 40),

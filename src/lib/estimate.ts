@@ -181,7 +181,7 @@ function headingEstimate(tree: ModuleTree, b: HeadingBlock, base: number): Estim
   return build('open', 'Ouverture estimée si repris comme objet', base, parts, tips, first ? 'Le taux d’ouverture dépend de l’objet et du pré-en-tête : reprends ce titre comme objet.' : 'Ce titre n’est pas le premier du module : l’estimation vaut s’il sert d’objet.')
 }
 
-function countdownEstimate(tree: ModuleTree, html: string, id: string, base: number): Estimate {
+function countdownEstimate(tree: ModuleTree, id: string, base: number): Estimate {
   const items = all(tree)
   const parts: { f: Factor; w: number }[] = [{ f: { label: 'Urgence visible (compte à rebours)', effect: 1 }, w: 1.12 }]
   const tips: string[] = []
@@ -197,10 +197,15 @@ function countdownEstimate(tree: ModuleTree, html: string, id: string, base: num
     else if (days <= 7) add(`Échéance proche (${Math.max(1, Math.ceil(days))} j)`, 1, 1.05)
     else if (days > 30) add('Échéance lointaine', -1, 0.92, 'Un compte à rebours à plus de 30 jours crée peu d’urgence : réserve-le aux dernières semaines.')
   }
-  const fg = /[?&;]fg=([0-9a-f]{6})/i.exec(html)?.[1]
-  const bg = /[?&;]bg=([0-9a-f]{6})/i.exec(html)?.[1]
-  if (fg && bg) {
-    const c = contrast('#' + fg, '#' + bg)
+  const colorOf = (name: string): string | null => {
+    const d = tree.fields?.find((f) => f.name === name)?.default
+    return d && typeof d === 'object' && !Array.isArray(d) && typeof d.color === 'string' ? d.color : null
+  }
+  const fg = colorOf('couleur_chiffres')
+  const bg = colorOf('couleur_cases')
+  const filled = tree.fields?.find((f) => f.name === 'style_cases')?.default !== 'sans_fond'
+  if (fg && bg && filled) {
+    const c = contrast(fg, bg)
     if (c !== null && c < 3) add('Chiffres peu contrastés', -1, 0.9, 'Les chiffres se lisent mal sur ce fond : change leur couleur ou celle des cases.')
   }
   const idx = items.findIndex((x) => x.b.id === id)
@@ -243,7 +248,7 @@ export function estimateBlock(tree: ModuleTree, node: Block, sector: Sector = DE
     case 'image':
       return imageEstimate(tree, node, s.click)
     case 'raw':
-      if (/countdown\.gif/.test(node.html)) return countdownEstimate(tree, node.html, node.id, s.click)
+      if (/countdown\.gif/.test(node.html)) return countdownEstimate(tree, node.id, s.click)
       if (/\/social\//.test(node.html)) return socialEstimate(s.click)
       return null
     default:
