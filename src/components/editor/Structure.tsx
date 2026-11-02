@@ -20,6 +20,7 @@ import { withNewIds } from '@/lib/custom-blocks'
 import { isLogicBlock } from '@/lib/hubl-render'
 import { useCustomBlocks } from './useCustomBlocks'
 import { BLOCK_LABELS, createBlock, createSection } from '@/lib/types'
+import { PRESETS } from '@/lib/presets'
 import type { Block, BlockType, Columns, ModuleTree, Section } from '@/lib/types'
 import { duplicateNode, insertInCell, moveNode, removeNode } from '@/lib/tree'
 
@@ -127,6 +128,21 @@ function AddMenu({ section, cell, depth, p }: { section: Section; cell: number; 
               </button>
             )
           })}
+          <p className="col-span-2 px-2 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-mute/70">Blocs prêts à l'emploi</p>
+          {PRESETS.map((pr) => (
+            <button
+              key={pr.id}
+              title={pr.hint}
+              onClick={() => {
+                const block = pr.build()
+                p.commit(insertInCell(p.tree, section.id, cell, block), block.id)
+                setOpen(false)
+              }}
+              className="flex items-center gap-1.5 rounded px-2 py-2.5 text-left text-sm text-[#c9c9de] hover:bg-pink/15 hover:text-white lg:py-1 lg:text-xs"
+            >
+              <Layers className="size-3 shrink-0 text-violet" /> <span className="truncate">{pr.label}</span>
+            </button>
+          ))}
           {custom.length > 0 && (
             <>
               <p className="col-span-2 px-2 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-mute/70">Mes blocs</p>
