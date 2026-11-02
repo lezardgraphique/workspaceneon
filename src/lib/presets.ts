@@ -64,8 +64,8 @@ export const PRESETS: Preset[] = [
     build: () => {
       // The image is drawn by the app (/countdown.gif) at the moment the e-mail
       // is opened and ticks every second. {{ module.date_fin }} becomes a date
-      // field automatically; the colours are set in the address.
-      const html = `<div style="text-align:center"><img src="${SITE}/countdown.gif?to={{ module.date_fin }}&amp;bg=f4f4fa&amp;fg=ff007f&amp;lb=3a3a52" width="468" height="96" alt="Compte à rebours" style="display:inline-block;max-width:100%;height:auto;border:0"></div>`
+      // field automatically, and so are the 3 colours (tiles, digits, labels).
+      const html = `<div style="text-align:center"><img src="${SITE}/countdown.gif?to={{ module.date_fin }}&amp;bg={{ module.couleur_fond.color|replace('#', '') }}&amp;fg={{ module.couleur_chiffres.color|replace('#', '') }}&amp;lb={{ module.couleur_texte.color|replace('#', '') }}" width="468" height="96" alt="Compte à rebours" style="display:inline-block;max-width:100%;height:auto;border:0"></div>`
       return card(1, [[{ ...(createBlock('raw') as RawBlock), html }]], { bg: '#ffffff', padding: 12, radius: 0 })
     },
   },
