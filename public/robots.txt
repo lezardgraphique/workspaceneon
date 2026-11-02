@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /connexion
+Allow: /countdown.gif
+Allow: /social/
+Disallow: /api/
+Disallow: /editor/
+Disallow: /apercu/
+Disallow: /fichiers
+Disallow: /compte
