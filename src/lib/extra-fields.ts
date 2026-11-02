@@ -69,19 +69,43 @@ const asJson = (v: unknown): Json | undefined => {
 const LINK_DEFAULT: Json = { url: { type: 'EXTERNAL', href: 'https://example.com', content_id: null }, open_in_new_tab: false, no_follow: false }
 
 // A believable colour for the preview: light for a background, dark for a text.
-const colorFor = (name: string) => (/(bg|background|fond)/i.test(name) ? '#f4f4fa' : /(text|texte|font|police)/i.test(name) ? '#3a3a52' : '#ff007f')
+const colorFor = (name: string) =>
+  /(bg|background|fond)/i.test(name)
+    ? '#f4f4fa'
+    : /(text|texte|font|police)/i.test(name)
+      ? '#3a3a52'
+      : /(bordure|border)/i.test(name)
+        ? '#d9d9e8'
+        : /(alerte|alert|urgen)/i.test(name)
+          ? '#e5322d'
+          : '#ff007f'
+
+// Believable starting values for the settings the presets expose (a radius, a
+// size, a language…), so the preview looks right before anyone touches them.
+const numberFor = (name: string) =>
+  /(prix|price|montant|amount)/i.test(name) ? 49 : /(seuil|urgence)/i.test(name) ? 24 : /rayon|radius|arrondi/i.test(name) ? 10 : /taille|size/i.test(name) ? 6 : /ecart|espace|gap/i.test(name) ? 12 : /epaisseur|width/i.test(name) ? 2 : 1
 
 export function defaultFor(f: Pick<ExtraField, 'name' | 'type' | 'children' | 'repeater'>): Json {
   const label = humanize(f.name)
   switch (f.type) {
     case 'text':
-      return /(url|lien|link|href)/i.test(f.name) ? 'https://example.com' : /mail/i.test(f.name) ? 'contact@exemple.fr' : /(color|couleur)/i.test(f.name) ? colorFor(f.name) : label
+      return /(url|lien|link|href)/i.test(f.name)
+        ? 'https://example.com'
+        : /mail/i.test(f.name)
+          ? 'contact@exemple.fr'
+          : /(color|couleur)/i.test(f.name)
+            ? colorFor(f.name)
+            : /^(langue|lang)$/i.test(f.name)
+              ? 'fr'
+              : /^message_fin/i.test(f.name)
+                ? "C'est parti !"
+                : label
     case 'richtext':
       return `<p>${label}</p>`
     case 'number':
-      return /(prix|price|montant|amount)/i.test(f.name) ? 49 : 1
+      return numberFor(f.name)
     case 'boolean':
-      return true
+      return !/(separateur|bordure|border)/i.test(f.name)
     case 'link':
       return LINK_DEFAULT
     case 'image':

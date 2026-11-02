@@ -3,6 +3,7 @@ import { guardedFetch } from '@/lib/session-guard'
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Copy, Loader2, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { EstimatePanel } from './EstimatePanel'
 import { ImageUpload } from './ImageUpload'
 import { BLOCK_ICONS } from './Structure'
 import { htmlToBlocks, sanitizeHtml } from '@/lib/hubl'
@@ -348,6 +349,7 @@ export function Inspector(p: Props) {
             </button>
           </div>
         )}
+        <EstimatePanel tree={t} node={null} />
       </div>
     )
   }
@@ -386,6 +388,7 @@ export function Inspector(p: Props) {
         </div>
       </div>
       <BlockFields key={node.id} b={node} set={set} p={p} />
+      <EstimatePanel key={`est-${node.id}`} tree={p.tree} node={node} />
     </div>
   )
 }
