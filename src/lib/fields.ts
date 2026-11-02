@@ -24,6 +24,12 @@ export const FIELD_KIND: Record<FieldBlock['type'], { prefix: string; label: str
 export const isFieldBlock = (b: Block): b is FieldBlock =>
   b.type === 'heading' || b.type === 'text' || b.type === 'button' || b.type === 'image'
 
+// Content that holds a HuBL variable ({{ module.x }}, {% if %}…) stays in place
+// in the export: it is not a field of its own, its variables are.
+const hasHubl = (s: string) => /\{[{%]/.test(s)
+export const holdsVariables = (b: FieldBlock): boolean =>
+  b.type === 'heading' ? hasHubl(b.text) : b.type === 'text' ? hasHubl(b.html) : b.type === 'image' ? hasHubl(b.src) || hasHubl(b.alt) : hasHubl(b.label) && hasHubl(b.href)
+
 // snake_case identifier usable in HuBL: no accents, starts with a letter.
 export function toFieldName(s: string): string {
   const n = s
@@ -44,7 +50,7 @@ export function collectFields(tree: ModuleTree): ModuleField[] {
   const walk = (blocks: Block[]) => {
     for (const b of blocks) {
       if (b.type === 'section') b.cells.forEach(walk)
-      else if (isFieldBlock(b)) {
+      else if (isFieldBlock(b) && !holdsVariables(b)) {
         const kind = FIELD_KIND[b.type]
         const n = (counters[b.type] = (counters[b.type] ?? 0) + 1)
         const custom = b.field && toFieldName(b.field.name)

@@ -105,11 +105,31 @@ export type Block =
 
 export type BlockType = Block['type']
 
+// A module field that is not tied to one block: a variable the code uses
+// ({{ module.date_fin }}, {% if module.afficher %}, a repeater…). Created
+// automatically from pasted HuBL, kept in sync with the code, exported in
+// fields.json. The variable itself stays in the content.
+export type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
+
+export type ExtraFieldType = 'text' | 'richtext' | 'number' | 'boolean' | 'link' | 'image' | 'color' | 'date' | 'datetime' | 'group'
+
+export interface ExtraField {
+  name: string
+  label: string
+  type: ExtraFieldType
+  // Value in the shape of fields.json (text, number, { url: … } for a link…).
+  default?: Json
+  // group: fields of one item; repeater = used in a {% for %} loop.
+  children?: ExtraField[]
+  repeater?: boolean
+}
+
 export interface ModuleTree {
   width: number
   bg: string
   font: string
   sections: Section[]
+  fields?: ExtraField[]
 }
 
 export interface ModuleRecord {

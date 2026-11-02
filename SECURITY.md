@@ -25,6 +25,9 @@ Réglages Netlify à connaître (tableau de bord, *Identity*) : **Registration**
 | Dépendances vulnérables | `pnpm audit --prod` propre (surcharges `seroval`, `katex`) | `package.json` |
 | Secrets | Aucune clé dans le dépôt ; la clé Gemini est injectée par Netlify AI Gateway | — |
 
+- `/countdown.gif` est public (chargé par les messageries) : la date doit être un horodatage entre 2020 et 2100, les couleurs 6 chiffres hexadécimaux, sinon 400 ; le GIF est dessiné à la volée (~25 ms), mis en cache 2 s et limité à 300 requêtes par minute et par IP. Il ne lit ni n'écrit aucune donnée.
+- Les champs de module (`tree.fields`) sont reconstruits côté serveur à l'enregistrement : noms, types et valeurs par défaut filtrés comme le reste de l'arbre.
+
 ## Limites connues
 
 - La limitation de débit est en mémoire, par instance serveur : c'est un frein, pas un pare-feu. Pour une protection complète, ajoute une règle de limitation Netlify.

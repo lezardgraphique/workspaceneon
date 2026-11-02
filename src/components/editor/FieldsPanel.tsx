@@ -3,10 +3,11 @@ import { Braces, ImageIcon, RotateCcw } from 'lucide-react'
 
 import { ImageUpload } from './ImageUpload'
 import { BLOCK_ICONS } from './Structure'
+import { defaultFor } from '@/lib/extra-fields'
 import { FIELD_KIND, collectFields } from '@/lib/fields'
 import type { FieldBlock, ModuleField } from '@/lib/fields'
 import { updateNode } from '@/lib/tree'
-import type { Block, ModuleTree } from '@/lib/types'
+import type { Block, ExtraField, ExtraFieldType, Json, ModuleTree } from '@/lib/types'
 
 // Simplified design manager: one card per module field, with its definition
 // (label + HuBL name) and its value edited directly in the same place.
@@ -58,6 +59,123 @@ function Value({ b, set }: { b: FieldBlock; set: (patch: Partial<Block>) => void
         </div>
       )
   }
+}
+
+const TYPE_LABEL: Record<ExtraFieldType, string> = {
+  text: 'Texte',
+  richtext: 'Texte enrichi',
+  number: 'Nombre',
+  boolean: 'Oui / non',
+  link: 'Lien',
+  image: 'Image',
+  color: 'Couleur',
+  date: 'Date',
+  datetime: 'Date et heure',
+  group: 'Groupe',
+}
+
+const asObj = (v: Json | undefined): Record<string, Json> => (v && typeof v === 'object' && !Array.isArray(v) ? v : {})
+// <input type=datetime-local> works in local time, the field stores a timestamp.
+const toLocal = (ms: Json | undefined) => {
+  const d = new Date(typeof ms === 'number' ? ms : Date.now())
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+}
+
+function ExtraValue({ f, set }: { f: ExtraField; set: (v: Json) => void }) {
+  const d = f.default ?? defaultFor(f)
+  switch (f.type) {
+    case 'text':
+      return <input className={input} value={String(d)} onChange={(e) => set(e.target.value)} aria-label="Valeur" />
+    case 'richtext':
+      return <textarea className={`${input} min-h-20`} value={String(d)} onChange={(e) => set(e.target.value)} aria-label="Valeur (HTML inline autorisé)" />
+    case 'number':
+      return <input type="number" className={input} value={Number(d)} onChange={(e) => set(Number(e.target.value))} aria-label="Valeur" />
+    case 'boolean':
+      return (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={d === true} onChange={(e) => set(e.target.checked)} className="size-4 accent-pink" /> Activé
+        </label>
+      )
+    case 'date':
+    case 'datetime':
+      return (
+        <input
+          type={f.type === 'date' ? 'date' : 'datetime-local'}
+          className={input}
+          value={toLocal(d).slice(0, f.type === 'date' ? 10 : 16)}
+          onChange={(e) => e.target.value && set(new Date(e.target.value).getTime())}
+          aria-label="Valeur"
+        />
+      )
+    case 'link':
+      return (
+        <input
+          className={`${input} ${mono}`}
+          value={String(asObj(asObj(d).url).href ?? '')}
+          onChange={(e) => set({ ...asObj(d), url: { type: 'EXTERNAL', href: e.target.value, content_id: null } })}
+          placeholder="https://…"
+          aria-label="Lien"
+        />
+      )
+    case 'image':
+      return (
+        <div className="grid gap-2">
+          <input className={`${input} ${mono}`} value={String(asObj(d).src ?? '')} onChange={(e) => set({ ...asObj(d), src: e.target.value })} placeholder="https://…" aria-label="URL de l'image" />
+          <ImageUpload compact onUploaded={(src) => set({ ...asObj(d), src })} />
+        </div>
+      )
+    case 'color':
+      return (
+        <div className="flex items-center gap-2">
+          <input type="color" value={String(asObj(d).color ?? '#000000').slice(0, 7)} onChange={(e) => set({ ...asObj(d), color: e.target.value })} className="size-9 shrink-0 rounded border border-line bg-void" aria-label="Couleur" />
+          <input className={`${input} ${mono}`} value={String(asObj(d).color ?? '')} onChange={(e) => set({ ...asObj(d), color: e.target.value })} aria-label="Valeur de la couleur" />
+        </div>
+      )
+    case 'group':
+      return (
+        <p className="text-xs text-mute">
+          {f.repeater ? 'Liste répétée dans une boucle' : 'Groupe'} : {(f.children ?? []).map((c) => c.name).join(', ')}
+        </p>
+      )
+  }
+}
+
+// A variable the code uses ({{ module.nom }}, {% if module.nom %}…) that no
+// block owns. The variable stays in the content; the field supplies its value.
+function ExtraFieldCard({ f, p }: { f: ExtraField; p: Props }) {
+  const update = (patch: Partial<ExtraField>) =>
+    p.commit({ ...p.tree, fields: (p.tree.fields ?? []).map((x) => (x.name === f.name ? { ...x, ...patch } : x)) })
+  return (
+    <div className="rounded-lg border border-line bg-night p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <Braces className="size-4 shrink-0 text-violet" />
+        <input
+          value={f.label}
+          onChange={(e) => update({ label: e.target.value })}
+          aria-label="Libellé du champ"
+          className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-base font-semibold outline-none hover:border-line focus:border-cyan lg:text-sm"
+        />
+        <select
+          value={f.type}
+          onChange={(e) => {
+            const type = e.target.value as ExtraFieldType
+            update({ type, default: defaultFor({ ...f, type }) })
+          }}
+          aria-label="Type du champ"
+          className="shrink-0 rounded-full border border-line bg-void px-2 py-0.5 text-[11px] text-mute outline-none focus:border-cyan"
+        >
+          {(Object.keys(TYPE_LABEL) as ExtraFieldType[]).map((t) => (
+            <option key={t} value={t}>
+              {TYPE_LABEL[t]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="mb-3 pl-6 font-mono text-base text-[#e3a6ff] lg:text-xs">{`{{ module.${f.name} }}`}</p>
+      <span className={caption}>Valeur</span>
+      <ExtraValue f={f} set={(v) => update({ default: v })} />
+    </div>
+  )
 }
 
 function FieldCard({ f, p }: { f: ModuleField; p: Props }) {
@@ -155,7 +273,21 @@ export function FieldsPanel(p: Props) {
       {fields.map((f) => (
         <FieldCard key={f.block.id} f={f} p={p} />
       ))}
-      {fields.length === 0 && (
+      {(p.tree.fields?.length ?? 0) > 0 && (
+        <>
+          <div className="px-1 pt-3">
+            <h3 className="font-display font-semibold">Variables du code</h3>
+            <p className="text-xs text-mute">
+              Champs créés automatiquement pour les variables que ton code utilise. La variable reste en place dans le contenu : modifie ici la valeur
+              affichée dans l'aperçu et exportée dans fields.json.
+            </p>
+          </div>
+          {p.tree.fields!.map((f) => (
+            <ExtraFieldCard key={f.name} f={f} p={p} />
+          ))}
+        </>
+      )}
+      {fields.length === 0 && !p.tree.fields?.length && (
         <p className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-mute">
           Aucun champ pour l'instant. Ajoute un titre, un texte, un bouton ou une image depuis la structure.
         </p>

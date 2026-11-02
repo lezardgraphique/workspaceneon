@@ -1,4 +1,5 @@
 import { collectFields } from './fields'
+import { scopeValue } from './extra-fields'
 import type { Block, ModuleTree } from './types'
 
 // HuBL interpreter for previews: evaluates {{ … }}, {% if/elif/else/unless %},
@@ -582,6 +583,8 @@ export function previewScope(tree: ModuleTree, contact: SampleContact = 'known')
       mod[b.field?.linkName || `${base}_link`] = { url: { href: b.href, type: 'EXTERNAL' }, open_in_new_tab: true }
     }
   }
+  // Variables of the code that no block owns, with their default values.
+  for (const f of tree.fields ?? []) if (!(f.name in mod)) mod[f.name] = scopeValue(f)
   // A field with no value yet shows its name instead of nothing.
   const module = new Proxy(mod, { get: (t, k) => (typeof k === 'string' && !(k in t) ? `[${k}]` : t[k as string]) })
   const contactData = contact === 'known' ? CONTACT : {}
@@ -735,15 +738,15 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
   const block = (b: Block, sc: Scope): Block => {
     switch (b.type) {
       case 'section':
-        return { ...b, cells: b.cells.map((c) => list(c, sc)) }
+        return { ...b, bg: text(b.bg, sc), cells: b.cells.map((c) => list(c, sc)) }
       case 'raw':
         return { ...b, html: text(b.html, sc) }
       case 'heading':
-        return b.id === keepId ? b : { ...b, text: text(b.text, sc) }
+        return b.id === keepId ? b : { ...b, text: text(b.text, sc), color: text(b.color, sc) }
       case 'text':
-        return b.id === keepId ? b : { ...b, html: text(b.html, sc) }
+        return b.id === keepId ? b : { ...b, html: text(b.html, sc), color: text(b.color, sc) }
       case 'button':
-        return b.id === keepId ? b : { ...b, label: text(b.label, sc), href: text(b.href, sc) }
+        return b.id === keepId ? b : { ...b, label: text(b.label, sc), href: text(b.href, sc), bg: text(b.bg, sc), color: text(b.color, sc) }
       case 'image':
         return b.id === keepId ? b : { ...b, src: text(b.src, sc), alt: text(b.alt, sc) }
       default:
@@ -751,5 +754,5 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
     }
   }
 
-  return { ...tree, sections: tree.sections.map((s) => ({ ...s, cells: s.cells.map((c) => list(c, scope)) })) }
+  return { ...tree, sections: tree.sections.map((s) => ({ ...s, bg: text(s.bg, scope), cells: s.cells.map((c) => list(c, scope)) })) }
 }

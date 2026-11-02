@@ -38,7 +38,7 @@ import { Inspector } from '@/components/editor/Inspector'
 import { Preview } from '@/components/editor/Preview'
 import type { DropTarget } from '@/components/editor/Preview'
 import { BLOCK_ICONS, Structure } from '@/components/editor/Structure'
-import { codeToTree, reconcileIds, treeToCode } from '@/lib/hubl'
+import { codeToTree, reconcileIds, syncExtraFields, treeToCode } from '@/lib/hubl'
 import { uploadImage } from '@/lib/images'
 import { signature, withNewIds } from '@/lib/custom-blocks'
 import { interpretTree, previewScope } from '@/lib/hubl-render'
@@ -89,6 +89,8 @@ function Editor() {
   const [codeError, setCodeError] = useState<string | null>(null)
   // True when the code is free HTML (no data-neon markers) converted on the fly.
   const [codeImported, setCodeImported] = useState(false)
+  // Fields the last pasted/typed code created (names), shown next to the code.
+  const [newFields, setNewFields] = useState<string[]>([])
   const [codeJump, setCodeJump] = useState<{ line: number; n: number }>()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [mobile, setMobile] = useState(false)
@@ -116,7 +118,9 @@ function Editor() {
   }, [])
 
   // Visual edit → tree is the source of truth, code is regenerated.
-  const commit = (next: ModuleTree, select?: string | null) => {
+  const commit = (raw: ModuleTree, select?: string | null) => {
+    // Variables used by the code get their module field (and lose it when gone).
+    const next = syncExtraFields(raw)
     pushHistory(tree)
     setTree(next)
     setCode(treeToCode(next, name))
@@ -140,7 +144,11 @@ function Editor() {
       setCodeError(null)
       setCodeImported(!!res.imported)
       pushHistory(tree)
-      setTree(reconcileIds(res.tree, tree))
+      // Fields already created keep their edits; new variables get theirs.
+      const next = syncExtraFields({ ...reconcileIds(res.tree, tree), fields: tree.fields })
+      const known = new Set((tree.fields ?? []).map((f) => f.name))
+      setNewFields((next.fields ?? []).map((f) => f.name).filter((n) => !known.has(n)))
+      setTree(next)
     }, 250)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,7 +158,10 @@ function Editor() {
   const applyCode = (generated: string, specs?: FieldSpec[]) => {
     const res = codeToTree(generated, tree, specs)
     if (!res.ok) return res.error
-    commit(res.tree, null)
+    // A whole new module: its variables become its fields (types from fields.json when given).
+    const next = syncExtraFields({ ...res.tree, fields: undefined }, specs)
+    setNewFields((next.fields ?? []).map((f) => f.name))
+    commit(next, null)
     return null
   }
 
@@ -494,7 +505,11 @@ function Editor() {
                 </span>
               ) : codeImported ? (
                 <span className="flex min-w-0 flex-1 items-center gap-1.5 text-cyan">
-                  <Wand2 className="size-3.5 shrink-0" /> <span className="truncate">Code libre converti en blocs</span>
+                  <Wand2 className="size-3.5 shrink-0" />{' '}
+                  <span className="truncate">
+                    Code reconnu et converti en blocs
+                    {newFields.length > 0 && ` · ${newFields.length} champ${newFields.length > 1 ? 's' : ''} créé${newFields.length > 1 ? 's' : ''}`}
+                  </span>
                 </span>
               ) : (
                 <span className="flex flex-1 items-center gap-1.5 text-cyan">

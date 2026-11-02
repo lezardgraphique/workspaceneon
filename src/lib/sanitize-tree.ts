@@ -1,6 +1,6 @@
 import { isSafeUrl, sanitizeHtml, stripTags } from './sanitize'
 import { uid } from './types'
-import type { Align, Block, Columns, ModuleTree, Section } from './types'
+import type { Align, Block, Columns, ExtraField, ExtraFieldType, Json, ModuleTree, Section } from './types'
 
 // Rebuilds a module tree from untrusted JSON (what the API receives): known
 // block types only, every value clamped or filtered, every string cleaned.
@@ -135,6 +135,58 @@ export function section(raw: unknown, depth = 0, count: { n: number } = { n: 0 }
   }
 }
 
+// Extra module fields (variables of the code): names, types and default values
+// rebuilt from a closed list, whatever was sent.
+const FIELD_TYPES = new Set<string>(['text', 'richtext', 'number', 'boolean', 'link', 'image', 'color', 'date', 'datetime', 'group'])
+const FIELD_NAME = /^[A-Za-z_]\w{0,59}$/
+const bigNum = (v: unknown, min: number, max: number): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : undefined)
+
+function fieldDefault(type: ExtraFieldType, v: unknown): Json | undefined {
+  switch (type) {
+    case 'text':
+      return typeof v === 'string' ? stripTags(str(v, 1000)) : undefined
+    case 'richtext':
+      return typeof v === 'string' ? sanitizeHtml(str(v, 5000)) : undefined
+    case 'number':
+      return bigNum(v, -1e15, 1e15)
+    case 'boolean':
+      return typeof v === 'boolean' ? v : undefined
+    case 'date':
+    case 'datetime':
+      return bigNum(v, 0, 4_102_444_800_000)
+    case 'link': {
+      if (!isObj(v)) return undefined
+      const u = isObj(v.url) ? v.url : {}
+      const href = str(u.href, 2000)
+      return { url: { type: 'EXTERNAL', href: isSafeUrl(href) ? href : '', content_id: null }, open_in_new_tab: v.open_in_new_tab === true, no_follow: v.no_follow === true }
+    }
+    case 'image': {
+      if (!isObj(v)) return undefined
+      const src = str(v.src, 2000)
+      return { src: isSafeUrl(src, true) ? src : '', alt: stripTags(str(v.alt, 200)), width: num(v.width, 600, 1, 4000), height: num(v.height, 300, 1, 4000) }
+    }
+    case 'color':
+      return isObj(v) ? { color: safeColor(v.color, '#000000'), opacity: num(v.opacity, 100, 0, 100) } : undefined
+    default:
+      return undefined
+  }
+}
+
+function extraField(raw: unknown, leaf = false): ExtraField | null {
+  if (!isObj(raw)) return null
+  const name = str(raw.name, 60)
+  const type = typeof raw.type === 'string' && FIELD_TYPES.has(raw.type) ? (raw.type as ExtraFieldType) : null
+  if (!FIELD_NAME.test(name) || !type || (leaf && type === 'group')) return null
+  const out: ExtraField = { name, label: stripTags(str(raw.label, 100)) || name, type }
+  const d = fieldDefault(type, raw.default)
+  if (d !== undefined) out.default = d
+  if (type === 'group') {
+    out.children = (Array.isArray(raw.children) ? raw.children : []).slice(0, 20).map((c) => extraField(c, true)).filter((c): c is ExtraField => !!c)
+    if (raw.repeater === true) out.repeater = true
+  }
+  return out
+}
+
 export function sanitizeTree(raw: unknown): ModuleTree {
   const t = isObj(raw) ? raw : {}
   const count = { n: 0 }
@@ -145,5 +197,13 @@ export function sanitizeTree(raw: unknown): ModuleTree {
     sections: (Array.isArray(t.sections) ? t.sections.slice(0, 100) : [])
       .map((s) => section(s, 0, count))
       .filter((s): s is Section => !!s),
+    ...(() => {
+      const seen = new Set<string>()
+      const fields = (Array.isArray(t.fields) ? t.fields : [])
+        .slice(0, 60)
+        .map((f) => extraField(f))
+        .filter((f): f is ExtraField => !!f && !seen.has(f.name) && !!seen.add(f.name))
+      return fields.length ? { fields } : {}
+    })(),
   }
 }

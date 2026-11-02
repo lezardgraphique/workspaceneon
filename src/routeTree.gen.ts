@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CompteRouteImport } from './routes/compte'
 import { Route as ConnexionRouteImport } from './routes/connexion'
+import { Route as CountdownDotgifRouteImport } from './routes/countdown[.]gif'
 import { Route as FichiersRouteImport } from './routes/fichiers'
 import { Route as ApercuModuleIdRouteImport } from './routes/apercu.$moduleId'
 import { Route as ApiFilesRouteImport } from './routes/api.files'
@@ -35,6 +36,11 @@ const CompteRoute = CompteRouteImport.update({
 const ConnexionRoute = ConnexionRouteImport.update({
   id: '/connexion',
   path: '/connexion',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CountdownDotgifRoute = CountdownDotgifRouteImport.update({
+  id: '/countdown.gif',
+  path: '/countdown.gif',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FichiersRoute = FichiersRouteImport.update({
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/compte': typeof CompteRoute
   '/connexion': typeof ConnexionRoute
+  '/countdown.gif': typeof CountdownDotgifRoute
   '/fichiers': typeof FichiersRoute
   '/apercu/$moduleId': typeof ApercuModuleIdRoute
   '/api/files': typeof ApiFilesRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/compte': typeof CompteRoute
   '/connexion': typeof ConnexionRoute
+  '/countdown.gif': typeof CountdownDotgifRoute
   '/fichiers': typeof FichiersRoute
   '/apercu/$moduleId': typeof ApercuModuleIdRoute
   '/api/files': typeof ApiFilesRoute
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/compte': typeof CompteRoute
   '/connexion': typeof ConnexionRoute
+  '/countdown.gif': typeof CountdownDotgifRoute
   '/fichiers': typeof FichiersRoute
   '/apercu/$moduleId': typeof ApercuModuleIdRoute
   '/api/files': typeof ApiFilesRoute
@@ -132,6 +141,7 @@ export interface FileRouteTypes {
     | '/'
     | '/compte'
     | '/connexion'
+    | '/countdown.gif'
     | '/fichiers'
     | '/apercu/$moduleId'
     | '/api/files'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/'
     | '/compte'
     | '/connexion'
+    | '/countdown.gif'
     | '/fichiers'
     | '/apercu/$moduleId'
     | '/api/files'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/'
     | '/compte'
     | '/connexion'
+    | '/countdown.gif'
     | '/fichiers'
     | '/apercu/$moduleId'
     | '/api/files'
@@ -175,6 +187,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CompteRoute: typeof CompteRoute
   ConnexionRoute: typeof ConnexionRoute
+  CountdownDotgifRoute: typeof CountdownDotgifRoute
   FichiersRoute: typeof FichiersRoute
   ApercuModuleIdRoute: typeof ApercuModuleIdRoute
   ApiFilesRoute: typeof ApiFilesRoute
@@ -207,6 +220,13 @@ declare module '@tanstack/react-router' {
       path: '/connexion'
       fullPath: '/connexion'
       preLoaderRoute: typeof ConnexionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/countdown.gif': {
+      id: '/countdown.gif'
+      path: '/countdown.gif'
+      fullPath: '/countdown.gif'
+      preLoaderRoute: typeof CountdownDotgifRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/fichiers': {
@@ -279,6 +299,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CompteRoute: CompteRoute,
   ConnexionRoute: ConnexionRoute,
+  CountdownDotgifRoute: CountdownDotgifRoute,
   FichiersRoute: FichiersRoute,
   ApercuModuleIdRoute: ApercuModuleIdRoute,
   ApiFilesRoute: ApiFilesRoute,

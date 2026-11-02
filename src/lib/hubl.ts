@@ -2,11 +2,12 @@ import { collectFields } from './fields'
 import type { FieldBlock, ModuleField } from './fields'
 import { interpretTree, previewScope } from './hubl-render'
 import type { SampleContact } from './hubl-render'
+import { analyzeFieldRefs, exposedNames, hubspotField } from './extra-fields'
 import { bindFieldsFromCode } from './module-fields'
 import { isSafeUrl, sanitizeHtml as strictHtml } from './sanitize'
 import type { FieldBinding, FieldSpec } from './module-fields'
 import { uid } from './types'
-import type { Align, Behavior, Block, Columns, ModuleTree, Section } from './types'
+import type { Align, Behavior, Block, Columns, ExtraField, ModuleTree, Section } from './types'
 
 // ---------------------------------------------------------------------------
 // Bidirectional sync format
@@ -20,6 +21,12 @@ import type { Align, Behavior, Block, Columns, ModuleTree, Section } from './typ
 
 export const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+// Escapes text but leaves HuBL tokens ({{ … }}, {% … %}) untouched, so the
+// variables of pasted code keep working.
+const HUBL_TOKEN = /(\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\})/
+const hasHubl = (s: string) => /\{[{%]/.test(s)
+export const escKeep = (s: string) => s.split(HUBL_TOKEN).map((part, i) => (i % 2 ? part : esc(part))).join('')
 
 const STACK_CSS = `@media only screen and (max-width: 480px) {
   .neon-stack > tbody > tr > .neon-col, .neon-stack > tr > .neon-col { display: block !important; width: 100% !important; box-sizing: border-box; }
@@ -73,42 +80,40 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
   const p = pad(d)
   switch (b.type) {
     case 'heading': {
-      const content =
-        ctx.mode === 'hubspot'
-          ? `{{ module.${ctx.field(b, '', '', 'text', b.text)} }}`
-          : esc(b.text)
-      return `${p}<h${b.level}${ctx.attrs({ neon: 'heading', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size })} style="margin:0 0 12px;font-family:${esc(font)};font-size:${b.size}px;line-height:1.25;font-weight:700;color:${esc(b.color)};text-align:${b.align};">${content}</h${b.level}>`
+      // Content that holds a variable stays in place: it is not a field of its own.
+      const content = ctx.mode === 'hubspot' && !hasHubl(b.text) ? `{{ module.${ctx.field(b, '', '', 'text', b.text)} }}` : escKeep(b.text)
+      return `${p}<h${b.level}${ctx.attrs({ neon: 'heading', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size })} style="margin:0 0 12px;font-family:${esc(font)};font-size:${b.size}px;line-height:1.25;font-weight:700;color:${escKeep(b.color)};text-align:${b.align};">${content}</h${b.level}>`
     }
     case 'text': {
-      const content =
-        ctx.mode === 'hubspot' ? `{{ module.${ctx.field(b, '', '', 'richtext', b.html)} }}` : b.html
-      return `${p}<div${ctx.attrs({ neon: 'text', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size })} style="margin:0 0 12px;font-family:${esc(font)};font-size:${b.size}px;line-height:1.6;color:${esc(b.color)};text-align:${b.align};">${content}</div>`
+      const content = ctx.mode === 'hubspot' && !hasHubl(b.html) ? `{{ module.${ctx.field(b, '', '', 'richtext', b.html)} }}` : b.html
+      return `${p}<div${ctx.attrs({ neon: 'text', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size })} style="margin:0 0 12px;font-family:${esc(font)};font-size:${b.size}px;line-height:1.6;color:${escKeep(b.color)};text-align:${b.align};">${content}</div>`
     }
     case 'button': {
       // javascript:, data: and other schemes never reach the generated code.
-      let href = isSafeUrl(b.href) ? esc(b.href) : '#'
-      let label = esc(b.label)
+      let href = isSafeUrl(b.href) ? escKeep(b.href) : '#'
+      let label = escKeep(b.label)
       if (ctx.mode === 'hubspot') {
-        const l = ctx.field(b, 'label', 'texte', 'text', b.label, b.field?.textName)
-        const u = ctx.field(
-          b,
-          'link',
-          'lien',
-          'link',
-          { url: { content_id: null, type: 'EXTERNAL', href: b.href }, open_in_new_tab: true, no_follow: false },
-          b.field?.linkName,
-        )
-        href = `{{ module.${u}.url.href }}`
-        label = `{{ module.${l} }}`
+        if (!hasHubl(b.label)) label = `{{ module.${ctx.field(b, 'label', 'texte', 'text', b.label, b.field?.textName)} }}`
+        if (!hasHubl(b.href)) {
+          const u = ctx.field(
+            b,
+            'link',
+            'lien',
+            'link',
+            { url: { content_id: null, type: 'EXTERNAL', href: b.href }, open_in_new_tab: true, no_follow: false },
+            b.field?.linkName,
+          )
+          href = `{{ module.${u}.url.href }}`
+        }
       }
       return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius })} style="margin:0 0 12px;text-align:${b.align};">
-${p}  <a href="${href}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 26px;background:${esc(b.bg)};color:${esc(b.color)};border-radius:${b.radius}px;font-family:${esc(font)};font-size:15px;font-weight:700;text-decoration:none;">${label}</a>
+${p}  <a href="${href}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 26px;background:${escKeep(b.bg)};color:${escKeep(b.color)};border-radius:${b.radius}px;font-family:${esc(font)};font-size:15px;font-weight:700;text-decoration:none;">${label}</a>
 ${p}</div>`
     }
     case 'image': {
-      let src = isSafeUrl(b.src, true) ? esc(b.src) : ''
-      let alt = esc(b.alt)
-      if (ctx.mode === 'hubspot') {
+      let src = isSafeUrl(b.src, true) ? escKeep(b.src) : ''
+      let alt = escKeep(b.alt)
+      if (ctx.mode === 'hubspot' && !hasHubl(b.src) && !hasHubl(b.alt)) {
         const f = ctx.field(b, '', '', 'image', { src: b.src, alt: b.alt, loading: 'lazy' })
         src = `{{ module.${f}.src }}`
         alt = `{{ module.${f}.alt }}`
@@ -143,7 +148,7 @@ ${blocks}
 ${p}    </td>`
     })
     .join('\n')
-  return `${p}<table${ctx.attrs({ neon: 'section', columns: s.columns, behavior: s.behavior, bg: s.bg, padding: s.padding, radius: s.radius })} class="${cls}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${esc(s.bg)};border-radius:${s.radius}px;border-collapse:separate;${nested ? 'margin:0 0 12px;' : ''}">
+  return `${p}<table${ctx.attrs({ neon: 'section', columns: s.columns, behavior: s.behavior, bg: s.bg, padding: s.padding, radius: s.radius })} class="${cls}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${escKeep(s.bg)};border-radius:${s.radius}px;border-collapse:separate;${nested ? 'margin:0 0 12px;' : ''}">
 ${p}  <tr>
 ${cells}
 ${p}  </tr>
@@ -176,6 +181,26 @@ ${renderModule(tree, new Ctx('sync', tree))}
 `
 }
 
+// Fields for every `module.<name>` the module's code uses that no block
+// exposes: created when HuBL is pasted, kept while the variable is still in
+// the code, with the user's edits (label, type, value) preserved. The variable
+// itself is never touched: it stays where it is in the content.
+export function syncExtraFields(tree: ModuleTree, specs?: FieldSpec[]): ModuleTree {
+  const code = treeToCode(tree, '')
+  const prev = new Map((tree.fields ?? []).map((f) => [f.name, f]))
+  let fields: ExtraField[] = []
+  if (/module\./.test(code)) {
+    const exposed = exposedNames(tree)
+    fields = analyzeFieldRefs(code, specs)
+      .filter((f) => !exposed.has(f.name))
+      .map((f) => (specs?.length ? f : (prev.get(f.name) ?? f)))
+  }
+  if (JSON.stringify(fields) === JSON.stringify(tree.fields ?? [])) return tree
+  const { fields: _old, ...rest } = tree
+  void _old
+  return fields.length ? { ...rest, fields } : rest
+}
+
 export interface HubSpotExport {
   'module.html': string
   'module.css': string
@@ -194,6 +219,9 @@ export function treeToHubSpot(tree: ModuleTree, name: string): HubSpotExport {
     locked: false,
     default: f.default,
   }))
+  // Variables the code uses that no block owns (dates, conditions, repeaters…).
+  const own = new Set(fields.map((f) => f.name))
+  const extra = (tree.fields ?? []).filter((f) => !own.has(f.name)).map(hubspotField)
   const meta = {
     label: name,
     css_assets: [],
@@ -211,7 +239,7 @@ export function treeToHubSpot(tree: ModuleTree, name: string): HubSpotExport {
     // The name sits in a HuBL comment: it must not be able to close it.
     'module.html': `{# ${name.replace(/[{}#%]/g, ' ').trim()} — généré par Neon Sandbox Pro #}\n${html}\n`,
     'module.css': `${STACK_CSS}\n`,
-    'fields.json': JSON.stringify(fields, null, 2) + '\n',
+    'fields.json': JSON.stringify([...fields, ...extra], null, 2) + '\n',
     'meta.json': JSON.stringify(meta, null, 2) + '\n',
   }
 }
@@ -446,14 +474,24 @@ function px(v: string | null | undefined): number | undefined {
 }
 
 const css = (el: Element) => (el as HTMLElement).style
-const bgOf = (el: Element) => toHex(css(el)?.backgroundColor) ?? toHex(el.getAttribute('bgcolor'))
+// The browser drops a style value it cannot parse, such as
+// `background-color: {{ module.bg.color }}`: read those from the attribute.
+const COLOR_TOKEN = /^\{\{[^"'<>;{}]*\}\}$/
+function tokenStyle(el: Element, props: string[]): string | undefined {
+  const st = el.getAttribute('style') ?? ''
+  for (const prop of props) {
+    const v = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, 'i').exec(st)?.[1].trim()
+    if (v && COLOR_TOKEN.test(v)) return v
+  }
+}
+const bgOf = (el: Element) => toHex(css(el)?.backgroundColor) ?? toHex(el.getAttribute('bgcolor')) ?? tokenStyle(el, ['background-color', 'background'])
 const isBlank = (html: string) => !html.replace(/<[^>]*>/g, '').replace(/&nbsp;| |\s/g, '')
 
 function styleOf(el: Element, inh: Inherit): Inherit {
   const st = css(el)
   const align = st?.textAlign || el.getAttribute('align') || (el.tagName === 'CENTER' ? 'center' : '')
   return {
-    color: toHex(st?.color) ?? toHex(el.getAttribute('color')) ?? inh.color,
+    color: toHex(st?.color) ?? toHex(el.getAttribute('color')) ?? tokenStyle(el, ['color']) ?? inh.color,
     align: ALIGNS.includes(align as Align) ? (align as Align) : inh.align,
     size: px(st?.fontSize) ?? inh.size,
   }

@@ -1,4 +1,4 @@
-import { codeToTree } from '@/lib/hubl'
+import { codeToTree, syncExtraFields } from '@/lib/hubl'
 import { isLogicBlock } from '@/lib/hubl-render'
 import { validateSyntax } from '@/lib/validator'
 import type { FieldBinding, FieldSpec } from '@/lib/module-fields'
@@ -55,6 +55,10 @@ export function recognizeCode(code: string, current: ModuleTree, specs?: FieldSp
   const res = codeToTree(code, current, specs)
   if (!res.ok) return { ok: false, kind, error: res.error }
 
+  // Every variable no block owns becomes a module field (the variable stays in the content).
+  const tree = syncExtraFields({ ...res.tree, fields: undefined }, specs)
+  const created = tree.fields ?? []
+
   const st = { blocks: 0, raw: 0, cards: 0 }
   const walk = (list: Block[]) => {
     for (const b of list) {
@@ -68,23 +72,24 @@ export function recognizeCode(code: string, current: ModuleTree, specs?: FieldSp
       }
     }
   }
-  res.tree.sections.forEach((s) => s.cells.forEach(walk))
+  tree.sections.forEach((s) => s.cells.forEach(walk))
 
   // Placeholders that stayed literal text (inside HuBL logic, mixed with other
   // content) are the only ones the model still has to deal with.
   const binding = res.binding
-  const left = binding?.unbound.length ?? 0
+  const unbound = (binding?.unbound ?? []).filter((n) => !created.some((f) => f.name === n))
+  const left = unbound.length
   const syntax = validateSyntax(code)
   const issue =
     syntax.errors > 0
       ? `${plural(syntax.errors, 'erreur de syntaxe', 'erreurs de syntaxe')} dans le code (ligne ${syntax.issues.find((i) => i.severity === 'error')!.line} : ${syntax.issues.find((i) => i.severity === 'error')!.message})`
       : left > 0
-      ? `${plural(left, 'variable', 'variables')} {{ module.… }} (${binding!.unbound.join(', ')}) non liée${left > 1 ? 's' : ''} à un champ`
+      ? `${plural(left, 'variable', 'variables')} {{ module.… }} (${unbound.join(', ')}) non liée${left > 1 ? 's' : ''} à un champ`
       : st.blocks && st.raw / st.blocks > 0.5
         ? `${st.raw} blocs sur ${st.blocks} restent en Code libre`
         : undefined
 
-  const parts = [plural(res.tree.sections.length, 'section', 'sections'), plural(st.blocks - st.raw, 'bloc éditable', 'blocs éditables')]
+  const parts = [plural(tree.sections.length, 'section', 'sections'), plural(st.blocks - st.raw, 'bloc éditable', 'blocs éditables')]
   if (st.cards) parts.push(plural(st.cards, 'card', 'cards'))
   const raw = st.raw
     ? ` et ${plural(st.raw, 'bloc Code libre', 'blocs Code libre')} (logique HuBL ou éléments non reconnus, conservés tels quels)`
@@ -92,13 +97,16 @@ export function recognizeCode(code: string, current: ModuleTree, specs?: FieldSp
   const fields = binding?.bound.length
     ? ` ${plural(binding.bound.length, 'champ reconnu', 'champs reconnus')} avec leurs noms exacts (${binding.bound.flatMap((f) => f.exposed).join(', ')}).`
     : ''
+  const extra = created.length
+    ? ` ${plural(created.length, 'champ créé', 'champs créés')} pour les variables du code (${created.map((f) => f.name).join(', ')}) : elles restent en place dans le contenu.`
+    : ''
   return {
     ok: true,
-    tree: res.tree,
+    tree,
     kind,
     binding,
     complete: !issue,
     issue,
-    summary: `J'ai reconnu **${kind}** et je l'ai transformé en rendu : ${parts.join(', ')}${raw}.${fields}`,
+    summary: `J'ai reconnu **${kind}** et je l'ai transformé en rendu : ${parts.join(', ')}${raw}.${fields}${extra}`,
   }
 }

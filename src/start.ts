@@ -39,7 +39,7 @@ const HEADERS: Record<string, string> = {
 
 // Uploaded files are public by design (URLs are pasted in emails): they must
 // stay loadable from other sites, so only that header differs.
-const PUBLIC = /^\/api\/(images|files)\/[^/]+$/
+const PUBLIC = /^(\/api\/(images|files)\/[^/]+|\/countdown\.gif)$/
 
 const securityHeaders = createMiddleware({ type: 'request' }).server(async ({ request, next }) => {
   const url = new URL(request.url)

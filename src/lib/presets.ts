@@ -1,5 +1,5 @@
 import { createBlock, createSection } from './types'
-import type { Block, ButtonBlock, ImageBlock, RawBlock, Section, TextBlock } from './types'
+import type { Block, ButtonBlock, ImageBlock, RawBlock, Section } from './types'
 
 // Ready-made blocks offered in Structure > Ajouter. They are plain cards made of
 // the usual blocks, so they stay editable, exportable to HuBL and parsed back.
@@ -12,14 +12,14 @@ export interface Preset {
 }
 
 const button = (patch: Partial<ButtonBlock>): ButtonBlock => ({ ...(createBlock('button') as ButtonBlock), ...patch })
-const text = (patch: Partial<TextBlock>): TextBlock => ({ ...(createBlock('text') as TextBlock), ...patch })
 
 function card(columns: 1 | 2 | 3, cells: Block[][], patch: Partial<Section> = {}): Section {
   return { ...createSection(columns, true), ...patch, cells }
 }
 
 // Round icons are PNG files served by the app (e-mail clients do not show SVG).
-const ICONS = 'https://workspaceneon.netlify.app/social'
+const SITE = 'https://workspaceneon.netlify.app'
+const ICONS = `${SITE}/social`
 const NETWORKS = [
   { name: 'LinkedIn', file: 'linkedin', href: 'https://www.linkedin.com/' },
   { name: 'Facebook', file: 'facebook', href: 'https://www.facebook.com/' },
@@ -60,13 +60,13 @@ export const PRESETS: Preset[] = [
   {
     id: 'countdown',
     label: 'Compte à rebours',
-    hint: 'Jours, heures, minutes (à mettre à jour)',
+    hint: 'Image animée qui décompte à l’ouverture (champ date)',
     build: () => {
-      const tile = (n: string, unit: string): Block[] => [
-        text({ html: `<strong>${n}</strong>`, size: 34, align: 'center', color: '#ff007f' }),
-        text({ html: unit, size: 13, align: 'center', color: '#3a3a52' }),
-      ]
-      return card(3, [tile('07', 'jours'), tile('12', 'heures'), tile('30', 'minutes')], { behavior: 'side', bg: '#f4f4fa', padding: 12 })
+      // The image is drawn by the app (/countdown.gif) at the moment the e-mail
+      // is opened and ticks every second. {{ module.date_fin }} becomes a date
+      // field automatically; the colours are set in the address.
+      const html = `<div style="text-align:center"><img src="${SITE}/countdown.gif?to={{ module.date_fin }}&amp;bg=f4f4fa&amp;fg=ff007f&amp;lb=3a3a52" width="468" height="96" alt="Compte à rebours" style="display:inline-block;max-width:100%;height:auto;border:0"></div>`
+      return card(1, [[{ ...(createBlock('raw') as RawBlock), html }]], { bg: '#ffffff', padding: 12, radius: 0 })
     },
   },
   {
