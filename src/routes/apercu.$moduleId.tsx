@@ -7,13 +7,13 @@ import { NeonLogo } from '@/components/Maily'
 import { ClientsDialog } from '@/components/editor/ClientsDialog'
 import { CLIENTS, renderForClient } from '@/lib/clients'
 import { previewEmail } from '@/lib/hubl'
-import { getModule } from '@/server/modules.functions'
+import { loadModule } from '@/lib/data'
 
 // Module preview: the exported HTML exactly as it will be sent or published,
 // on desktop or mobile, light or dark. Shareable by URL like the editor.
 export const Route = createFileRoute('/apercu/$moduleId')({
   loader: async ({ params }) => {
-    const mod = await getModule({ data: { id: params.moduleId } }).catch(() => null)
+    const mod = await loadModule(params.moduleId).catch(() => null)
     if (!mod) throw notFound()
     return mod
   },

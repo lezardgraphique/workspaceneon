@@ -3,6 +3,10 @@ import { Link, useRouteContext } from '@tanstack/react-router'
 import { logout } from '@netlify/identity'
 import { Loader2, LogOut, User } from 'lucide-react'
 
+import { isOffline, refreshPending, syncAll } from '@/lib/data'
+import { wipeLocal } from '@/lib/local-store'
+import { rememberUser } from '@/lib/session-cache'
+
 // Signed-in account (from the root route) and the sign-out button.
 export function AccountMenu() {
   const user = useRouteContext({ from: '__root__', select: (c) => c.user })
@@ -10,10 +14,25 @@ export function AccountMenu() {
   if (!user) return null
 
   const out = async () => {
+    if (isOffline()) {
+      alert('Tu es hors ligne : reconnecte-toi au réseau pour te déconnecter.')
+      return
+    }
     setBusy(true)
+    // Unsent offline changes are pushed first; if that fails, ask before wiping them.
+    await syncAll()
+    const left = await refreshPending()
+    if (left > 0 && !confirm(`${left} modification${left > 1 ? 's' : ''} hors ligne ne ${left > 1 ? 'sont' : 'est'} pas encore synchronisée${left > 1 ? 's' : ''} et ${left > 1 ? 'seront perdues' : 'sera perdue'} à la déconnexion. Te déconnecter quand même ?`)) {
+      setBusy(false)
+      return
+    }
     try {
       await logout()
     } finally {
+      // The local copy and the stored pages belong to this account only.
+      rememberUser(null)
+      await wipeLocal()
+      navigator.serviceWorker?.controller?.postMessage('clear')
       // Full navigation: the server must see the cleared cookie.
       window.location.replace('/connexion')
     }

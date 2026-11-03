@@ -5,6 +5,7 @@ import { Check, Copy, Download, FileText, FolderOpen, Loader2, Trash2, Upload } 
 
 import { AccountMenu } from '@/components/AccountMenu'
 import { AppHeader } from '@/components/AppHeader'
+import { isOffline } from '@/lib/data'
 import { FILE_TYPES, MAX_FILE_BYTES, PAGE_SIZE, formatSize, isImageType } from '@/lib/files'
 import type { FileList, StoredFile } from '@/lib/files'
 
@@ -39,7 +40,7 @@ function FilesPage() {
       setTotal(data.total)
       setUsage(data.usage)
     } catch {
-      setErrors(['Impossible de charger les fichiers.'])
+      setErrors([isOffline() ? 'Hors ligne : tes fichiers s’afficheront dès que la connexion reviendra.' : 'Impossible de charger les fichiers.'])
     } finally {
       setLoading(false)
     }

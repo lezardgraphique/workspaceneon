@@ -47,8 +47,8 @@ import { KOFI_URL } from '@/lib/links'
 import type { FieldSpec } from '@/lib/module-fields'
 import { findNode, findPath, insertInCell, moveNode, moveNodeTo, removeNode, replaceNode, updateNode } from '@/lib/tree'
 import { BLOCK_LABELS, createBlock } from '@/lib/types'
-import type { ImageBlock, ModuleTree, Section } from '@/lib/types'
-import { getModule, saveModule } from '@/server/modules.functions'
+import type { ImageBlock, ModuleRecord, ModuleTree, Section } from '@/lib/types'
+import { adoptServerModule, loadModule, persistModule } from '@/lib/data'
 
 // Maily's panel (chat + Markdown renderer) is the heaviest part: loaded on demand.
 const MailyPanel = lazy(() => import('@/components/editor/MailyPanel').then((m) => ({ default: m.MailyPanel })))
@@ -57,13 +57,13 @@ export const Route = createFileRoute('/editor/$moduleId')({
   // ?maily=1: open straight on Maily's chat (the "Parler à Maily" button of the home page).
   validateSearch: (search: Record<string, unknown>): { maily?: 1 } => (search.maily === 1 || search.maily === '1' ? { maily: 1 } : {}),
   loader: async ({ params }) => {
-    const mod = await getModule({ data: { id: params.moduleId } }).catch(() => null)
+    const mod = await loadModule(params.moduleId).catch(() => null)
     if (!mod) throw notFound()
     return mod
   },
   head: ({ loaderData }) => ({ meta: [{ title: `${loaderData?.name ?? 'Module'} · Neon Sandbox Pro` }] }),
   // Keyed so editor state resets when navigating between modules
-  component: () => <Editor key={Route.useLoaderData().id} />,
+  component: EditorGate,
   notFoundComponent: () => (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 text-center">
       <p className="font-display text-2xl">Module introuvable</p>
@@ -75,7 +75,7 @@ export const Route = createFileRoute('/editor/$moduleId')({
 })
 
 type Pane = 'structure' | 'fields' | 'maily' | 'preview' | 'inspector' | 'code'
-type SaveState = 'saved' | 'dirty' | 'saving' | 'error'
+type SaveState = 'saved' | 'local' | 'conflict' | 'dirty' | 'saving' | 'error'
 
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
@@ -83,8 +83,20 @@ const isTyping = (el: EventTarget | null) =>
 const opensKeyboard = (el: EventTarget | null) =>
   isTyping(el) && !(el as HTMLElement).matches('input[type=range], input[type=color], select')
 
-function Editor() {
-  const initial = Route.useLoaderData()
+// The page may come from the server while newer edits wait in the local copy
+// (made offline): those win, and the editor restarts from them.
+function EditorGate() {
+  const server = Route.useLoaderData()
+  const [local, setLocal] = useState<ModuleRecord | null>(null)
+  useEffect(() => {
+    setLocal(null)
+    void adoptServerModule(server).then(setLocal)
+  }, [server])
+  const initial = local ?? server
+  return <Editor key={`${initial.id}:${local ? 'local' : 'server'}`} initial={initial} />
+}
+
+function Editor({ initial }: { initial: ModuleRecord }) {
   const openMaily = !!Route.useSearch().maily
   const [name, setName] = useState(initial.name)
   const [tree, setTree] = useState<ModuleTree>(initial.tree)
@@ -104,6 +116,7 @@ function Editor() {
   const [exporting, setExporting] = useState(false)
   const [testing, setTesting] = useState(false)
   const [save, setSave] = useState<SaveState>('saved')
+  const [conflictCopy, setConflictCopy] = useState<string | null>(null)
   const [past, setPast] = useState<ModuleTree[]>([])
   const [future, setFuture] = useState<ModuleTree[]>([])
   // Mobile: hide the tab bar while the on-screen keyboard is up.
@@ -205,8 +218,10 @@ function Editor() {
     const seq = ++saveSeq.current
     setSave('saving')
     try {
-      await saveModule({ data: { id: initial.id, name: name.trim() || 'Sans titre', tree } })
-      if (seq === saveSeq.current) setSave('saved')
+      const r = await persistModule(initial.id, name.trim() || 'Sans titre', tree)
+      if (seq !== saveSeq.current) return
+      setConflictCopy(r.copyId ?? null)
+      setSave(r.state)
     } catch {
       if (seq === saveSeq.current) setSave('error')
     }
@@ -223,7 +238,7 @@ function Editor() {
   }, [persist])
 
   useEffect(() => {
-    if (save === 'saved') return
+    if (save === 'saved' || save === 'local') return
     const warn = (e: BeforeUnloadEvent) => e.preventDefault()
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
@@ -349,6 +364,18 @@ function Editor() {
         <span className="flex shrink-0 items-center gap-1 text-xs text-mute" aria-live="polite">
           {save === 'saving' && <><Loader2 className="size-3.5 animate-spin" /> <span className="hidden sm:inline">Sauvegarde…</span></>}
           {save === 'saved' && <><Check className="size-3.5 text-cyan" /> <span className="hidden sm:inline">Sauvegardé</span></>}
+          {save === 'local' && <><CloudOff className="size-3.5 text-cyan" /> <span className="hidden sm:inline" title="Enregistré sur cet appareil, envoyé dès que la connexion revient">Enregistré sur cet appareil</span></>}
+          {save === 'conflict' && (
+            <span className="flex items-center gap-1 text-pink">
+              <CloudOff className="size-3.5" />
+              <span className="hidden sm:inline">Modifié ailleurs : ta version est dans</span>
+              {conflictCopy && (
+                <Link to="/editor/$moduleId" params={{ moduleId: conflictCopy }} className="underline">
+                  la copie
+                </Link>
+              )}
+            </span>
+          )}
           {save === 'dirty' && <><span className="size-1.5 rounded-full bg-mute sm:hidden" /><span className="hidden sm:inline">Modifications…</span></>}
           {save === 'error' && (
             <button onClick={persist} className="flex items-center gap-1 text-pink" aria-label="Échec de la sauvegarde, réessayer">

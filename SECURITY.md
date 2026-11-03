@@ -28,6 +28,10 @@ Réglages Netlify à connaître (tableau de bord, *Identity*) : **Registration**
 - `/countdown.gif` est public (chargé par les messageries) : la date doit être un horodatage entre 2020 et 2100, les couleurs 6 chiffres hexadécimaux, sinon 400 ; toutes les autres options (taille, arrondi, unités, langue, message de fin limité aux caractères que la police sait dessiner) sont bornées ou ignorées ; le GIF est dessiné à la volée (~25 ms), mis en cache 2 s et limité à 300 requêtes par minute et par IP. Il ne lit ni n'écrit aucune donnée.
 - Les champs de module (`tree.fields`) sont reconstruits côté serveur à l'enregistrement : noms, types et valeurs par défaut filtrés comme le reste de l'arbre.
 
+## Copie locale (hors ligne)
+
+Les modules, blocs et pages de l'application sont copiés dans le navigateur (IndexedDB, Cache Storage, dernier compte dans `localStorage`) pour le mode hors ligne. Ces copies sont effacées à la déconnexion et quand un autre compte se connecte ; sur un appareil partagé, se déconnecter est donc nécessaire. Un fichier de sauvegarde exporté contient tous les modules en clair : à garder comme un document privé. À l'import, chaque arbre est nettoyé (`sanitizeTree`) avant d'être affiché ou envoyé.
+
 ## Limites connues
 
 - La limitation de débit est en mémoire, par instance serveur : c'est un frein, pas un pare-feu. Pour une protection complète, ajoute une règle de limitation Netlify.

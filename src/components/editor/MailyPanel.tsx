@@ -16,6 +16,7 @@ import type { ModuleTree, Section } from '@/lib/types'
 import { slugify } from '@/lib/custom-blocks'
 import type { CustomBlock } from '@/lib/custom-blocks'
 import { saveCustomBlock } from '@/server/custom-blocks.functions'
+import { isNetworkError, isOffline } from '@/lib/data'
 import { createModule, listModules } from '@/server/modules.functions'
 import { refreshCustomBlocks } from './useCustomBlocks'
 
@@ -412,6 +413,8 @@ export function MailyPanel({
     } catch (e) {
       if ((e as Error).name === 'AbortError') {
         setMessages((prev) => prev.map((m) => (m.building ? { ...m, building: false, content: m.content || 'Génération arrêtée.' } : m)))
+      } else if (isOffline() || isNetworkError(e)) {
+        push({ role: 'assistant', content: '⚠️ Je n’ai pas de connexion pour réfléchir. Réessaie dès que tu es en ligne : l’éditeur, lui, continue de fonctionner hors ligne.' })
       } else {
         push({ role: 'assistant', content: `⚠️ ${(e as Error).message}` })
       }

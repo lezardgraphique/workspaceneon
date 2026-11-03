@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { ArrowRight, Columns3, Code2, Eye, FolderOpen, Heart, Layers, Loader2, MailCheck, Sparkles, Trash2, Wand2 } from 'lucide-react'
 
 import { AccountMenu } from '@/components/AccountMenu'
+import { BackupPanel } from '@/components/BackupPanel'
 import { AppHeader, headerButton } from '@/components/AppHeader'
 import { EmailFrame } from '@/components/EmailFrame'
 import { Maily } from '@/components/Maily'
@@ -10,10 +11,10 @@ import { previewEmail } from '@/lib/hubl'
 import { KOFI_URL } from '@/lib/links'
 import { STARTERS } from '@/lib/templates'
 import { countBlocks } from '@/lib/tree'
-import { createModule, deleteModule, listModules } from '@/server/modules.functions'
+import { adoptServerList, createLocalFirst, loadModules, removeModule } from '@/lib/data'
 
 export const Route = createFileRoute('/')({
-  loader: () => listModules(),
+  loader: () => loadModules(),
   component: Library,
 })
 
@@ -26,7 +27,13 @@ const FEATURES = [
 ]
 
 function Library() {
-  const modules = Route.useLoaderData()
+  const loaded = Route.useLoaderData()
+  const [overlay, setOverlay] = useState<typeof loaded | null>(null)
+  const modules = overlay ?? loaded
+  useEffect(() => {
+    setOverlay(null)
+    void adoptServerList(loaded).then(setOverlay)
+  }, [loaded])
   const navigate = useNavigate()
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
@@ -37,7 +44,7 @@ function Library() {
     setBusy(key)
     setError(null)
     try {
-      const mod = await createModule({ data: { name: starter.key === 'blank' ? 'Nouveau module' : starter.name, tree: starter.build() } })
+      const mod = await createLocalFirst(starter.key === 'blank' ? 'Nouveau module' : starter.name, starter.build())
       await navigate({ to: '/editor/$moduleId', params: { moduleId: mod.id }, search: withMaily ? { maily: 1 } : {} })
     } catch {
       setError('Impossible de créer le module pour le moment. Vérifie ta connexion puis réessaie.')
@@ -49,8 +56,12 @@ function Library() {
   const remove = async (id: string, name: string) => {
     if (!confirm(`Supprimer « ${name} » ? Cette action est définitive.`)) return
     setBusy(id)
-    await deleteModule({ data: { id } })
-    await router.invalidate()
+    try {
+      await removeModule(id)
+      await router.invalidate()
+    } catch {
+      setError('Suppression impossible pour le moment. Réessaie dans un instant.')
+    }
     setBusy(null)
   }
 
@@ -215,6 +226,8 @@ function Library() {
             </ul>
           )}
         </section>
+
+        <BackupPanel />
       </main>
 
       <footer className="mx-auto max-w-6xl px-6 pb-10 text-center text-sm text-mute">

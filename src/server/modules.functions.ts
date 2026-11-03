@@ -84,3 +84,30 @@ export const deleteModule = createServerFn({ method: 'POST' })
     await db.delete(modules).where(and(eq(modules.id, data.id), eq(modules.userId, user.id)))
     return { ok: true }
   })
+
+// Offline sync: the browser keeps a local copy and pushes it back here. `base`
+// is the server's updatedAt the local copy started from: if the row changed
+// elsewhere since, nothing is overwritten and the local version becomes a copy.
+export type SyncStatus = 'created' | 'updated' | 'conflict'
+
+export const syncModule = createServerFn({ method: 'POST' })
+  .validator(z.object({ id: z.uuid(), name: nameSchema, tree: treeSchema, base: z.string().nullable() }))
+  .handler(async ({ data }): Promise<{ status: SyncStatus; record: ModuleRecord; copy?: ModuleRecord }> => {
+    const user = await requireUser()
+    const [row] = await db.select().from(modules).where(and(eq(modules.id, data.id), eq(modules.userId, user.id)))
+    if (!row) {
+      const [made] = await db.insert(modules).values({ id: data.id, userId: user.id, name: data.name, tree: data.tree }).returning()
+      return { status: 'created', record: toRecord(made) }
+    }
+    if (data.base && row.updatedAt.getTime() > new Date(data.base).getTime()) {
+      const name = `${data.name.slice(0, 96)} (copie hors ligne)`
+      const [copy] = await db.insert(modules).values({ userId: user.id, name, tree: data.tree }).returning()
+      return { status: 'conflict', record: toRecord(row), copy: toRecord(copy) }
+    }
+    const [done] = await db
+      .update(modules)
+      .set({ name: data.name, tree: data.tree, updatedAt: new Date() })
+      .where(and(eq(modules.id, data.id), eq(modules.userId, user.id)))
+      .returning()
+    return { status: 'updated', record: toRecord(done) }
+  })

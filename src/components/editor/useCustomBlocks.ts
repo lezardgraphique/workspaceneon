@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import type { CustomBlock } from '@/lib/custom-blocks'
-import { listCustomBlocks } from '@/server/custom-blocks.functions'
+import { loadBlocks } from '@/lib/data'
 
 // Library of custom blocks, loaded once and shared by every "Ajouter" menu and
 // Maily's panel. `refreshCustomBlocks()` reloads it after a block is created.
@@ -11,7 +11,7 @@ let loading: Promise<void> | null = null
 const listeners = new Set<(b: CustomBlock[]) => void>()
 
 function load(): Promise<void> {
-  loading ??= listCustomBlocks()
+  loading ??= loadBlocks()
     .then((b) => {
       cache = b
       loaded = true

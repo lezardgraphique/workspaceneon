@@ -1,6 +1,9 @@
 import { HeadContent, Scripts, createRootRoute, redirect } from '@tanstack/react-router'
 
 import { AuthLinkRedirect } from '@/components/AuthLinkRedirect'
+import { OfflineManager } from '@/components/OfflineManager'
+import { bindUser, isOffline } from '@/lib/data'
+import { cachedUser, rememberUser } from '@/lib/session-cache'
 import { getSession } from '@/server/session.functions'
 
 import '../styles.css'
@@ -13,7 +16,21 @@ export const Route = createRootRoute({
   // The whole app is behind the sign-in page. This is only the front door:
   // every server function and API route checks the session again.
   beforeLoad: async ({ location }) => {
-    const user = await getSession()
+    let user: Awaited<ReturnType<typeof getSession>>
+    const browser = typeof window !== 'undefined'
+    const known = browser ? cachedUser() : null
+    if (browser && known && isOffline()) {
+      user = known // offline: the last signed-in account
+    } else {
+      try {
+        user = await getSession()
+        if (browser) rememberUser(user)
+      } catch (e) {
+        if (!known) throw e
+        user = known
+      }
+    }
+    if (browser) bindUser(user?.id)
     if (!user && !location.pathname.startsWith('/connexion')) throw redirect({ to: '/connexion' })
     return { user }
   },
@@ -31,6 +48,8 @@ export const Route = createRootRoute({
     ],
     links: [
       { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+      { rel: 'manifest', href: '/manifest.webmanifest' },
+      { rel: 'apple-touch-icon', href: '/icon-192.png' },
       { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
       { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
       {
@@ -50,6 +69,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <AuthLinkRedirect />
+        <OfflineManager />
         {children}
         <Scripts />
       </body>
