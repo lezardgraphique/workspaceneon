@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Check, Copy, Download, X } from 'lucide-react'
 
 import { standaloneEmail, treeToHubSpot } from '@/lib/hubl'
+import { useEscape } from '@/hooks/use-escape'
 import type { ModuleTree } from '@/lib/types'
 
 const slug = (s: string) =>
@@ -13,6 +14,7 @@ const slug = (s: string) =>
     .replace(/^-|-$/g, '') || 'module'
 
 export function ExportDialog({ tree, name, onClose }: { tree: ModuleTree; name: string; onClose: () => void }) {
+  useEscape(onClose)
   const files = useMemo(
     () => ({ 'page.html': standaloneEmail(tree, name), ...treeToHubSpot(tree, name) }),
     [tree, name],

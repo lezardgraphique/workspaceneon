@@ -30,13 +30,17 @@ function Library() {
   const navigate = useNavigate()
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const start = async (key: string, withMaily = false) => {
     const starter = STARTERS.find((s) => s.key === key)!
     setBusy(key)
+    setError(null)
     try {
       const mod = await createModule({ data: { name: starter.key === 'blank' ? 'Nouveau module' : starter.name, tree: starter.build() } })
       await navigate({ to: '/editor/$moduleId', params: { moduleId: mod.id }, search: withMaily ? { maily: 1 } : {} })
+    } catch {
+      setError('Impossible de créer le module pour le moment. Vérifie ta connexion puis réessaie.')
     } finally {
       setBusy(null)
     }
@@ -79,6 +83,11 @@ function Library() {
               Un éditeur visuel et un éditeur de code synchronisés en temps réel, des layouts responsives et un export prêt
               à intégrer dans tes emails comme sur le web.
             </p>
+            {error && (
+              <p role="alert" className="mt-6 max-w-xl rounded-lg border border-pink/50 bg-pink/10 px-4 py-3 text-sm text-pink">
+                {error}
+              </p>
+            )}
             <div className="mt-8 flex flex-wrap gap-3">
               <button
                 onClick={() => start('newsletter')}

@@ -166,23 +166,25 @@ function ExtraFieldCard({ f, p }: { f: ExtraField; p: Props }) {
           aria-label="Libellé du champ"
           className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-base font-semibold outline-none hover:border-line focus:border-cyan lg:text-sm"
         />
-        <select
-          value={f.type}
-          onChange={(e) => {
-            const type = e.target.value as ExtraFieldType
-            update({ type, default: defaultFor({ ...f, type }) })
-          }}
-          aria-label="Type du champ"
-          className="shrink-0 rounded-full border border-line bg-void px-2 py-0.5 text-[11px] text-mute outline-none focus:border-cyan"
-        >
-          {(Object.keys(TYPE_LABEL) as ExtraFieldType[]).filter((t) => t !== 'choice' || f.type === 'choice').map((t) => (
-            <option key={t} value={t}>
-              {TYPE_LABEL[t]}
-            </option>
-          ))}
-        </select>
       </div>
-      <p className="mb-3 pl-6 font-mono text-base text-[#e3a6ff] lg:text-xs">{`{{ module.${f.name} }}`}</p>
+      <div className="mb-3 flex items-center justify-between gap-2 pl-6">
+        <p className="min-w-0 truncate font-mono text-base text-[#e3a6ff] lg:text-xs">{`{{ module.${f.name} }}`}</p>
+        <select
+            value={f.type}
+            onChange={(e) => {
+              const type = e.target.value as ExtraFieldType
+              update({ type, default: defaultFor({ ...f, type }) })
+            }}
+            aria-label="Type du champ"
+            className="shrink-0 rounded-full border border-line bg-void px-2 py-0.5 text-[11px] text-mute outline-none focus:border-cyan"
+          >
+            {(Object.keys(TYPE_LABEL) as ExtraFieldType[]).filter((t) => t !== 'choice' || f.type === 'choice').map((t) => (
+              <option key={t} value={t}>
+                {TYPE_LABEL[t]}
+              </option>
+            ))}
+          </select>
+      </div>
       <span className={caption}>Valeur</span>
       <ExtraValue f={f} set={(v) => update({ default: v })} />
     </div>

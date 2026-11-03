@@ -213,7 +213,7 @@ function countdownEstimate(tree: ModuleTree, id: string, base: number, animated:
   if (nextButton) add('Bouton juste après', 1, 1.05)
   else if (!items.some((x) => x.b.type === 'button')) add('Aucun bouton à côté', -1, 0.75, 'Ajoute un bouton juste sous le compte à rebours : c’est lui qui transforme l’urgence en clic.')
   if (animated) {
-    tips.push('Passe les chiffres en rouge sur les dernières heures (réglage « Seuil d’urgence ») pour renforcer l’effet.')
+    tips.push('Passe les chiffres en rouge sur les dernières heures (réglage « Urgence sous (heures) ») pour renforcer l’effet.')
     tips.push('Le compte à rebours défile 60 secondes à l’ouverture puis se fige, et Outlook n’en montre que la première image : garde-le comme repère visuel, pas comme seule raison d’agir.')
   } else {
     tips.push('Les jours sont calculés à l’envoi : un message ouvert plus tard affiche un nombre un peu ancien. La date de fin écrite dessous reste toujours exacte, garde-la affichée.')

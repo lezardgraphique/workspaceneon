@@ -133,6 +133,7 @@ function AddMenu({ section, cell, depth, p }: { section: Section; cell: number; 
             <button
               key={pr.id}
               title={pr.hint}
+              style={{ gridColumn: 'span 2' }}
               onClick={() => {
                 const block = pr.build()
                 p.commit(insertInCell(p.tree, section.id, cell, block), block.id)
@@ -140,7 +141,11 @@ function AddMenu({ section, cell, depth, p }: { section: Section; cell: number; 
               }}
               className="flex items-center gap-1.5 rounded px-2 py-2.5 text-left text-sm text-[#c9c9de] hover:bg-pink/15 hover:text-white lg:py-1 lg:text-xs"
             >
-              <Layers className="size-3 shrink-0 text-violet" /> <span className="truncate">{pr.label}</span>
+              <Layers className="size-3 shrink-0 text-violet" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{pr.label}</span>
+                <span className="block truncate text-[10px] text-mute">{pr.hint}</span>
+              </span>
             </button>
           ))}
           {custom.length > 0 && (

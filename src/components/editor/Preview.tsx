@@ -457,7 +457,7 @@ export function Preview({ tree, ...p }: Props) {
     <div
       ref={root}
       className="min-h-full py-6"
-      style={{ background: tree.bg }}
+      style={{ background: tree.bg, color: '#3a3a52', fontFamily: tree.font }}
       onClick={() => p.onSelect(null)}
     >
       <div style={{ maxWidth: p.mobile ? 375 : tree.width, margin: '0 auto', transition: 'max-width 200ms' }}>

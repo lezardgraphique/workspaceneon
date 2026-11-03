@@ -5,6 +5,7 @@ import { EmailFrame } from '@/components/EmailFrame'
 import { CLIENTS, auditModule, renderForClient } from '@/lib/clients'
 import type { ClientId, EmailClient, Issue } from '@/lib/clients'
 import { previewEmail } from '@/lib/hubl'
+import { useEscape } from '@/hooks/use-escape'
 import type { ModuleTree } from '@/lib/types'
 
 // Litmus-style test: the module as rendered by the main email clients, side by
@@ -44,6 +45,7 @@ export function ClientsDialog({
   /** Selects the block concerned by an issue in the editor. */
   onSelect?: (id: string) => void
 }) {
+  useEscape(onClose)
   const [imagesOff, setImagesOff] = useState(false)
   const [focus, setFocus] = useState<ClientId | null>(null)
 
