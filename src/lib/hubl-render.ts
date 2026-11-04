@@ -1,5 +1,6 @@
 import { collectFields } from './fields'
 import { scopeValue } from './extra-fields'
+import { stripTags } from './sanitize'
 import type { Block, ModuleTree } from './types'
 
 // HuBL interpreter for previews: evaluates {{ … }}, {% if/elif/else/unless %},
@@ -48,7 +49,7 @@ const FILTERS: Record<string, (v: unknown, ...a: unknown[]) => unknown> = {
   safe: (v) => v,
   escape: (v) => toStr(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!),
   e: (v) => FILTERS.escape(v),
-  striptags: (v) => toStr(v).replace(/<[^>]*>/g, ''),
+  striptags: (v) => stripTags(toStr(v)),
   length: (v) => (Array.isArray(v) || typeof v === 'string' ? v.length : v && typeof v === 'object' ? Object.keys(v).length : 0),
   count: (v) => FILTERS.length(v),
   truncate: (v, n = 255, end = '...') => {

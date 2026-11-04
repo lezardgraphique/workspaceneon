@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react'
 
 import { esc } from '@/lib/hubl'
+import { sanitizeHtml } from '@/lib/sanitize'
 
-const TOKEN = /(\{#[\s\S]*?#\}|<!--[\s\S]*?-->)|(\{%[\s\S]*?%\}|\{\{[\s\S]*?\}\})|(<\/?[a-zA-Z][^>]*>?)/g
+const TOKEN = /(\{#[\s\S]*?#\}|<!--[\s\S]*?--!?>)|(\{%[\s\S]*?%\}|\{\{[\s\S]*?\}\})|(<\/?[a-zA-Z][^>]*>?)/g
 
 function highlightTag(tag: string) {
   const m = /^(<\/?)([a-zA-Z][\w-]*)([\s\S]*?)(\/?>)?$/.exec(tag)
@@ -56,7 +57,7 @@ export function CodeEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jump?.n])
 
-  const html = useMemo(() => highlight(value) + '\n ', [value])
+  const html = useMemo(() => sanitizeHtml(highlight(value)) + '\n ', [value])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== 'Tab') return

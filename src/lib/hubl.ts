@@ -1,5 +1,6 @@
 import { collectFields } from './fields'
 import type { FieldBlock, ModuleField } from './fields'
+import { Parser } from 'htmlparser2'
 import { interpretTree, previewScope } from './hubl-render'
 import type { SampleContact } from './hubl-render'
 import { analyzeFieldRefs, exposedNames, hubspotField } from './extra-fields'
@@ -515,7 +516,12 @@ function tokenStyle(el: Element, props: string[]): string | undefined {
   }
 }
 const bgOf = (el: Element) => toHex(css(el)?.backgroundColor) ?? toHex(el.getAttribute('bgcolor')) ?? tokenStyle(el, ['background-color', 'background'])
-const isBlank = (html: string) => !html.replace(/<[^>]*>/g, '').replace(/&nbsp;| |\s/g, '')
+const isBlank = (html: string) => {
+  let text = ''
+  const parser = new Parser({ ontext: (value) => (text += value) }, { decodeEntities: true })
+  parser.end(html)
+  return !text.replace(/\s/g, '')
+}
 
 function styleOf(el: Element, inh: Inherit): Inherit {
   const st = css(el)

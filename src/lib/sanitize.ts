@@ -249,5 +249,8 @@ export function sanitizeHtml(html: string): string {
 
 // Plain text value (heading text, labels): tags removed, no markup kept.
 export function stripTags(s: string): string {
-  return sanitizeHtml(s).replace(/<\/?[a-z][a-z0-9]*(?:\s[^>]*)?>/gi, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+  let text = ''
+  const parser = new Parser({ ontext: (value) => (text += value) }, { decodeEntities: true, lowerCaseTags: true })
+  parser.end(sanitizeHtml(s))
+  return text
 }
