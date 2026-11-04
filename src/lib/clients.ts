@@ -126,7 +126,9 @@ function simulateVml(html: string): string {
     const fill = /fillcolor="([^"]*)"/i.exec(attrs)?.[1] ?? '#cccccc'
     const href = /\shref="([^"]*)"/i.exec(attrs)?.[1] ?? '#'
     const radius = Math.round((arc / 100) * Math.min(w, h))
-    return `<a data-vml="1" href="${href}" style="display:inline-block;width:${w}px;height:${h}px;line-height:${h}px;background:${fill};border-radius:${radius}px;text-align:center;text-decoration:none;">${inner.replace(/<w:anchorlock\s*\/?>/gi, '')}</a>`
+    const bw = /stroke="t"/i.test(attrs) ? Number(/strokeweight="(\d+(?:\.\d+)?)px"/i.exec(attrs)?.[1] ?? 1) : 0
+    const border = bw ? `border:${bw}px solid ${/strokecolor="([^"]*)"/i.exec(attrs)?.[1] ?? '#000'};box-sizing:border-box;` : ''
+    return `<a data-vml="1" href="${href}" style="display:inline-block;width:${w}px;height:${h}px;line-height:${bw ? h - 2 * bw : h}px;background:${fill};${border}border-radius:${radius}px;text-align:center;text-decoration:none;">${inner.replace(/<w:anchorlock\s*\/?>/gi, '')}</a>`
   })
 }
 

@@ -48,6 +48,12 @@ export interface ButtonBlock {
   radius: number
   /** Width (px) of the VML shape for Outlook; estimated from the label when absent. */
   vmlWidth?: number
+  /** Optional look; the defaults reproduce the historical button (15px bold, 12/26px padding). */
+  height?: number
+  fontSize?: number
+  bold?: boolean
+  borderWidth?: number
+  borderColor?: string
 }
 
 export interface ImageBlock {

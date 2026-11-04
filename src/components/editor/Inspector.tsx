@@ -8,7 +8,8 @@ import { ImageUpload } from './ImageUpload'
 import { BLOCK_ICONS } from './Structure'
 import { htmlToBlocks, sanitizeHtml } from '@/lib/hubl'
 import { BLOCK_LABELS } from '@/lib/types'
-import type { Align, Block, Columns, ModuleTree } from '@/lib/types'
+import type { Align, Block, ButtonBlock, Columns, ModuleTree } from '@/lib/types'
+import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight } from '@/lib/vml'
 import {
   countBlocks,
   duplicateNode,
@@ -103,6 +104,33 @@ function Segmented<T extends string | number>({
         ))}
       </div>
     </Field>
+  )
+}
+
+// Height, text and border of a button: same fields in the editor panel and in the VML window.
+export function ButtonLookFields({ b, onChange }: { b: ButtonBlock; onChange: (patch: Partial<ButtonBlock>) => void }) {
+  const bw = buttonBorder(b)
+  return (
+    <div className="space-y-3">
+      <RangeField label="Hauteur" value={buttonHeight(b)} min={28} max={80} onChange={(height) => onChange({ height })} />
+      <RangeField label="Taille du texte" value={buttonFontSize(b)} min={11} max={28} onChange={(fontSize) => onChange({ fontSize })} />
+      <Field label="Style du texte">
+        <div role="group" aria-label="Style du texte" className="flex rounded-md border border-line p-0.5 text-xs">
+          {([[true, 'Gras'], [false, 'Normal']] as const).map(([v, l]) => (
+            <button key={l} aria-pressed={buttonBold(b) === v} onClick={() => onChange({ bold: v ? undefined : false })} className={`flex-1 rounded px-2 py-1 ${buttonBold(b) === v ? 'bg-violet/20 text-white' : 'text-mute hover:text-white'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <RangeField label="Bordure" value={bw} min={0} max={8} onChange={(w) => onChange(w ? { borderWidth: w, borderColor: b.borderColor ?? b.color } : { borderWidth: undefined, borderColor: undefined })} />
+      {bw > 0 && <ColorField label="Couleur de la bordure" value={buttonBorderColor(b)} onChange={(borderColor) => onChange({ borderColor })} />}
+      {(b.height || b.fontSize || b.bold === false || bw > 0) && (
+        <button onClick={() => onChange({ height: undefined, fontSize: undefined, bold: undefined, borderWidth: undefined, borderColor: undefined })} className="text-xs text-mute underline hover:text-white">
+          Réinitialiser l'apparence
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -249,6 +277,7 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
           <ColorField label="Texte" value={b.color} onChange={(color) => set({ color })} />
           <RangeField label="Arrondi" value={b.radius} min={0} max={40} onChange={(radius) => set({ radius })} />
           <AlignField value={b.align} onChange={(align) => set({ align })} />
+          <ButtonLookFields b={b} onChange={set} />
         </>
       )
     case 'image':

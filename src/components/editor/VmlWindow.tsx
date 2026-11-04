@@ -8,13 +8,13 @@ import { standaloneEmail } from '@/lib/hubl'
 import { BLOCK_LABELS } from '@/lib/types'
 
 import { highlight } from '@/components/editor/CodeEditor'
-import { AlignField, ColorField, Field, Inspector, RangeField, input, mono } from '@/components/editor/Inspector'
+import { AlignField, ButtonLookFields, ColorField, Field, Inspector, RangeField, input, mono } from '@/components/editor/Inspector'
 import { BLOCK_ICONS } from '@/components/editor/Structure'
 import { esc, escKeep } from '@/lib/hubl'
 import { isSafeUrl } from '@/lib/sanitize'
 import { updateNode } from '@/lib/tree'
 import type { Block, ButtonBlock, ModuleTree, Section } from '@/lib/types'
-import { BUTTON_HEIGHT, arcSize, buttonWidth, msoOnly, vmlShape } from '@/lib/vml'
+import { arcSize, buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight, buttonWidth, msoOnly, vmlShape } from '@/lib/vml'
 
 // Floating window (it doesn't block the editor) showing, live, the VML drawn
 // for Outlook on Windows: which buttons get a shape, its size and its code.
@@ -50,8 +50,9 @@ function highlightVml(code: string) {
 const hasHubl = (s: string) => /\{[{%]/.test(s)
 
 function itemFor(b: ButtonBlock, path: string, font: string): Item {
-  const auto = buttonWidth(b.label)
+  const auto = buttonWidth(b.label, b)
   const width = b.vmlWidth ?? auto
+  const height = buttonHeight(b)
   const code = msoOnly(
     vmlShape({
       href: isSafeUrl(b.href) ? escKeep(b.href) : '#',
@@ -61,10 +62,14 @@ function itemFor(b: ButtonBlock, path: string, font: string): Item {
       radius: b.radius,
       font: esc(font),
       width,
-      height: BUTTON_HEIGHT,
+      height,
+      fontSize: buttonFontSize(b),
+      bold: buttonBold(b),
+      borderWidth: buttonBorder(b),
+      borderColor: escKeep(buttonBorderColor(b)),
     }),
   )
-  return { id: b.id, block: b, label: b.label || 'Bouton', path, width, auto, manual: !!b.vmlWidth, arc: b.radius > 0 ? arcSize(b.radius, width) : 0, hubl: hasHubl(b.label), code }
+  return { id: b.id, block: b, label: b.label || 'Bouton', path, width, auto, manual: !!b.vmlWidth, arc: b.radius > 0 ? arcSize(b.radius, width, height) : 0, hubl: hasHubl(b.label), code }
 }
 
 export function collectVml(tree: ModuleTree): { groups: Group[]; rounded: number } {
@@ -432,7 +437,10 @@ function ButtonEditor({ item, font, vml, onChange }: { item: Item; font: string;
   const b = item.block
   const bg = cssColor(b.bg, '#888888')
   const color = cssColor(b.color, '#ffffff')
-  const radiusVml = Math.round((item.arc / 100) * Math.min(item.width, BUTTON_HEIGHT))
+  const bh = buttonHeight(b)
+  const bw = buttonBorder(b)
+  const radiusVml = Math.round((item.arc / 100) * Math.min(item.width, bh))
+  const borderCss = bw ? `${bw}px solid ${cssColor(buttonBorderColor(b), color)}` : undefined
   const row = 'flex items-center gap-3 rounded-lg border px-3 py-2.5'
   const tag = (active: boolean, text: string) => (
     <span className={`w-24 shrink-0 text-[11px] leading-tight ${active ? 'text-cyan' : 'text-mute'}`}>
@@ -440,14 +448,14 @@ function ButtonEditor({ item, font, vml, onChange }: { item: Item; font: string;
       {active && <span className="mt-0.5 block font-mono text-[9px] uppercase tracking-wider">ce que tu envoies</span>}
     </span>
   )
-  const base = { fontFamily: font, fontSize: 15, fontWeight: 700, color } as const
+  const base = { fontFamily: font, fontSize: buttonFontSize(b), fontWeight: buttonBold(b) ? 700 : 400, color } as const
   return (
     <div className="space-y-4">
       <div className="space-y-2" aria-label="Aperçu du bouton selon la messagerie">
         <div className={`${row} border-line`}>
           {tag(false, 'Autres messageries')}
           <div className="min-w-0 flex-1 overflow-hidden">
-            <span style={{ ...base, display: 'inline-block', padding: '12px 26px', background: bg, borderRadius: b.radius, whiteSpace: 'nowrap' }}>{b.label || ' '}</span>
+            <span style={{ ...base, display: 'inline-block', padding: b.height ? '0 26px' : '12px 26px', ...(b.height ? { lineHeight: `${b.height - 2 * bw}px` } : {}), background: bg, border: borderCss, borderRadius: b.radius, whiteSpace: 'nowrap' }}>{b.label || ' '}</span>
           </div>
         </div>
         <div className={`${row} ${!vml ? 'border-cyan/60' : 'border-line'}`}>
@@ -460,8 +468,8 @@ function ButtonEditor({ item, font, vml, onChange }: { item: Item; font: string;
           {tag(vml, 'Outlook avec VML')}
           <div className="min-w-0 flex-1 overflow-hidden">
             <div
-              style={{ ...base, width: item.width, height: BUTTON_HEIGHT, lineHeight: `${BUTTON_HEIGHT}px`, background: bg, borderRadius: radiusVml, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}
-              title={`${item.width} × ${BUTTON_HEIGHT} px`}
+              style={{ ...base, width: item.width, height: bh, lineHeight: `${bh - 2 * bw}px`, background: bg, border: borderCss, boxSizing: 'border-box', borderRadius: radiusVml, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}
+              title={`${item.width} × ${bh} px`}
             >
               {b.label || ' '}
             </div>
@@ -482,9 +490,8 @@ function ButtonEditor({ item, font, vml, onChange }: { item: Item; font: string;
           <ColorField label="Texte" value={b.color} onChange={(v) => onChange({ color: v })} />
         </div>
         <RangeField label="Arrondi" value={b.radius} min={0} max={40} onChange={(radius) => onChange({ radius })} />
-        <Field label="Alignement">
-          <AlignField value={b.align} onChange={(align) => onChange({ align })} />
-        </Field>
+        <AlignField value={b.align} onChange={(align) => onChange({ align })} />
+        <ButtonLookFields b={b} onChange={onChange} />
         <div>
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className="font-mono text-[10px] tracking-wider text-mute uppercase">Largeur dans Outlook · {item.width}px</span>

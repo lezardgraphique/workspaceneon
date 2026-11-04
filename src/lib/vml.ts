@@ -10,6 +10,23 @@ export const BUTTON_FONT_SIZE = 15
 export const BUTTON_HEIGHT = 42 // 15px text + 12px padding top and bottom, as in the HTML button
 const SIDE_PADDING = 26
 
+// The optional look of a button, shared by the HTML link, the VML shape and the previews.
+export interface ButtonLook {
+  height?: number
+  fontSize?: number
+  bold?: boolean
+  borderWidth?: number
+  borderColor?: string
+  color?: string
+}
+
+export const buttonFontSize = (b: ButtonLook) => b.fontSize ?? BUTTON_FONT_SIZE
+export const buttonBold = (b: ButtonLook) => b.bold !== false
+export const buttonBorder = (b: ButtonLook) => (b.borderWidth && b.borderWidth > 0 ? b.borderWidth : 0)
+export const buttonBorderColor = (b: ButtonLook) => b.borderColor || b.color || '#ffffff'
+// Total height in px: explicit, or what the padded text makes (42 by default).
+export const buttonHeight = (b: ButtonLook) => b.height ?? Math.round(buttonFontSize(b) * 1.2) + 24 + 2 * buttonBorder(b)
+
 export interface VmlButtonParams {
   href: string
   label: string
@@ -19,6 +36,10 @@ export interface VmlButtonParams {
   font: string
   width: number
   height?: number
+  fontSize?: number
+  bold?: boolean
+  borderWidth?: number
+  borderColor?: string
 }
 
 const TOKEN = /\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}/g
@@ -38,7 +59,8 @@ export function estimateTextWidth(label: string, size = BUTTON_FONT_SIZE): numbe
   return Math.ceil(em * size)
 }
 
-export const buttonWidth = (label: string) => Math.max(80, estimateTextWidth(label) + SIDE_PADDING * 2 + 4)
+export const buttonWidth = (label: string, look: ButtonLook = {}) =>
+  Math.max(80, Math.ceil(estimateTextWidth(label, buttonFontSize(look)) * (buttonBold(look) ? 1 : 0.94)) + SIDE_PADDING * 2 + 2 * buttonBorder(look) + 4)
 
 // arcsize is a percentage of the shorter side, 50 % being a full pill.
 export const arcSize = (radius: number, width: number, height = BUTTON_HEIGHT) =>
@@ -48,9 +70,12 @@ export function vmlShape(p: VmlButtonParams): string {
   const h = p.height ?? BUTTON_HEIGHT
   const shape = p.radius > 0 ? 'roundrect' : 'rect'
   const arc = p.radius > 0 ? ` arcsize="${arcSize(p.radius, p.width, h)}%"` : ''
-  return `<v:${shape} xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${p.href}" style="height:${h}px;v-text-anchor:middle;width:${p.width}px;"${arc} stroke="f" fillcolor="${p.bg}">
+  const bw = p.borderWidth && p.borderWidth > 0 ? p.borderWidth : 0
+  const stroke = bw ? `stroke="t" strokecolor="${p.borderColor || p.color}" strokeweight="${bw}px"` : 'stroke="f"'
+  const weight = p.bold === false ? 'normal' : 'bold'
+  return `<v:${shape} xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${p.href}" style="height:${h}px;v-text-anchor:middle;width:${p.width}px;"${arc} ${stroke} fillcolor="${p.bg}">
   <w:anchorlock/>
-  <center style="color:${p.color};font-family:${p.font};font-size:${BUTTON_FONT_SIZE}px;font-weight:bold;">${p.label}</center>
+  <center style="color:${p.color};font-family:${p.font};font-size:${p.fontSize ?? BUTTON_FONT_SIZE}px;font-weight:${weight};">${p.label}</center>
 </v:${shape}>`
 }
 

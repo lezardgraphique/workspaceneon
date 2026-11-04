@@ -1,4 +1,5 @@
 import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize } from '@/lib/vml'
 import { ImageIcon } from 'lucide-react'
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 
@@ -183,13 +184,15 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
             onChange={(label) => edit({ label })}
             style={{
               display: 'inline-block',
-              padding: '12px 26px',
+              padding: b.height ? '0 26px' : '12px 26px',
+              ...(b.height ? { lineHeight: `${b.height - 2 * buttonBorder(b)}px` } : {}),
               background: b.bg,
               color: b.color,
+              ...(buttonBorder(b) ? { border: `${buttonBorder(b)}px solid ${buttonBorderColor(b)}` } : {}),
               borderRadius: b.radius,
               fontFamily: font,
-              fontSize: 15,
-              fontWeight: 700,
+              fontSize: buttonFontSize(b),
+              fontWeight: buttonBold(b) ? 700 : 400,
             }}
           />
         </div>,
