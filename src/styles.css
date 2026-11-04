@@ -239,3 +239,29 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .auth-tile, .auth-rise { animation: none; }
 }
+
+/* Touch screens: comfortable targets (≥ 40px) for buttons, selects and text inputs. */
+@media (pointer: coarse) {
+  button:not(.underline):not([role='switch']):not(.tap-auto),
+  select,
+  [role='tab'],
+  input:not([type]),
+  input[type='text'],
+  input[type='url'],
+  input[type='number'],
+  input[type='email'],
+  input[type='search'] {
+    min-height: 2.5rem;
+  }
+  a[aria-label],
+  header a[href] {
+    min-height: 2.5rem;
+  }
+  button[aria-label]:not(.underline):not([role='switch']):not(.tap-auto),
+  a[aria-label] {
+    min-width: 2.5rem;
+  }
+  input[type='range'] {
+    min-height: 2.25rem;
+  }
+}

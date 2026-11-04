@@ -61,3 +61,4 @@ TanStack Start (React 19, file-based routes, `createServerFn`) · Tailwind 4 (th
 - Platform rate limiting lives in `netlify.toml` (`[[redirects]]` + `rate_limit`, max 2 rules on free plans).
 
 - HuBL tags in raw HTML survive the DOM round trip only if: comparison operators are un-escaped (`sanitize.ts` `unescapeOperators`) and no `{% if %}` sits between table cells (the HTML parser moves it out of the table): wrap whole tables in the condition instead.
+- Touch / small screens: `styles.css` has a `@media (pointer: coarse)` block (≥ 40px for buttons, selects, text inputs, `a[aria-label]`, header links; opt out with `.underline` or `.tap-auto`). Editor header: on phones (< `sm`) it wraps into two rows (name + save + export / undo-redo + VML + Clients + Aperçu); the bottom pane switcher goes icon-left in landscape phones (`max-height:500px`); the VML window is full height there and hides its explanatory text.

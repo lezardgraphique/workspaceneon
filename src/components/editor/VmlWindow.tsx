@@ -349,11 +349,11 @@ function OutlookPreview({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-2 px-3 py-2">
-        <span className="min-w-0 flex-1 truncate text-xs text-mute">{mode === 'normal' ? 'Rendu du module' : 'Outlook 2016–2021'} · clique un élément pour le modifier</span>
-        <div role="group" aria-label="Rendu de l'aperçu" className="flex shrink-0 flex-wrap rounded-md border border-line p-0.5 text-xs">
-          {([['normal', 'Aperçu'], ['sans', 'Outlook sans VML'], ['avec', 'Outlook avec VML']] as const).map(([v, l]) => (
-            <button key={l} aria-pressed={mode === v} onClick={() => setMode(v)} className={`rounded px-2 py-0.5 ${mode === v ? 'bg-cyan/15 text-cyan' : 'text-mute hover:text-white'}`}>
-              {l}
+        <span className="min-w-0 flex-1 truncate text-xs text-mute max-sm:hidden">{mode === 'normal' ? 'Rendu du module' : 'Outlook 2016–2021'} · clique un élément pour le modifier</span>
+        <div role="group" aria-label="Rendu de l'aperçu" className="flex shrink-0 flex-wrap rounded-md max-sm:w-full border border-line p-0.5 text-xs">
+          {([['normal', 'Aperçu', 'Aperçu'], ['sans', 'Outlook sans VML', 'Sans VML'], ['avec', 'Outlook avec VML', 'Avec VML']] as const).map(([v, l, short]) => (
+            <button key={l} aria-pressed={mode === v} onClick={() => setMode(v)} className={`rounded px-2 py-0.5 max-sm:flex-1 ${mode === v ? 'bg-cyan/15 text-cyan' : 'text-mute hover:text-white'}`}>
+              <span className="max-sm:hidden">{l}</span><span className="sm:hidden">{short}</span>
             </button>
           ))}
         </div>
@@ -421,7 +421,7 @@ export function VmlWindow({
       aria-label="Fenêtre VML pour Outlook"
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
       style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
-      className={`fixed inset-x-0 bottom-0 z-40 flex flex-col rounded-t-xl border border-line bg-night/97 shadow-2xl backdrop-blur-md lg:inset-x-auto lg:right-4 lg:bottom-4 lg:w-[min(66rem,calc(100vw-2rem))] lg:rounded-xl ${min ? '' : 'h-[80vh] lg:h-[min(46rem,90vh)]'}`}
+      className={`fixed inset-x-0 bottom-0 z-40 flex flex-col rounded-t-xl border border-line bg-night/97 shadow-2xl backdrop-blur-md lg:inset-x-auto lg:right-4 lg:bottom-4 lg:w-[min(66rem,calc(100vw-2rem))] lg:rounded-xl ${min ? '' : 'h-[80dvh] lg:h-[min(46rem,90vh)] [@media(max-height:500px)]:h-dvh [@media(max-height:500px)]:rounded-none'}`}
     >
       <header
         className="flex shrink-0 cursor-grab touch-none items-center gap-2 border-b border-line px-3 py-2 select-none active:cursor-grabbing"
@@ -437,8 +437,8 @@ export function VmlWindow({
         onPointerUp={() => (drag.current = null)}
       >
         <Shapes className="size-4 text-violet" />
-        <h2 className="font-display text-sm font-semibold">VML · Outlook · module entier</h2>
-        <span className="flex items-center gap-1 rounded-full border border-cyan/40 px-2 py-0.5 text-[10px] text-cyan" title="Se met à jour à chaque modification">
+        <h2 className="min-w-0 truncate font-display text-sm font-semibold">VML · Outlook<span className="max-sm:hidden"> · module entier</span></h2>
+        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-cyan/40 px-2 py-0.5 text-[10px] text-cyan" title="Se met à jour à chaque modification">
           <span className="size-1.5 animate-pulse rounded-full bg-cyan motion-reduce:animate-none" /> En direct
         </span>
         <GripHorizontal className="ml-auto hidden size-4 text-mute lg:block" aria-hidden />
@@ -463,8 +463,8 @@ export function VmlWindow({
               <span className={`block size-3.5 rounded-full transition ${on ? 'translate-x-[18px] bg-cyan' : 'translate-x-0.5 bg-mute'}`} />
             </button>
             <p className="min-w-0 flex-1 text-xs text-mute">
-              <span className="font-semibold text-white">{on ? 'VML actif dans le code et l\u2019export' : 'VML désactivé'}</span> · Outlook sur Windows dessine alors les boutons arrondis et cliquables sur toute leur surface ; les autres messageries gardent le lien normal.
-              {rounded > 0 && ` ${rounded} section${rounded > 1 ? 's' : ''} arrondie${rounded > 1 ? 's' : ''} restent carrées dans Outlook (sans gravité).`}
+              <span className="font-semibold text-white">{on ? 'VML actif dans le code et l\u2019export' : 'VML désactivé'}</span> <span className="max-sm:hidden [@media(max-height:500px)]:hidden">· Outlook sur Windows dessine alors les boutons arrondis et cliquables sur toute leur surface ; les autres messageries gardent le lien normal.</span>
+              <span className="max-sm:hidden [@media(max-height:500px)]:hidden">{rounded > 0 && ` ${rounded} section${rounded > 1 ? 's' : ''} arrondie${rounded > 1 ? 's' : ''} restent carrées dans Outlook (sans gravité).`}</span>
             </p>
           </div>
 

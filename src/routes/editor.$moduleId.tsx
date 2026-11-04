@@ -351,7 +351,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
   return (
     <div className="flex h-dvh flex-col bg-void">
       {/* Top bar */}
-      <header className="flex shrink-0 items-center gap-1 border-b border-line bg-space px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:gap-2 sm:px-3">
+      <header className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line bg-space px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:flex-nowrap sm:gap-2 sm:px-3">
         <Link to="/" title="Mes modules" className="flex items-center gap-2 rounded-md p-1 hover:bg-white/5">
           <NeonLogo size={28} />
         </Link>
@@ -362,12 +362,12 @@ function Editor({ initial }: { initial: ModuleRecord }) {
             setCode(treeToCode(tree, e.target.value))
           }}
           aria-label="Nom du module"
-          className="min-w-0 max-w-64 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 font-display text-base font-semibold outline-none hover:border-line focus:border-cyan"
+          className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 font-display text-base font-semibold outline-none hover:border-line focus:border-cyan sm:max-w-64"
         />
         <span className="flex shrink-0 items-center gap-1 text-xs text-mute" aria-live="polite">
-          {save === 'saving' && <><Loader2 className="size-3.5 animate-spin" /> <span className="hidden sm:inline">Sauvegarde…</span></>}
-          {save === 'saved' && <><Check className="size-3.5 text-cyan" /> <span className="hidden sm:inline">Sauvegardé</span></>}
-          {save === 'local' && <><CloudOff className="size-3.5 text-cyan" /> <span className="hidden sm:inline" title="Enregistré sur cet appareil, envoyé dès que la connexion revient">Enregistré sur cet appareil</span></>}
+          {save === 'saving' && <><Loader2 className="size-3.5 animate-spin" /> <span className="hidden md:inline">Sauvegarde…</span></>}
+          {save === 'saved' && <><Check className="size-3.5 text-cyan" /> <span className="hidden md:inline">Sauvegardé</span></>}
+          {save === 'local' && <><CloudOff className="size-3.5 text-cyan" /> <span className="hidden md:inline" title="Enregistré sur cet appareil, envoyé dès que la connexion revient">Enregistré sur cet appareil</span></>}
           {save === 'conflict' && (
             <span className="flex items-center gap-1 text-pink">
               <CloudOff className="size-3.5" />
@@ -386,12 +386,14 @@ function Editor({ initial }: { initial: ModuleRecord }) {
             </button>
           )}
         </span>
-        <span className="flex-1" />
-        <div className="flex items-center">
-          <button onClick={undo} disabled={!past.length} title="Annuler (Ctrl+Z)" aria-label="Annuler" className="rounded-md p-2 text-mute hover:bg-white/5 hover:text-white disabled:opacity-30">
+        <span className="hidden flex-1 sm:block" />
+        {/* Phones: the tools go on a second row. */}
+        <span className="order-1 h-0 basis-full sm:hidden" aria-hidden />
+        <div className="order-2 flex flex-1 items-center sm:order-none sm:flex-none">
+          <button onClick={undo} disabled={!past.length} title="Annuler (Ctrl+Z)" aria-label="Annuler" className="max-sm:flex-1 max-sm:justify-center rounded-md p-2 text-mute hover:bg-white/5 hover:text-white disabled:opacity-30">
             <Undo2 className="size-4" />
           </button>
-          <button onClick={redo} disabled={!future.length} title="Rétablir (Ctrl+Shift+Z)" aria-label="Rétablir" className="rounded-md p-2 text-mute hover:bg-white/5 hover:text-white disabled:opacity-30">
+          <button onClick={redo} disabled={!future.length} title="Rétablir (Ctrl+Shift+Z)" aria-label="Rétablir" className="max-sm:flex-1 max-sm:justify-center rounded-md p-2 text-mute hover:bg-white/5 hover:text-white disabled:opacity-30">
             <Redo2 className="size-4" />
           </button>
         </div>
@@ -426,26 +428,26 @@ function Editor({ initial }: { initial: ModuleRecord }) {
           title="Fenêtre VML pour Outlook, structure en direct"
           aria-label="Fenêtre VML pour Outlook"
           aria-pressed={vmlOpen}
-          className={`ml-1 inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1.5 text-sm hover:text-white sm:px-2.5 ${vmlOpen ? 'border-violet text-white' : 'border-line text-mute hover:border-violet'}`}
+          className={`order-2 inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-sm hover:text-white max-sm:flex-1 sm:order-none sm:ml-1 sm:px-2.5 ${vmlOpen ? 'border-violet text-white' : 'border-line text-mute hover:border-violet'}`}
         >
-          <Shapes className="size-4" /> <span className="hidden xl:inline">VML</span>
+          <Shapes className="size-4" /> <span className="max-sm:text-xs sm:hidden xl:inline">VML</span>
           {tree.vml && <span className="size-1.5 rounded-full bg-cyan" aria-label="VML actif" />}
         </button>
         <button
           onClick={() => setTesting(true)}
           title="Tester dans les clients de messagerie"
           aria-label="Tester dans les clients de messagerie"
-          className="ml-1 inline-flex shrink-0 items-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-sm text-mute hover:border-cyan hover:text-white sm:px-2.5"
+          className="order-2 inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-sm text-mute hover:border-cyan hover:text-white max-sm:flex-1 sm:order-none sm:ml-1 sm:px-2.5"
         >
-          <MailCheck className="size-4" /> <span className="hidden xl:inline">Clients</span>
+          <MailCheck className="size-4" /> <span className="max-sm:text-xs sm:hidden xl:inline">Clients</span>
         </button>
         <button
           onClick={openPreview}
           title="Aperçu du module dans un nouvel onglet"
           aria-label="Aperçu du module"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-sm text-mute hover:border-cyan hover:text-white sm:px-2.5"
+          className="order-2 inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-sm text-mute hover:border-cyan hover:text-white max-sm:flex-1 sm:order-none sm:px-2.5"
         >
-          <ExternalLink className="size-4" /> <span className="hidden xl:inline">Aperçu</span>
+          <ExternalLink className="size-4" /> <span className="max-sm:text-xs sm:hidden xl:inline">Aperçu</span>
         </button>
         <a
           href="/fichiers"
@@ -627,7 +629,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
             key={t.k}
             onClick={() => setPane(t.k)}
             aria-current={pane === t.k ? 'page' : undefined}
-            className={`relative flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 text-[10px] sm:text-[11px] font-medium transition-colors ${
+            className={`relative flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors sm:text-[11px] [@media(max-height:500px)]:min-h-11 [@media(max-height:500px)]:flex-row [@media(max-height:500px)]:gap-1.5 ${
               pane === t.k ? 'text-white' : 'text-mute active:text-white'
             }`}
           >
