@@ -183,15 +183,16 @@ function OutlookPreview({
   selectedId: string | null
   onSelect: (id: string | null) => void
 }) {
-  const [withVml, setWithVml] = useState(!!tree.vml)
-  useEffect(() => setWithVml(!!tree.vml), [tree.vml])
+  // "normal" reproduces the editor's preview (modern mail client); the two
+  // others show what Outlook for Windows draws without / with the VML.
+  const [mode, setMode] = useState<'normal' | 'sans' | 'avec'>('normal')
   const docRef = useRef<Document | null>(null)
 
   const { html, ids } = useMemo(() => {
-    const interp = interpretTree({ ...tree, vml: withVml }, previewScope(tree, 'known'))
-    const client = CLIENTS.find((c) => c.id === 'outlook-win')!
+    const interp = interpretTree({ ...tree, vml: mode === 'avec' }, previewScope(tree, 'known'))
+    const client = CLIENTS.find((c) => c.id === (mode === 'normal' ? 'apple-mail' : 'outlook-win'))!
     return { html: renderForClient(standaloneEmail(interp, name), client, { imagesOff: false }), ids: orderedIds(interp.sections) }
-  }, [tree, name, withVml])
+  }, [tree, name, mode])
 
   const idsRef = useRef(ids)
   idsRef.current = ids
@@ -233,17 +234,17 @@ function OutlookPreview({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-2 px-3 py-2">
-        <span className="min-w-0 flex-1 truncate text-xs text-mute">Outlook 2016–2021 · clique un élément pour le modifier</span>
-        <div role="group" aria-label="Comparaison Outlook" className="flex shrink-0 rounded-md border border-line p-0.5 text-xs">
-          {([[false, 'Sans VML'], [true, 'Avec VML']] as const).map(([v, l]) => (
-            <button key={l} aria-pressed={withVml === v} onClick={() => setWithVml(v)} className={`rounded px-2 py-0.5 ${withVml === v ? 'bg-cyan/15 text-cyan' : 'text-mute hover:text-white'}`}>
+        <span className="min-w-0 flex-1 truncate text-xs text-mute">{mode === 'normal' ? 'Rendu du module' : 'Outlook 2016–2021'} · clique un élément pour le modifier</span>
+        <div role="group" aria-label="Rendu de l'aperçu" className="flex shrink-0 flex-wrap rounded-md border border-line p-0.5 text-xs">
+          {([['normal', 'Aperçu'], ['sans', 'Outlook sans VML'], ['avec', 'Outlook avec VML']] as const).map(([v, l]) => (
+            <button key={l} aria-pressed={mode === v} onClick={() => setMode(v)} className={`rounded px-2 py-0.5 ${mode === v ? 'bg-cyan/15 text-cyan' : 'text-mute hover:text-white'}`}>
               {l}
             </button>
           ))}
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto bg-white/[0.03] p-2">
-        <EmailFrame html={html} width={tree.width + 40} title="Aperçu du module dans Outlook" pickable onDocument={onDocument} />
+        <EmailFrame html={html} width={tree.width + 40} title="Aperçu du module" pickable onDocument={onDocument} />
       </div>
     </div>
   )
