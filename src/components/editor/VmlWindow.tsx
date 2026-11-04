@@ -2,8 +2,10 @@ import { useMemo, useRef, useState } from 'react'
 import { Check, CheckCircle2, Circle, Copy, GripHorizontal, Minus, Plus, Shapes, X } from 'lucide-react'
 
 import { highlight } from '@/components/editor/CodeEditor'
+import { ColorField, Field, RangeField, input, mono } from '@/components/editor/Inspector'
 import { esc, escKeep } from '@/lib/hubl'
 import { isSafeUrl } from '@/lib/sanitize'
+import { updateNode } from '@/lib/tree'
 import type { Block, ButtonBlock, ModuleTree, Section } from '@/lib/types'
 import { BUTTON_HEIGHT, arcSize, buttonWidth, msoOnly, vmlShape } from '@/lib/vml'
 
@@ -13,9 +15,12 @@ import { BUTTON_HEIGHT, arcSize, buttonWidth, msoOnly, vmlShape } from '@/lib/vm
 
 interface Item {
   id: string
+  block: ButtonBlock
   label: string
   path: string
   width: number
+  auto: number
+  manual: boolean
   arc: number
   hubl: boolean
   code: string
@@ -38,7 +43,8 @@ function highlightVml(code: string) {
 const hasHubl = (s: string) => /\{[{%]/.test(s)
 
 function itemFor(b: ButtonBlock, path: string, font: string): Item {
-  const width = buttonWidth(b.label)
+  const auto = buttonWidth(b.label)
+  const width = b.vmlWidth ?? auto
   const code = msoOnly(
     vmlShape({
       href: isSafeUrl(b.href) ? escKeep(b.href) : '#',
@@ -51,7 +57,7 @@ function itemFor(b: ButtonBlock, path: string, font: string): Item {
       height: BUTTON_HEIGHT,
     }),
   )
-  return { id: b.id, label: b.label || 'Bouton', path, width, arc: b.radius > 0 ? arcSize(b.radius, width) : 0, hubl: hasHubl(b.label), code }
+  return { id: b.id, block: b, label: b.label || 'Bouton', path, width, auto, manual: !!b.vmlWidth, arc: b.radius > 0 ? arcSize(b.radius, width) : 0, hubl: hasHubl(b.label), code }
 }
 
 export function collectVml(tree: ModuleTree): { groups: Group[]; rounded: number } {
@@ -81,18 +87,21 @@ export function VmlWindow({
   onSelect,
   onToggle,
   onClose,
+  commit,
 }: {
   tree: ModuleTree
   selectedId: string | null
   onSelect: (id: string) => void
   onToggle: () => void
   onClose: () => void
+  commit: (t: ModuleTree, select?: string | null) => void
 }) {
   const { groups, rounded } = useMemo(() => collectVml(tree), [tree])
   const all = useMemo(() => groups.flatMap((g) => g.items), [groups])
   const [picked, setPicked] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [min, setMin] = useState(false)
+  const [tab, setTab] = useState<'preview' | 'code'>('preview')
   const [pos, setPos] = useState({ x: 0, y: 0 })
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null)
 
@@ -115,7 +124,7 @@ export function VmlWindow({
       aria-label="Fenêtre VML pour Outlook"
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
       style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
-      className="fixed inset-x-0 bottom-0 z-40 flex max-h-[72vh] flex-col rounded-t-xl border border-line bg-night/97 shadow-2xl backdrop-blur-md lg:inset-x-auto lg:left-[336px] lg:bottom-4 lg:w-[27rem] lg:max-h-[min(34rem,78vh)] lg:rounded-xl"
+      className="fixed inset-x-0 bottom-0 z-40 flex max-h-[72vh] flex-col rounded-t-xl border border-line bg-night/97 shadow-2xl backdrop-blur-md lg:inset-x-auto lg:right-4 lg:bottom-4 lg:w-[27rem] lg:max-h-[min(42rem,88vh)] lg:rounded-xl"
     >
       <header
         className="flex shrink-0 cursor-grab touch-none items-center gap-2 border-b border-line px-3 py-2 select-none active:cursor-grabbing"
@@ -214,25 +223,46 @@ export function VmlWindow({
           </section>
 
           {current && (
-            <section className="border-t border-line px-4 py-3" aria-label={`Code VML de ${current.label}`}>
-              <div className="mb-2 flex items-center gap-2">
+            <section className="border-t border-line px-4 py-3" aria-label={`Bouton ${current.label}`}>
+              <div className="mb-3 flex items-center gap-2">
                 <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">« {current.label} »</h3>
-                <button
-                  onClick={() => copy(current.id, current.code)}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-xs text-mute hover:border-cyan hover:text-white"
-                >
-                  {copied === current.id ? <Check className="size-3.5 text-cyan" /> : <Copy className="size-3.5" />} {copied === current.id ? 'Copié' : 'Copier'}
-                </button>
+                <div role="tablist" aria-label="Affichage" className="flex shrink-0 rounded-md border border-line p-0.5 text-xs">
+                  {([['preview', 'Aperçu'], ['code', 'Code VML']] as const).map(([k, l]) => (
+                    <button
+                      key={k}
+                      role="tab"
+                      aria-selected={tab === k}
+                      onClick={() => setTab(k)}
+                      className={`rounded px-2.5 py-1 ${tab === k ? 'bg-violet/20 text-white' : 'text-mute hover:text-white'}`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <pre
-                className="max-h-44 overflow-auto rounded-lg border border-line bg-void p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all"
-                // highlight() escapes everything it prints.
-                dangerouslySetInnerHTML={{ __html: highlightVml(current.code) }}
-              />
-              <p className="mt-2 text-xs text-mute">
-                {on ? 'Ce code est dans ton module.' : 'Ce code sera ajouté au module quand tu actives le VML.'} La largeur ({current.width} px) est estimée d'après le texte
-                {current.hubl ? ' ; le libellé contient une variable, vérifie-la dans le test Outlook' : ''}. Le lien classique est ajouté automatiquement pour les autres clients.
-              </p>
+
+              {tab === 'preview' ? (
+                <ButtonEditor item={current} font={tree.font} vml={on} onChange={(patch) => commit(updateNode(tree, current.id, patch), current.id)} />
+              ) : (
+                <>
+                  <div className="mb-2 flex justify-end">
+                    <button
+                      onClick={() => copy(current.id, current.code)}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-xs text-mute hover:border-cyan hover:text-white"
+                    >
+                      {copied === current.id ? <Check className="size-3.5 text-cyan" /> : <Copy className="size-3.5" />} {copied === current.id ? 'Copié' : 'Copier'}
+                    </button>
+                  </div>
+                  <pre
+                    className="max-h-44 overflow-auto rounded-lg border border-line bg-void p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all"
+                    // highlight() escapes everything it prints.
+                    dangerouslySetInnerHTML={{ __html: highlightVml(current.code) }}
+                  />
+                  <p className="mt-2 text-xs text-mute">
+                    {on ? 'Ce code est dans ton module.' : 'Ce code sera ajouté au module quand tu actives le VML.'} Le lien classique est ajouté automatiquement pour les autres clients.
+                  </p>
+                </>
+              )}
             </section>
           )}
 
@@ -249,5 +279,95 @@ export function VmlWindow({
         </div>
       )}
     </aside>
+  )
+}
+
+// Colours only: a HuBL variable can't be drawn here.
+const cssColor = (v: string, fallback: string) => (/^(#[0-9a-f]{3,8}|[a-z]+|rgba?\([^)]*\))$/i.test(v.trim()) ? v.trim() : fallback)
+
+// No-code editor: the three renderings of the button, then plain controls.
+function ButtonEditor({ item, font, vml, onChange }: { item: Item; font: string; vml: boolean; onChange: (patch: Partial<ButtonBlock>) => void }) {
+  const b = item.block
+  const bg = cssColor(b.bg, '#888888')
+  const color = cssColor(b.color, '#ffffff')
+  const radiusVml = Math.round((item.arc / 100) * Math.min(item.width, BUTTON_HEIGHT))
+  const row = 'flex items-center gap-3 rounded-lg border px-3 py-2.5'
+  const tag = (active: boolean, text: string) => (
+    <span className={`w-24 shrink-0 text-[11px] leading-tight ${active ? 'text-cyan' : 'text-mute'}`}>
+      {text}
+      {active && <span className="mt-0.5 block font-mono text-[9px] uppercase tracking-wider">ce que tu envoies</span>}
+    </span>
+  )
+  const base = { fontFamily: font, fontSize: 15, fontWeight: 700, color } as const
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2" aria-label="Aperçu du bouton selon la messagerie">
+        <div className={`${row} border-line`}>
+          {tag(false, 'Autres messageries')}
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <span style={{ ...base, display: 'inline-block', padding: '12px 26px', background: bg, borderRadius: b.radius, whiteSpace: 'nowrap' }}>{b.label || ' '}</span>
+          </div>
+        </div>
+        <div className={`${row} ${!vml ? 'border-cyan/60' : 'border-line'}`}>
+          {tag(!vml, 'Outlook sans VML')}
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <span style={{ ...base, background: bg, whiteSpace: 'nowrap' }}>{b.label || ' '}</span>
+          </div>
+        </div>
+        <div className={`${row} ${vml ? 'border-cyan/60' : 'border-line'}`}>
+          {tag(vml, 'Outlook avec VML')}
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <div
+              style={{ ...base, width: item.width, height: BUTTON_HEIGHT, lineHeight: `${BUTTON_HEIGHT}px`, background: bg, borderRadius: radiusVml, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}
+              title={`${item.width} × ${BUTTON_HEIGHT} px`}
+            >
+              {b.label || ' '}
+            </div>
+          </div>
+        </div>
+        {!vml && <p className="text-xs text-mute">Active le VML en haut de la fenêtre pour que Outlook affiche la dernière ligne.</p>}
+      </div>
+
+      <div className="space-y-3">
+        <Field label="Libellé">
+          <input className={input} value={b.label} onChange={(e) => onChange({ label: e.target.value })} />
+        </Field>
+        <Field label="Lien">
+          <input className={`${input} ${mono}`} value={b.href} onChange={(e) => onChange({ href: e.target.value })} />
+        </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <ColorField label="Fond" value={b.bg} onChange={(v) => onChange({ bg: v })} />
+          <ColorField label="Texte" value={b.color} onChange={(v) => onChange({ color: v })} />
+        </div>
+        <RangeField label="Arrondi" value={b.radius} min={0} max={40} onChange={(radius) => onChange({ radius })} />
+        <div>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="font-mono text-[10px] tracking-wider text-mute uppercase">Largeur dans Outlook · {item.width}px</span>
+            <div role="group" aria-label="Largeur dans Outlook" className="flex rounded-md border border-line p-0.5 text-xs">
+              <button aria-pressed={!item.manual} onClick={() => onChange({ vmlWidth: undefined })} className={`rounded px-2 py-0.5 ${!item.manual ? 'bg-cyan/15 text-cyan' : 'text-mute hover:text-white'}`}>
+                Auto
+              </button>
+              <button aria-pressed={item.manual} onClick={() => onChange({ vmlWidth: item.width })} className={`rounded px-2 py-0.5 ${item.manual ? 'bg-cyan/15 text-cyan' : 'text-mute hover:text-white'}`}>
+                Manuelle
+              </button>
+            </div>
+          </div>
+          <input
+            type="range"
+            min={80}
+            max={400}
+            value={item.width}
+            disabled={!item.manual}
+            aria-label="Largeur du bouton dans Outlook"
+            onChange={(e) => onChange({ vmlWidth: Number(e.target.value) })}
+            className="h-7 w-full accent-pink disabled:opacity-40 lg:h-auto"
+          />
+          <p className="text-xs text-mute">
+            {item.manual ? `Estimation automatique : ${item.auto} px.` : 'Calculée d\u2019après le texte.'}
+            {item.hubl ? ' Le libellé contient une variable : passe en manuel si le texte est plus long.' : ''}
+          </p>
+        </div>
+      </div>
+    </div>
   )
 }

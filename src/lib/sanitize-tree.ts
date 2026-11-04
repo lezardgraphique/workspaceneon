@@ -90,6 +90,7 @@ function block(raw: unknown, depth: number, count: { n: number }): Block | null 
         color: safeColor(raw.color, '#ffffff'),
         align: align(raw.align, 'left'),
         radius: num(raw.radius, 8, 0, 60),
+        ...(typeof raw.vmlWidth === 'number' && raw.vmlWidth >= 80 ? { vmlWidth: num(raw.vmlWidth, 160, 80, 600) } : {}),
       }
     }
     case 'image': {

@@ -46,6 +46,8 @@ export interface ButtonBlock {
   color: string
   align: Align
   radius: number
+  /** Width (px) of the VML shape for Outlook; estimated from the label when absent. */
+  vmlWidth?: number
 }
 
 export interface ImageBlock {

@@ -655,6 +655,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
             commit(tree.vml ? rest : { ...rest, vml: true })
           }}
           onClose={() => setVmlOpen(false)}
+          commit={commit}
         />
       )}
       {testing && (

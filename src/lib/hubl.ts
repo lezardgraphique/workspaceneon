@@ -114,10 +114,10 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
       // With VML on, Outlook for Windows gets a drawn shape (rounded, padded,
       // clickable); every other client keeps the plain link.
       const inner = ctx.vml
-        ? `${indent(msoOnly(vmlShape({ href, label, bg: escKeep(b.bg), color: escKeep(b.color), radius: b.radius, font: esc(font), width: buttonWidth(b.label), height: BUTTON_HEIGHT })), p + '  ')}
+        ? `${indent(msoOnly(vmlShape({ href, label, bg: escKeep(b.bg), color: escKeep(b.color), radius: b.radius, font: esc(font), width: b.vmlWidth ?? buttonWidth(b.label), height: BUTTON_HEIGHT })), p + '  ')}
 ${indent(notMso(`  ${link}`), p + '  ')}`
         : `${p}  ${link}`
-      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius })} style="margin:0 0 12px;text-align:${b.align};">
+      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}) })} style="margin:0 0 12px;text-align:${b.align};">
 ${inner}
 ${p}</div>`
     }
@@ -332,6 +332,7 @@ function parseBlock(el: Element): Block | null {
         bg: asColor(g('bg'), '#ff007f'),
         color: asColor(g('color'), '#ffffff'),
         radius: asNum(g('radius'), 8, 0, 60),
+        ...(g('vml-width') ? { vmlWidth: asNum(g('vml-width'), 160, 80, 600) } : {}),
       }
     }
     case 'image': {

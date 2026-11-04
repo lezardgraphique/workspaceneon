@@ -30,11 +30,11 @@ interface Props {
 }
 
 // 16px below lg: iOS zooms into any smaller field on focus.
-const input =
+export const input =
   'w-full rounded-md border border-line bg-void px-2.5 py-2 text-base text-white outline-none focus:border-cyan lg:py-1.5 lg:text-sm'
-const mono = 'font-mono lg:text-xs'
+export const mono = 'font-mono lg:text-xs'
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-mute">{label}</span>
@@ -43,7 +43,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+export function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <Field label={label}>
       <div className="flex gap-2">
@@ -59,7 +59,7 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
   )
 }
 
-function RangeField(props: { label: string; value: number; min: number; max: number; unit?: string; onChange: (v: number) => void }) {
+export function RangeField(props: { label: string; value: number; min: number; max: number; unit?: string; onChange: (v: number) => void }) {
   return (
     <Field label={`${props.label} · ${props.value}${props.unit ?? 'px'}`}>
       <input
