@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  Braces,
   Check,
   CloudOff,
   Code2,
@@ -47,6 +48,8 @@ import { interpretTree, previewScope } from '@/lib/hubl-render'
 import type { SampleContact } from '@/lib/hubl-render'
 import { KOFI_URL } from '@/lib/links'
 import type { FieldSpec } from '@/lib/module-fields'
+import { parseFieldsJson } from '@/lib/module-fields'
+import { HubSpotImport } from '@/components/editor/HubSpotImport'
 import { findNode, findPath, insertInCell, moveNode, moveNodeTo, removeNode, replaceNode, updateNode } from '@/lib/tree'
 import { BLOCK_LABELS, createBlock } from '@/lib/types'
 import type { Block, ImageBlock, ModuleRecord, ModuleTree, Section } from '@/lib/types'
@@ -129,6 +132,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
   const [exporting, setExporting] = useState(false)
   const [testing, setTesting] = useState(false)
   const [vmlOpen, setVmlOpen] = useState(false)
+  const [hsImport, setHsImport] = useState(false)
   const [save, setSave] = useState<SaveState>('saved')
   const [conflictCopy, setConflictCopy] = useState<string | null>(null)
   const [past, setPast] = useState<ModuleTree[]>([])
@@ -177,7 +181,8 @@ function Editor({ initial }: { initial: ModuleRecord }) {
       setCodeImported(!!res.imported)
       pushHistory(tree)
       // Fields already created keep their edits; new variables get theirs.
-      const next = syncExtraFields({ ...reconcileIds(res.tree, tree), fields: tree.fields })
+      // Pasted code without the editor's markers (a HubSpot module…): its fields are read from the code itself.
+      const next = syncExtraFields({ ...reconcileIds(res.tree, tree), fields: res.imported ? undefined : tree.fields }, undefined, res.imported ? code : undefined)
       const known = new Set((tree.fields ?? []).map((f) => f.name))
       setNewFields((next.fields ?? []).map((f) => f.name).filter((n) => !known.has(n)))
       setTree(next)
@@ -191,7 +196,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
     const res = codeToTree(generated, tree, specs)
     if (!res.ok) return res.error
     // A whole new module: its variables become its fields (types from fields.json when given).
-    const next = syncExtraFields({ ...res.tree, fields: undefined }, specs)
+    const next = syncExtraFields({ ...res.tree, fields: undefined }, specs, generated)
     setNewFields((next.fields ?? []).map((f) => f.name))
     commit(next, null)
     return null
@@ -591,6 +596,13 @@ function Editor({ initial }: { initial: ModuleRecord }) {
               >
                 <RefreshCw className="size-3" /> {codeImported ? 'Appliquer' : 'Reformater'}
               </button>
+              <button
+                onClick={() => setHsImport(true)}
+                title="Importer un module HubSpot (module.html + fields.json) avec ses champs exacts"
+                className="inline-flex shrink-0 items-center gap-1 rounded border border-line px-2 py-1.5 text-mute hover:border-violet hover:text-white lg:py-1"
+              >
+                <Braces className="size-3" /> HubSpot
+              </button>
             </div>
             <CodeEditor value={code} onChange={onCodeChange} jump={codeJump} />
             <ValidatorPanel code={code} onFix={onCodeChange} onJump={(line) => setCodeJump((j) => ({ line, n: (j?.n ?? 0) + 1 }))} />
@@ -688,6 +700,13 @@ function Editor({ initial }: { initial: ModuleRecord }) {
             select(id)
             setPane('preview')
           }}
+        />
+      )}
+      {hsImport && (
+        <HubSpotImport
+          tree={tree}
+          onClose={() => setHsImport(false)}
+          onImport={(html, json) => applyCode(html, json.trim() ? (parseFieldsJson(json) ?? undefined) : undefined)}
         />
       )}
       {exporting && <ExportDialog tree={tree} name={name.trim() || 'Sans titre'} onClose={() => setExporting(false)} />}

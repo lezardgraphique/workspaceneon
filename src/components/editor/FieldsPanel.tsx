@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Braces, ImageIcon, RotateCcw } from 'lucide-react'
 
 import { ImageUpload } from './ImageUpload'
@@ -67,12 +67,19 @@ const TYPE_LABEL: Record<ExtraFieldType, string> = {
   number: 'Nombre',
   boolean: 'Oui / non',
   link: 'Lien',
+  url: 'URL',
   image: 'Image',
+  file: 'Fichier',
   color: 'Couleur',
+  font: 'Police',
+  alignment: 'Alignement',
+  textalignment: 'Alignement du texte',
+  backgroundimage: 'Image de fond',
   date: 'Date',
   datetime: 'Date et heure',
   choice: 'Liste de choix',
   group: 'Groupe',
+  json: 'Valeur HubSpot',
 }
 
 const asObj = (v: Json | undefined): Record<string, Json> => (v && typeof v === 'object' && !Array.isArray(v) ? v : {})
@@ -82,15 +89,88 @@ const toLocal = (ms: Json | undefined) => {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
 }
 
-function ExtraValue({ f, set }: { f: ExtraField; set: (v: Json) => void }) {
-  const d = f.default ?? defaultFor(f)
+const select = (value: string, options: [string, string][], onChange: (v: string) => void, label: string) => (
+  <select className={input} value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
+    {options.map(([v, l]) => (
+      <option key={v} value={v}>
+        {l}
+      </option>
+    ))}
+  </select>
+)
+
+// Exact HubSpot value (spacing, border, icon, form…), edited as JSON.
+function JsonValue({ value, set }: { value: Json | undefined; set: (v: Json) => void }) {
+  const [text, setText] = useState(() => JSON.stringify(value ?? null, null, 2))
+  const [error, setError] = useState('')
+  useEffect(() => setText(JSON.stringify(value ?? null, null, 2)), [value])
+  return (
+    <div>
+      <textarea
+        className={`${input} ${mono} min-h-24`}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          try {
+            set(JSON.parse(text) as Json)
+            setError('')
+          } catch {
+            setError('JSON invalide : la valeur précédente est gardée.')
+          }
+        }}
+        aria-label="Valeur (JSON, format HubSpot)"
+      />
+      {error && <p className="mt-1 text-xs text-pink">{error}</p>}
+    </div>
+  )
+}
+
+// Value editor for any field, nested groups and repeated items included.
+function ValueEditor({ f, value, set }: { f: ExtraField; value: Json | undefined; set: (v: Json) => void }) {
+  if (f.repeater) {
+    const list = Array.isArray(value) ? value : []
+    const one = { ...f, repeater: false }
+    return (
+      <div className="space-y-2">
+        {list.map((it, i) => (
+          <div key={i} className="rounded-md border border-line p-2">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className={caption}>Élément {i + 1}</span>
+              <button onClick={() => set(list.filter((_, j) => j !== i))} className="text-xs text-mute underline hover:text-pink" aria-label={`Retirer l'élément ${i + 1}`}>
+                Retirer
+              </button>
+            </div>
+            <ValueEditor f={one} value={it} set={(v) => set(list.map((x, j) => (j === i ? v : x)))} />
+          </div>
+        ))}
+        <button onClick={() => set([...list, (list.at(-1) ?? defaultFor(one)) as Json])} className="text-xs text-cyan underline hover:text-white">
+          + Ajouter un élément
+        </button>
+      </div>
+    )
+  }
+  const d: Json = value === undefined ? defaultFor(f) : value
+  const o = asObj(d)
   switch (f.type) {
+    case 'group':
+      return (
+        <div className="space-y-2 border-l border-line pl-3">
+          {(f.children ?? []).map((c) => (
+            <div key={c.name}>
+              <span className={caption}>
+                {c.label} <span className="normal-case text-mute/70">· {c.hsType ?? c.type}</span>
+              </span>
+              <ValueEditor f={c} value={o[c.name] ?? c.default} set={(v) => set({ ...o, [c.name]: v })} />
+            </div>
+          ))}
+        </div>
+      )
     case 'text':
-      return <input className={input} value={String(d)} onChange={(e) => set(e.target.value)} aria-label="Valeur" />
+      return <input className={input} value={d === null ? '' : String(d)} onChange={(e) => set(e.target.value)} aria-label="Valeur" placeholder={f.hsType === 'cta' ? 'Identifiant du CTA HubSpot' : undefined} />
     case 'richtext':
-      return <textarea className={`${input} min-h-20`} value={String(d)} onChange={(e) => set(e.target.value)} aria-label="Valeur (HTML inline autorisé)" />
+      return <textarea className={`${input} min-h-20`} value={String(d ?? '')} onChange={(e) => set(e.target.value)} aria-label="Valeur (HTML inline autorisé)" />
     case 'number':
-      return <input type="number" className={input} value={Number(d)} onChange={(e) => set(Number(e.target.value))} aria-label="Valeur" />
+      return <input type="number" className={input} value={Number(d ?? 0)} onChange={(e) => set(Number(e.target.value))} aria-label="Valeur" />
     case 'boolean':
       return (
         <label className="flex items-center gap-2 text-sm">
@@ -98,15 +178,7 @@ function ExtraValue({ f, set }: { f: ExtraField; set: (v: Json) => void }) {
         </label>
       )
     case 'choice':
-      return (
-        <select className={input} value={String(d)} onChange={(e) => set(e.target.value)} aria-label="Valeur">
-          {(f.options ?? []).map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      )
+      return select(String(d ?? ''), (f.options ?? []).map((x) => [x.value, x.label]), set, 'Valeur')
     case 'date':
     case 'datetime':
       return (
@@ -122,33 +194,71 @@ function ExtraValue({ f, set }: { f: ExtraField; set: (v: Json) => void }) {
       return (
         <input
           className={`${input} ${mono}`}
-          value={String(asObj(asObj(d).url).href ?? '')}
-          onChange={(e) => set({ ...asObj(d), url: { type: 'EXTERNAL', href: e.target.value, content_id: null } })}
+          value={String(asObj(o.url).href ?? '')}
+          onChange={(e) => set({ ...o, url: { ...asObj(o.url), type: 'EXTERNAL', href: e.target.value, content_id: null } })}
           placeholder="https://…"
           aria-label="Lien"
         />
       )
-    case 'image':
+    case 'url':
+      return <input className={`${input} ${mono}`} value={String(o.href ?? '')} onChange={(e) => set({ ...o, href: e.target.value, type: 'EXTERNAL', content_id: null })} placeholder="https://…" aria-label="URL" />
+    case 'file':
       return (
         <div className="grid gap-2">
-          <input className={`${input} ${mono}`} value={String(asObj(d).src ?? '')} onChange={(e) => set({ ...asObj(d), src: e.target.value })} placeholder="https://…" aria-label="URL de l'image" />
-          <ImageUpload compact onUploaded={(src) => set({ ...asObj(d), src })} />
+          <input className={`${input} ${mono}`} value={String(d ?? '')} onChange={(e) => set(e.target.value)} placeholder="https://…" aria-label="URL du fichier" />
+          <ImageUpload compact onUploaded={(src) => set(src)} />
+        </div>
+      )
+    case 'image':
+    case 'backgroundimage':
+      return (
+        <div className="grid gap-2">
+          <input className={`${input} ${mono}`} value={String(o.src ?? '')} onChange={(e) => set({ ...o, src: e.target.value })} placeholder="https://…" aria-label="URL de l'image" />
+          <ImageUpload compact onUploaded={(src) => set({ ...o, src })} />
+          {f.type === 'image' ? (
+            <input className={input} value={String(o.alt ?? '')} onChange={(e) => set({ ...o, alt: e.target.value })} aria-label="Texte alternatif" placeholder="Texte alternatif" />
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              {select(String(o.background_position ?? 'MIDDLE_CENTER'), ['TOP_LEFT', 'TOP_CENTER', 'TOP_RIGHT', 'MIDDLE_LEFT', 'MIDDLE_CENTER', 'MIDDLE_RIGHT', 'BOTTOM_LEFT', 'BOTTOM_CENTER', 'BOTTOM_RIGHT'].map((p) => [p, p.toLowerCase().replace('_', ' ')]), (v) => set({ ...o, background_position: v }), 'Position')}
+              {select(String(o.background_size ?? 'cover'), [['cover', 'Couvrir'], ['contain', 'Contenir'], ['auto', 'Taille réelle']], (v) => set({ ...o, background_size: v }), 'Taille')}
+            </div>
+          )}
         </div>
       )
     case 'color':
       return (
         <div className="flex items-center gap-2">
-          <input type="color" value={String(asObj(d).color ?? '#000000').slice(0, 7)} onChange={(e) => set({ ...asObj(d), color: e.target.value })} className="size-9 shrink-0 rounded border border-line bg-void" aria-label="Couleur" />
-          <input className={`${input} ${mono}`} value={String(asObj(d).color ?? '')} onChange={(e) => set({ ...asObj(d), color: e.target.value })} aria-label="Valeur de la couleur" />
+          <input type="color" value={String(o.color ?? '#000000').slice(0, 7)} onChange={(e) => set({ ...o, color: e.target.value })} className="size-9 shrink-0 rounded border border-line bg-void" aria-label="Couleur" />
+          <input className={`${input} ${mono}`} value={String(o.color ?? '')} onChange={(e) => set({ ...o, color: e.target.value })} aria-label="Valeur de la couleur" />
         </div>
       )
-    case 'group':
+    case 'font':
       return (
-        <p className="text-xs text-mute">
-          {f.repeater ? 'Liste répétée dans une boucle' : 'Groupe'} : {(f.children ?? []).map((c) => c.name).join(', ')}
-        </p>
+        <div className="grid grid-cols-[1fr_5rem] gap-2">
+          <input className={input} value={String(o.font ?? '')} onChange={(e) => set({ ...o, font: e.target.value })} aria-label="Police" placeholder="Arial" />
+          <input type="number" className={input} value={Number(o.size ?? 16)} onChange={(e) => set({ ...o, size: Number(e.target.value) })} aria-label="Taille" />
+          <div className="col-span-2 flex items-center gap-2">
+            <input type="color" value={String(o.color ?? '#000000').slice(0, 7)} onChange={(e) => set({ ...o, color: e.target.value })} className="size-9 shrink-0 rounded border border-line bg-void" aria-label="Couleur du texte" />
+            <input className={`${input} ${mono}`} value={String(o.color ?? '')} onChange={(e) => set({ ...o, color: e.target.value })} aria-label="Valeur de la couleur du texte" />
+          </div>
+        </div>
       )
+    case 'alignment':
+      return (
+        <div className="grid grid-cols-2 gap-2">
+          {select(String(o.horizontal_align ?? 'LEFT'), [['LEFT', 'Gauche'], ['CENTER', 'Centre'], ['RIGHT', 'Droite']], (v) => set({ ...o, horizontal_align: v }), 'Alignement horizontal')}
+          {select(String(o.vertical_align ?? 'TOP'), [['TOP', 'Haut'], ['MIDDLE', 'Milieu'], ['BOTTOM', 'Bas']], (v) => set({ ...o, vertical_align: v }), 'Alignement vertical')}
+        </div>
+      )
+    case 'textalignment':
+      return select(String(o.text_align ?? 'LEFT'), [['LEFT', 'Gauche'], ['CENTER', 'Centre'], ['RIGHT', 'Droite'], ['JUSTIFY', 'Justifié']], (v) => set({ ...o, text_align: v }), 'Alignement du texte')
+    case 'json':
+      return <JsonValue value={d} set={set} />
   }
+}
+
+function ExtraValue({ f, set }: { f: ExtraField; set: (v: Json) => void }) {
+  return <ValueEditor f={f} value={f.default === undefined ? defaultFor(f) : f.default} set={set} />
 }
 
 // A variable the code uses ({{ module.nom }}, {% if module.nom %}…) that no
@@ -173,7 +283,7 @@ export function ExtraFieldCard({ f, p }: { f: ExtraField; p: Props }) {
             value={f.type}
             onChange={(e) => {
               const type = e.target.value as ExtraFieldType
-              update({ type, default: defaultFor({ ...f, type }) })
+              update({ type, hsType: undefined, spec: undefined, default: defaultFor({ ...f, type, hsType: undefined }) })
             }}
             aria-label="Type du champ"
             className="shrink-0 rounded-full border border-line bg-void px-2 py-0.5 text-[11px] text-mute outline-none focus:border-cyan"
@@ -185,8 +295,23 @@ export function ExtraFieldCard({ f, p }: { f: ExtraField; p: Props }) {
             ))}
           </select>
       </div>
+      {(f.hsType || f.spec || f.repeater) && (
+        <p className="-mt-2 mb-3 pl-6 text-[11px] text-mute">
+          {f.hsType && <>Type HubSpot exact : <code className="font-mono text-[#e3a6ff]">{f.hsType}</code>. </>}
+          {f.repeater && 'Répété (plusieurs éléments). '}
+          {f.spec && 'Définition fields.json gardée à l’identique à l’export.'}
+        </p>
+      )}
       <span className={caption}>Valeur</span>
       <ExtraValue f={f} set={(v) => update({ default: v })} />
+      {f.keep && (
+        <button
+          onClick={() => p.commit({ ...p.tree, fields: (p.tree.fields ?? []).filter((x) => x.name !== f.name) })}
+          className="mt-2 text-xs text-mute underline hover:text-pink"
+        >
+          Retirer ce champ importé
+        </button>
+      )}
     </div>
   )
 }

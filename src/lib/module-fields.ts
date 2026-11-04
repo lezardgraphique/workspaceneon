@@ -15,6 +15,8 @@ export interface FieldSpec {
   label: string
   type: string
   default?: unknown
+  /** The whole definition as written in fields.json (children included). */
+  raw?: Record<string, unknown>
 }
 
 export interface BoundField {
@@ -67,6 +69,7 @@ export function parseFieldsJson(text: string): FieldSpec[] | null {
         label: typeof it.label === 'string' && it.label.trim() ? it.label.trim() : humanize(it.name),
         type: typeof it.type === 'string' ? it.type : 'text',
         default: it.default,
+        raw: it,
       })
     }
   }
@@ -97,11 +100,17 @@ interface Ref {
 }
 
 // The whole content is one placeholder, optionally with filters ({{ module.x|safe }}).
-const WHOLE = /^\s*\{\{-?\s*module\.([A-Za-z_]\w*)((?:\.[A-Za-z_]\w*)*)\s*(?:\|[^}]*)?-?\}\}\s*$/
+const WHOLE = /^\s*\{\{-?\s*module\.([A-Za-z_]\w*)((?:\.[A-Za-z_]\w*)*)\s*((?:\|[^}]*)?)-?\}\}\s*$/
+// Filters that leave a text as text. Any other (format_date, int, round…) says
+// the field is something else: it is not bound to the block.
+const TEXT_FILTERS = new Set(['safe', 'escape', 'e', 'escape_html', 'trim', 'upper', 'lower', 'title', 'capitalize', 'striptags', 'truncate', 'truncatehtml', 'replace', 'default', 'd', 'sanitize_html'])
 
 function wholeRef(s: string): Ref | null {
   const m = WHOLE.exec(s)
-  return m ? { root: m[1], path: m[2].split('.').filter(Boolean) } : null
+  if (!m) return null
+  const filters = [...m[3].matchAll(/\|\s*([A-Za-z_]\w*)/g)].map((f) => f[1])
+  if (filters.some((f) => !TEXT_FILTERS.has(f))) return null
+  return { root: m[1], path: m[2].split('.').filter(Boolean) }
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v : undefined)
@@ -132,7 +141,21 @@ export function bindFields(source: ModuleTree, specs: FieldSpec[] = []): FieldBi
   const checkName = (n: string) => {
     if (toFieldName(n) !== n && !inexact.includes(n)) inexact.push(n)
   }
-  const def = (name: string, extra: Partial<FieldDef> = {}): FieldDef => ({ name, label: labelOf(name), ...extra })
+  // The exact fields.json definition of a bound field, exported as is (minus its default: the block holds the value).
+  const specOf = (...names: (string | undefined)[]): Pick<FieldDef, 'specs'> => {
+    const specs: NonNullable<FieldDef['specs']> = {}
+    for (const n of names) {
+      const raw = n ? byName.get(n)?.raw : undefined
+      if (!raw) continue
+      const { name: _n, default: _d, children: _c, ...rest } = raw
+      void _n
+      void _d
+      void _c
+      specs[n!] = JSON.parse(JSON.stringify(rest))
+    }
+    return Object.keys(specs).length ? { specs } : {}
+  }
+  const def = (name: string, extra: Partial<FieldDef> = {}): FieldDef => ({ name, label: labelOf(name), ...specOf(name), ...extra })
 
   const bindBlock = (b: Block) => {
     switch (b.type) {
@@ -189,7 +212,7 @@ export function bindFields(source: ModuleTree, specs: FieldSpec[] = []): FieldBi
     const linkBase = linkRoot?.replace(LINK_SUFFIX, '')
     const base = takeText && takeLink && textBase === linkBase ? textBase! : ((takeLink ? linkRoot : textRoot) as string)
     const exposed: string[] = []
-    const field: FieldDef = { name: base, label: takeText ? labelOf(textRoot!, humanize(base)) : humanize(base) }
+    const field: FieldDef = { name: base, label: takeText ? labelOf(textRoot!, humanize(base)) : humanize(base), ...specOf(takeText ? textRoot : undefined, takeLink ? linkRoot : undefined) }
     if (takeText) {
       field.textName = textRoot
       exposed.push(textRoot!)

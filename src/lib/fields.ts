@@ -28,7 +28,8 @@ export const isFieldBlock = (b: Block): b is FieldBlock =>
 // in the export: it is not a field of its own, its variables are.
 const hasHubl = (s: string) => /\{[{%]/.test(s)
 export const holdsVariables = (b: FieldBlock): boolean =>
-  b.type === 'heading' ? hasHubl(b.text) : b.type === 'text' ? hasHubl(b.html) : b.type === 'image' ? hasHubl(b.src) || hasHubl(b.alt) : hasHubl(b.label) && hasHubl(b.href)
+  !!b.fixed ||
+  (b.type === 'heading' ? hasHubl(b.text) : b.type === 'text' ? hasHubl(b.html) : b.type === 'image' ? hasHubl(b.src) || hasHubl(b.alt) : hasHubl(b.label) && hasHubl(b.href))
 
 // snake_case identifier usable in HuBL: no accents, starts with a letter.
 export function toFieldName(s: string): string {

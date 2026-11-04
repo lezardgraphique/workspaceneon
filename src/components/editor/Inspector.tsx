@@ -603,6 +603,17 @@ export function Inspector(p: Props) {
         </div>
       </div>
       <BlockFields key={node.id} b={node} set={set} p={p} />
+      {(node.type === 'heading' || node.type === 'text' || node.type === 'button' || node.type === 'image') && (
+        <Segmented
+          label="Dans le module exporté"
+          value={node.fixed ? 'fixed' : 'field'}
+          onChange={(v) => set({ fixed: v === 'fixed' || undefined } as Partial<Block>)}
+          options={[
+            { value: 'field', label: 'Champ modifiable', title: 'Devient un champ du module HubSpot (fields.json)' },
+            { value: 'fixed', label: 'Contenu fixe', title: 'Écrit tel quel dans module.html, sans champ' },
+          ]}
+        />
+      )}
       <SpacingFields b={node} set={set} nested={path.length > 1} />
       <EstimatePanel key={`est-${node.id}`} tree={p.tree} node={node} />
     </div>

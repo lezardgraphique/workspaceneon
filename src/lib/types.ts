@@ -13,6 +13,8 @@ export interface FieldDef {
   // module imported from existing code (e.g. `cta_text` + `cta_link`).
   textName?: string
   linkName?: string
+  /** Exact HubSpot definitions from an imported fields.json, by field name (exported as is). */
+  specs?: { [name: string]: { [key: string]: Json } }
 }
 
 // Adjustments read only by Outlook for Windows (see outlook.ts): margin top /
@@ -41,6 +43,8 @@ export interface HeadingBlock extends Spacing {
   id: string
   outlook?: OutlookTweaks
   type: 'heading'
+  /** Fixed content of an imported HubSpot module: written as is, not a field of its own. */
+  fixed?: boolean
   field?: FieldDef
   text: string
   level: 1 | 2 | 3
@@ -59,6 +63,8 @@ export interface TextBlock extends Spacing {
   id: string
   outlook?: OutlookTweaks
   type: 'text'
+  /** Fixed content of an imported HubSpot module: written as is, not a field of its own. */
+  fixed?: boolean
   field?: FieldDef
   html: string
   color: string
@@ -73,6 +79,8 @@ export interface ButtonBlock extends Spacing {
   id: string
   outlook?: OutlookTweaks
   type: 'button'
+  /** Fixed content of an imported HubSpot module: written as is, not a field of its own. */
+  fixed?: boolean
   field?: FieldDef
   label: string
   href: string
@@ -100,6 +108,8 @@ export interface ImageBlock extends Spacing {
   id: string
   outlook?: OutlookTweaks
   type: 'image'
+  /** Fixed content of an imported HubSpot module: written as is, not a field of its own. */
+  fixed?: boolean
   field?: FieldDef
   src: string
   alt: string
@@ -162,6 +172,8 @@ export interface Section extends Spacing {
   /** Width of the first column in % (2 columns only, 50 when absent). */
   ratio?: number
   valign?: 'top' | 'middle' | 'bottom'
+  /** Inline style declarations with HuBL kept from an imported module ({{ module.spacing.css }}…). */
+  css?: string
 }
 
 export type Block =
@@ -182,19 +194,47 @@ export type BlockType = Block['type']
 // fields.json. The variable itself stays in the content.
 export type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
 
-export type ExtraFieldType = 'text' | 'richtext' | 'number' | 'boolean' | 'link' | 'image' | 'color' | 'date' | 'datetime' | 'choice' | 'group'
+// How a module field is edited in the app. HubSpot types without an editor of
+// their own (spacing, border, cta, icon, form…) use `json` and keep their exact
+// type in `hsType`.
+export type ExtraFieldType =
+  | 'text'
+  | 'richtext'
+  | 'number'
+  | 'boolean'
+  | 'link'
+  | 'url'
+  | 'image'
+  | 'file'
+  | 'color'
+  | 'font'
+  | 'alignment'
+  | 'textalignment'
+  | 'backgroundimage'
+  | 'date'
+  | 'datetime'
+  | 'choice'
+  | 'group'
+  | 'json'
 
 export interface ExtraField {
   name: string
   label: string
   type: ExtraFieldType
+  /** Exact HubSpot type when it differs from `type` (cta, spacing, border, icon, form, menu…). */
+  hsType?: string
   // Value in the shape of fields.json (text, number, { url: … } for a link…).
   default?: Json
   // choice: the allowed values (a drop-down), the default is one of them.
   options?: { value: string; label: string }[]
-  // group: fields of one item; repeater = used in a {% for %} loop.
+  // group: its fields. repeater = several items ({% for %} loop, `occurrence` in HubSpot);
+  // a non-group field can repeat too (a list of texts…).
   children?: ExtraField[]
   repeater?: boolean
+  /** The rest of the HubSpot definition (display, min/max, occurrence, tab, id…), exported as is. */
+  spec?: { [key: string]: Json }
+  /** Imported (code or fields.json): kept even when the code stops using it. */
+  keep?: boolean
 }
 
 export interface ModuleTree {

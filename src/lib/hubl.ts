@@ -5,13 +5,14 @@ import { interpretTree, previewScope } from './hubl-render'
 import type { SampleContact } from './hubl-render'
 import { analyzeFieldRefs, exposedNames, hubspotField } from './extra-fields'
 import { bindFieldsFromCode } from './module-fields'
-import { isSafeUrl, sanitizeHtml as strictHtml } from './sanitize'
+import { isSafeUrl, sanitizeHtml as strictHtml, sanitizeStyle } from './sanitize'
 import type { FieldBinding, FieldSpec } from './module-fields'
 import { olAttr, olParse, olStyle } from './outlook'
+import { protectHubl, restoreDom, restoreTree } from './hubl-protect'
 import { classAttr, columnWidths, dividerLine, headingLine, headingWeight, hideClass, hideStyle, marginCss, responsiveCss, safeBgImage, sectionPad, spacingAttrs, spacingOf, spacingParse, textLine } from './look'
 import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight, buttonWidth, msoCell, msoOnly, notMso, vmlShape } from './vml'
 import { uid } from './types'
-import type { Align, Behavior, Block, Columns, ExtraField, ModuleTree, Section } from './types'
+import type { Align, Behavior, Block, Columns, ExtraField, FieldDef, ModuleTree, Section } from './types'
 
 // ---------------------------------------------------------------------------
 // Bidirectional sync format
@@ -43,6 +44,8 @@ interface Field {
   label: string
   type: 'text' | 'richtext' | 'link' | 'image'
   default: unknown
+  // Exact definition from an imported fields.json (type, label, display…).
+  spec?: Record<string, unknown>
 }
 
 class Ctx {
@@ -57,8 +60,13 @@ class Ctx {
   field(b: FieldBlock, suffix: string, labelSuffix: string, type: Field['type'], def: unknown, exact?: string) {
     const f = this.defs.get(b.id)!
     const name = exact || (suffix ? `${f.name}_${suffix}` : f.name)
-    this.fields.push({ name, label: labelSuffix ? `${f.label} · ${labelSuffix}` : f.label, type, default: def })
+    const spec = (b as { field?: FieldDef }).field?.specs?.[name]
+    this.fields.push({ name, label: labelSuffix ? `${f.label} · ${labelSuffix}` : f.label, type, default: def, ...(spec ? { spec } : {}) })
     return name
+  }
+  // The block is one of the module's fields (not fixed content, not holding variables).
+  isField(b: { id: string }) {
+    return this.mode === 'hubspot' && this.defs.has(b.id)
   }
   // Custom field definition, kept in the sync format so it survives code edits.
   fieldAttrs(b: FieldBlock): Record<string, string> {
@@ -89,18 +97,18 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
   switch (b.type) {
     case 'heading': {
       // Content that holds a variable stays in place: it is not a field of its own.
-      const content = ctx.mode === 'hubspot' && !hasHubl(b.text) ? `{{ module.${ctx.field(b, '', '', 'text', b.text)} }}` : escKeep(b.text)
-      return `${p}<h${b.level}${ctx.attrs({ neon: 'heading', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size, ...(b.lineHeight != null ? { lh: b.lineHeight } : {}), ...(b.weight != null ? { weight: b.weight } : {}), ...(b.letterSpacing ? { ls: b.letterSpacing } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}font-family:${esc(font)};font-size:${b.size}px;line-height:${headingLine(b)};font-weight:${headingWeight(b)};${b.letterSpacing ? `letter-spacing:${b.letterSpacing}px;` : ''}color:${escKeep(b.color)};text-align:${b.align};${olStyle(b.outlook, { line: true })}">${content}</h${b.level}>`
+      const content = ctx.isField(b) ? `{{ module.${ctx.field(b, '', '', 'text', b.text)} }}` : escKeep(b.text)
+      return `${p}<h${b.level}${ctx.attrs({ neon: 'heading', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size, ...(b.lineHeight != null ? { lh: b.lineHeight } : {}), ...(b.weight != null ? { weight: b.weight } : {}), ...(b.letterSpacing ? { ls: b.letterSpacing } : {}), ...(b.fixed ? { fixed: 1 } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}font-family:${esc(font)};font-size:${b.size}px;line-height:${headingLine(b)};font-weight:${headingWeight(b)};${b.letterSpacing ? `letter-spacing:${b.letterSpacing}px;` : ''}color:${escKeep(b.color)};text-align:${b.align};${olStyle(b.outlook, { line: true })}">${content}</h${b.level}>`
     }
     case 'text': {
-      const content = ctx.mode === 'hubspot' && !hasHubl(b.html) ? `{{ module.${ctx.field(b, '', '', 'richtext', b.html)} }}` : b.html
-      return `${p}<div${ctx.attrs({ neon: 'text', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size, ...(b.lineHeight != null ? { lh: b.lineHeight } : {}), ...(b.letterSpacing ? { ls: b.letterSpacing } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}font-family:${esc(font)};font-size:${b.size}px;line-height:${textLine(b)};${b.letterSpacing ? `letter-spacing:${b.letterSpacing}px;` : ''}color:${escKeep(b.color)};text-align:${b.align};${olStyle(b.outlook, { line: true })}">${content}</div>`
+      const content = ctx.isField(b) ? `{{ module.${ctx.field(b, '', '', 'richtext', b.html)} }}` : b.html
+      return `${p}<div${ctx.attrs({ neon: 'text', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size, ...(b.lineHeight != null ? { lh: b.lineHeight } : {}), ...(b.letterSpacing ? { ls: b.letterSpacing } : {}), ...(b.fixed ? { fixed: 1 } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}font-family:${esc(font)};font-size:${b.size}px;line-height:${textLine(b)};${b.letterSpacing ? `letter-spacing:${b.letterSpacing}px;` : ''}color:${escKeep(b.color)};text-align:${b.align};${olStyle(b.outlook, { line: true })}">${content}</div>`
     }
     case 'button': {
       // javascript:, data: and other schemes never reach the generated code.
       let href = isSafeUrl(b.href) ? escKeep(b.href) : '#'
       let label = escKeep(b.label)
-      if (ctx.mode === 'hubspot') {
+      if (ctx.isField(b)) {
         if (!hasHubl(b.label)) label = `{{ module.${ctx.field(b, 'label', 'texte', 'text', b.label, b.field?.textName)} }}`
         if (!hasHubl(b.href)) {
           const u = ctx.field(
@@ -131,14 +139,14 @@ ${indent(notMso(`  ${link}`), p + '  ')}`
               return `${p}  ${open}\n${p}  ${link}\n${p}  ${close}`
             })()
           : `${p}  ${link}`
-      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}), ...(b.height ? { height: b.height } : {}), ...(b.fontSize ? { 'font-size': b.fontSize } : {}), ...(b.bold === false ? { bold: 0 } : {}), ...(bw ? { 'border-width': bw, 'border-color': b.borderColor || b.color } : {}), ...(b.msoCell ? { 'mso-cell': 1 } : {}), ...(b.fullWidth ? { full: 1 } : {}), ...(b.padX != null ? { 'pad-x': b.padX } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}text-align:${b.align};${olStyle(b.outlook)}">
+      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}), ...(b.height ? { height: b.height } : {}), ...(b.fontSize ? { 'font-size': b.fontSize } : {}), ...(b.bold === false ? { bold: 0 } : {}), ...(bw ? { 'border-width': bw, 'border-color': b.borderColor || b.color } : {}), ...(b.msoCell ? { 'mso-cell': 1 } : {}), ...(b.fullWidth ? { full: 1 } : {}), ...(b.padX != null ? { 'pad-x': b.padX } : {}), ...(b.fixed ? { fixed: 1 } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}text-align:${b.align};${olStyle(b.outlook)}">
 ${inner}
 ${p}</div>`
     }
     case 'image': {
       let src = isSafeUrl(b.src, true) ? escKeep(b.src) : ''
       let alt = escKeep(b.alt)
-      if (ctx.mode === 'hubspot' && !hasHubl(b.src) && !hasHubl(b.alt)) {
+      if (ctx.isField(b)) {
         const f = ctx.field(b, '', '', 'image', { src: b.src, alt: b.alt, loading: 'lazy' })
         src = `{{ module.${f}.src }}`
         alt = `{{ module.${f}.alt }}`
@@ -150,7 +158,7 @@ ${p}</div>`
         link = `{{ module.${u}.url.href }}`
       }
       const img = `<img src="${src}" alt="${alt}" width="${b.outlook?.w ?? Math.round((avail * b.width) / 100)}" style="display:inline-block;width:${b.width}%;max-width:100%;height:auto;border:0;${b.radius ? `border-radius:${b.radius}px;` : ''}">`
-      return `${p}<div${ctx.attrs({ neon: 'image', ...ctx.fieldAttrs(b), align: b.align, width: b.width, ...(b.href ? { href: b.href } : {}), ...(b.radius ? { radius: b.radius } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}text-align:${b.align};${olStyle(b.outlook)}">
+      return `${p}<div${ctx.attrs({ neon: 'image', ...ctx.fieldAttrs(b), align: b.align, width: b.width, ...(b.href ? { href: b.href } : {}), ...(b.radius ? { radius: b.radius } : {}), ...(b.fixed ? { fixed: 1 } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}text-align:${b.align};${olStyle(b.outlook)}">
 ${p}  ${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">${img}</a>` : img}
 ${p}</div>`
     }
@@ -203,9 +211,10 @@ ${p}    </td>`
     ...(img ? { 'bg-image': img } : {}),
     ...(s.columns === 2 && s.ratio && s.ratio !== 50 ? { ratio: s.ratio } : {}),
     ...(s.valign && s.valign !== 'top' ? { valign: s.valign } : {}),
+    ...(s.css ? { css: s.css } : {}),
     ...spacingAttrs(s),
     ...olAttr(s.outlook),
-  })} class="${cls}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"${img ? ` background="${img}"` : ''} style="${hideStyle(s.hide)}width:100%;background:${escKeep(s.bg)};${bgImg}${border}border-radius:${s.radius}px;border-collapse:separate;${margin}${olStyle(s.outlook)}">
+  })} class="${cls}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"${img ? ` background="${img}"` : ''} style="${hideStyle(s.hide)}width:100%;background:${escKeep(s.bg)};${bgImg}${border}border-radius:${s.radius}px;border-collapse:separate;${margin}${s.css ? `${s.css};` : ''}${olStyle(s.outlook)}">
 ${p}  <tr>
 ${cells}
 ${p}  </tr>
@@ -242,16 +251,22 @@ ${renderModule(tree, new Ctx('sync', tree))}
 // exposes: created when HuBL is pasted, kept while the variable is still in
 // the code, with the user's edits (label, type, value) preserved. The variable
 // itself is never touched: it stays where it is in the content.
-export function syncExtraFields(tree: ModuleTree, specs?: FieldSpec[]): ModuleTree {
-  const code = treeToCode(tree, '')
+// `source`: the imported code itself. Its fields are read from it (some of its
+// references, in styles the converter doesn't keep, are not in the regenerated
+// code) and kept afterwards even when the code stops using them.
+export function syncExtraFields(tree: ModuleTree, specs?: FieldSpec[], source?: string): ModuleTree {
+  const code = treeToCode(tree, '') + (source ? `\n${source}` : '')
   const prev = new Map((tree.fields ?? []).map((f) => [f.name, f]))
+  const exposed = exposedNames(tree)
   let fields: ExtraField[] = []
-  if (/module\./.test(code)) {
-    const exposed = exposedNames(tree)
+  if (/\b(module|widget)\./.test(code) || specs?.length) {
     fields = analyzeFieldRefs(code, specs)
       .filter((f) => !exposed.has(f.name))
-      .map((f) => (specs?.length ? f : (prev.get(f.name) ?? f)))
+      .map((f) => (specs?.length || source ? f : (prev.get(f.name) ?? f)))
   }
+  if (source) fields = fields.map((f) => (f.keep ? f : { ...f, keep: true }))
+  const names = new Set(fields.map((f) => f.name))
+  for (const f of prev.values()) if (f.keep && !names.has(f.name) && !exposed.has(f.name)) fields.push(f)
   if (JSON.stringify(fields) === JSON.stringify(tree.fields ?? [])) return tree
   const { fields: _old, ...rest } = tree
   void _old
@@ -268,12 +283,14 @@ export interface HubSpotExport {
 export function treeToHubSpot(tree: ModuleTree, name: string): HubSpotExport {
   const ctx = new Ctx('hubspot', tree)
   const html = renderModule(tree, ctx)
+  // A field imported with its fields.json definition keeps it (exact type, label, options).
   const fields = ctx.fields.map((f) => ({
     name: f.name,
     label: f.label,
     type: f.type,
     required: false,
     locked: false,
+    ...(f.spec ?? {}),
     default: f.default,
   }))
   // Variables the code uses that no block owns (dates, conditions, repeaters…).
@@ -334,7 +351,8 @@ const ownerSection = (el: Element) => el.parentElement?.closest('[data-neon="sec
 function parseBlock(el: Element): Block | null {
   const b = parseBlockInner(el)
   if (!b || b.type === 'raw' || b.type === 'section') return b
-  return { ...b, ...spacingParse((k) => el.getAttribute(`data-${k}`)), ...olParse(el.getAttribute('data-ol')) }
+  const fixed = el.getAttribute('data-fixed') === '1' && (b.type === 'heading' || b.type === 'text' || b.type === 'button' || b.type === 'image') ? { fixed: true } : {}
+  return { ...b, ...fixed, ...spacingParse((k) => el.getAttribute(`data-${k}`)), ...olParse(el.getAttribute('data-ol')) }
 }
 
 function parseBlockInner(el: Element): Block | null {
@@ -484,6 +502,7 @@ function parseSection(el: Element): Section {
     ...(safeBgImage(g('bg-image') ?? '') ? { bgImage: safeBgImage(g('bg-image')!) } : {}),
     ...(cells.length === 2 ? optNum(g('ratio'), 'ratio', 20, 80) : {}),
     ...(g('valign') === 'middle' || g('valign') === 'bottom' ? { valign: g('valign') as 'middle' | 'bottom' } : {}),
+    ...(g('css') && sanitizeStyle(g('css')!) ? { css: sanitizeStyle(g('css')!) } : {}),
     ...spacingParse(g),
     ...olParse(g('ol')),
     cells,
@@ -499,7 +518,9 @@ export type ParseResult =
 export function codeToTree(code: string, fallback: ModuleTree, specs?: FieldSpec[]): ParseResult {
   // HuBL comments would otherwise leak into the DOM as text.
   const cleaned = code.replace(/\{#[\s\S]*?#\}/g, '')
-  const doc = new DOMParser().parseFromString(`<body>${cleaned}</body>`, 'text/html')
+  const prot = protectHubl(cleaned)
+  const doc = new DOMParser().parseFromString(`<body>${prot.html}</body>`, 'text/html')
+  restoreDom(doc.body, prot.tokens)
   sanitize(doc.body)
   const mod = doc.querySelector('[data-neon="module"]')
   const sectionEls = Array.from(doc.querySelectorAll('[data-neon="section"]')).filter((s) => !ownerSection(s))
@@ -516,6 +537,9 @@ export function codeToTree(code: string, fallback: ModuleTree, specs?: FieldSpec
       sections: imp.sections,
     }
     const binding = bindFieldsFromCode(imported, cleaned, specs)
+    // A HubSpot module: its fields are the ones it declares. Its other texts,
+    // buttons and images stay fixed content instead of becoming new fields.
+    if (/\b(module|widget)\.[A-Za-z_]/.test(cleaned)) markFixed(binding.tree.sections)
     return { ok: true, imported: true, tree: binding.tree, binding }
   }
   const g = (k: string) => mod?.getAttribute(`data-${k}`) ?? null
@@ -525,10 +549,17 @@ export function codeToTree(code: string, fallback: ModuleTree, specs?: FieldSpec
       width: asNum(g('width'), fallback.width, 320, 900),
       bg: asColor(g('bg'), fallback.bg),
       font: g('font')?.replace(/[;{}<>"]/g, '') || fallback.font,
-      sections: sectionEls.map(parseSection),
+      sections: restoreTree(sectionEls.map(parseSection), prot.tokens),
       ...(g('vml') === '1' ? { vml: true } : {}),
       ...optNum(g('pad'), 'pad', 0, 120),
     },
+  }
+}
+
+function markFixed(blocks: Block[]) {
+  for (const b of blocks) {
+    if (b.type === 'section') b.cells.forEach(markFixed)
+    else if ((b.type === 'heading' || b.type === 'text' || b.type === 'button' || b.type === 'image') && !b.field) b.fixed = true
   }
 }
 
@@ -624,10 +655,24 @@ const textBlock = (html: string, s: Inherit): Block => ({
   size: Math.min(64, Math.max(8, s.size ?? 16)),
 })
 
-function makeSection(cells: Block[][], bg: string, padding: number, radius = 0): Section {
+function makeSection(cells: Block[][], bg: string, padding: number, radius = 0, from?: Element): Section {
   const kept = cells.slice(0, 3)
   if (cells.length > 3) kept[2] = [...kept[2], ...cells.slice(3).flat()]
-  return { id: uid(), type: 'section', columns: kept.length as Columns, behavior: 'stack', bg, padding, radius, cells: kept }
+  const extra = from ? hublStyle(from) : ''
+  return { id: uid(), type: 'section', columns: kept.length as Columns, behavior: 'stack', bg, padding, radius, ...(extra ? { css: extra } : {}), cells: kept }
+}
+
+// Style declarations driven by the module's fields ({{ module.spacing.css }},
+// border-radius:{{ module.r }}px…): kept on the section so the module still
+// uses them. The background colour is already the section's.
+function hublStyle(el: Element): string {
+  const style = el.getAttribute('style') ?? ''
+  if (!/\{[{%]/.test(style)) return ''
+  return style
+    .split(/;(?![^{]*\}\})/)
+    .map((d) => d.trim())
+    .filter((d) => /\{[{%]/.test(d) && !/^background(-color)?\s*:/i.test(d))
+    .join(';')
 }
 
 function imageBlock(img: Element, s: Inherit): Block {
@@ -709,7 +754,20 @@ function convertTable(table: Element, inh: Inherit): Block[] {
   if (rows.some((tr) => tr.querySelector(':scope > th'))) return [rawBlock(table.outerHTML)]
   const ts = styleOf(table, inh)
   const out: Block[] = []
-  for (const tr of rows) {
+  // Rows in order, with the HuBL written between them ({% for %} around a row,
+  // {% if %} around a few rows…), which becomes logic blocks at the same place.
+  const items: (Element | Text)[] = []
+  for (const n of Array.from(table.childNodes)) {
+    if (n.nodeType === Node.ELEMENT_NODE && /^(TBODY|THEAD|TFOOT)$/.test((n as Element).tagName)) items.push(...(Array.from(n.childNodes) as (Element | Text)[]))
+    else items.push(n as Element | Text)
+  }
+  for (const item of items) {
+    if (item.nodeType === Node.TEXT_NODE) {
+      for (const st of (item.textContent ?? '').match(/\{%[\s\S]*?%\}/g) ?? []) out.push(rawBlock(st))
+      continue
+    }
+    if (item.nodeType !== Node.ELEMENT_NODE || (item as Element).tagName !== 'TR') continue
+    const tr = item as Element
     const rs = styleOf(tr, ts)
     const cells = Array.from(tr.children)
       .filter((td) => td.tagName === 'TD')
@@ -719,14 +777,15 @@ function convertTable(table: Element, inh: Inherit): Block[] {
     if (cells.length === 1) {
       const { td, blocks } = cells[0]
       const bg = bgOf(td)
-      out.push(...(bg ? [makeSection([blocks], bg, px(css(td)?.paddingTop) ?? 16)] : blocks))
+      out.push(...(bg || hublStyle(td) ? [makeSection([blocks], bg ?? 'transparent', px(css(td)?.paddingTop) ?? 16, 0, td)] : blocks))
     } else if (cells.length > 1) {
       const bg = bgOf(tr) ?? bgOf(cells[0].td) ?? 'transparent'
       out.push(makeSection(cells.map((c) => c.blocks), bg, px(css(cells[0].td)?.paddingTop) ?? 8))
     }
   }
   const bg = bgOf(table)
-  return bg && out.length ? [makeSection([out], bg, 16, px(css(table)?.borderRadius) ?? 0)] : out
+  if ((bg || hublStyle(table)) && out.length) return [makeSection([out], bg ?? 'transparent', 16, px(css(table)?.borderRadius) ?? 0, table)]
+  return out
 }
 
 function convertElement(el: Element, inh: Inherit): Block[] {
@@ -810,8 +869,16 @@ function inlineStylesheets(doc: Document) {
   for (const [el, rules] of acc) el.setAttribute('style', `${rules}${el.getAttribute('style') ?? ''}`)
 }
 
+// Tokens of the last parsed fragment: in-tag statements are put back into the
+// blocks' strings once converted (see hubl-protect.ts).
+let fragmentTokens: string[] = []
+
 function parseFragment(html: string) {
-  const doc = new DOMParser().parseFromString(html.replace(/\{#[\s\S]*?#\}/g, ''), 'text/html')
+  const prot = protectHubl(html.replace(/\{#[\s\S]*?#\}/g, ''))
+  fragmentTokens = prot.tokens
+  // <body> first: a comment opening the document would land outside of it.
+  const doc = new DOMParser().parseFromString(/<body[\s>]/i.test(prot.html) ? prot.html : `<body>${prot.html}`, 'text/html')
+  restoreDom(doc.body, prot.tokens)
   sanitize(doc.body)
   inlineStylesheets(doc)
   return doc.body
@@ -819,7 +886,8 @@ function parseFragment(html: string) {
 
 // Blocks for a column (used to convert a raw block in place).
 export function htmlToBlocks(html: string): Block[] {
-  return convertNodes(parseFragment(html).childNodes, {})
+  const body = parseFragment(html)
+  return restoreTree(convertNodes(body.childNodes, {}), fragmentTokens)
 }
 
 // Whole-module import: loose blocks are grouped into sections, and the outer
@@ -848,7 +916,7 @@ export function importHtml(html: string): { sections: Section[]; bg?: string; fo
   flush()
   const fontEl = css(body).fontFamily ? body : body.querySelector('[style*="font-family"]')
   const font = fontEl ? css(fontEl).fontFamily.replace(/"/g, "'").replace(/[;{}<>]/g, '') : ''
-  return { sections, bg: wrappers.length > 1 ? wrappers[0] : bgOf(body), font: font || undefined }
+  return { sections: restoreTree(sections, fragmentTokens), bg: wrappers.length > 1 ? wrappers[0] : bgOf(body), font: font || undefined }
 }
 
 // Parsing assigns fresh ids; carry over ids from the previous tree wherever the

@@ -1,6 +1,6 @@
 import { olClean } from './outlook'
 import { safeBgImage, spacingClean } from './look'
-import { isSafeUrl, sanitizeHtml, stripTags } from './sanitize'
+import { isSafeUrl, sanitizeHtml, sanitizeStyle, stripTags } from './sanitize'
 import { uid } from './types'
 import type { Align, Block, Columns, ExtraField, ExtraFieldType, Json, ModuleTree, Section } from './types'
 
@@ -36,6 +36,35 @@ export function safeFont(v: unknown, fallback: string): string {
 
 const align = (v: unknown, fallback: Align): Align => (v === 'left' || v === 'center' || v === 'right' ? v : fallback)
 
+// HubSpot definitions and values kept for an exact export: plain JSON only,
+// bounded, strings without tags, URLs checked. Never shown as HTML.
+const URL_KEY = /^(href|src|url|linkUrl|redirect_url|oembed_url)$/
+export function safeJson(v: unknown, depth = 0, key = ''): Json | undefined {
+  if (depth > 8) return undefined
+  if (v === null || typeof v === 'boolean') return v
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined
+  if (typeof v === 'string') {
+    const t = str(v, 5000)
+    if (URL_KEY.test(key) && !isSafeUrl(t, key === 'src')) return ''
+    return key === 'html' || key === 'message' ? sanitizeHtml(t) : stripTags(t)
+  }
+  if (Array.isArray(v)) return v.slice(0, 100).map((x) => safeJson(x, depth + 1, key)).filter((x): x is Json => x !== undefined)
+  if (isObj(v)) {
+    const out: { [k: string]: Json } = {}
+    for (const [k, x] of Object.entries(v).slice(0, 60)) {
+      if (!/^[\w.-]{1,60}$/.test(k) || k === '__proto__' || k === 'constructor' || k === 'prototype') continue
+      const j = safeJson(x, depth + 1, k)
+      if (j !== undefined) out[k] = j
+    }
+    return out
+  }
+  return undefined
+}
+const specObj = (v: unknown) => {
+  const j = isObj(v) && JSON.stringify(v).length < 20_000 ? safeJson(v) : undefined
+  return j && typeof j === 'object' && !Array.isArray(j) && Object.keys(j).length ? (j as { [k: string]: Json }) : undefined
+}
+
 function field(v: unknown) {
   if (!isObj(v)) return undefined
   const name = str(v.name, 60)
@@ -43,11 +72,18 @@ function field(v: unknown) {
   const link = (x: unknown) => (typeof x === 'string' && /^[\w.-]{1,60}$/.test(x) ? x : undefined)
   const textName = link(v.textName)
   const linkName = link(v.linkName)
+  const specs: { [n: string]: { [k: string]: Json } } = {}
+  if (isObj(v.specs))
+    for (const [n, x] of Object.entries(v.specs).slice(0, 4)) {
+      const sp = /^[\w.-]{1,60}$/.test(n) ? specObj(x) : undefined
+      if (sp) specs[n] = sp
+    }
   return {
     name,
     label: stripTags(str(v.label, 100)),
     ...(textName ? { textName } : {}),
     ...(linkName ? { linkName } : {}),
+    ...(Object.keys(specs).length ? { specs } : {}),
   }
 }
 
@@ -64,7 +100,8 @@ function block(raw: unknown, depth: number, count: { n: number }): Block | null 
   const b = blockInner(raw, depth, count)
   if (!b || b.type === 'raw' || b.type === 'section' || !isObj(raw)) return b
   const outlook = olClean(raw.outlook)
-  return { ...b, ...spacingClean(raw), ...(outlook ? { outlook } : {}) }
+  const fixed = raw.fixed === true && (b.type === 'heading' || b.type === 'text' || b.type === 'button' || b.type === 'image') ? { fixed: true } : {}
+  return { ...b, ...fixed, ...spacingClean(raw), ...(outlook ? { outlook } : {}) }
 }
 
 function blockInner(raw: unknown, depth: number, count: { n: number }): Block | null {
@@ -176,6 +213,7 @@ export function section(raw: unknown, depth = 0, count: { n: number } = { n: 0 }
     ...(safeBgImage(typeof raw.bgImage === 'string' ? raw.bgImage : '') ? { bgImage: safeBgImage(raw.bgImage as string) } : {}),
     ...(cells.length === 2 ? opt(raw.ratio, 'ratio', 20, 80) : {}),
     ...(raw.valign === 'middle' || raw.valign === 'bottom' ? { valign: raw.valign } : {}),
+    ...(typeof raw.css === 'string' && sanitizeStyle(str(raw.css, 2000)) ? { css: sanitizeStyle(str(raw.css, 2000)) } : {}),
     ...spacingClean(raw),
     cells,
   }
@@ -183,15 +221,16 @@ export function section(raw: unknown, depth = 0, count: { n: number } = { n: 0 }
 
 // Extra module fields (variables of the code): names, types and default values
 // rebuilt from a closed list, whatever was sent.
-const FIELD_TYPES = new Set<string>(['text', 'richtext', 'number', 'boolean', 'link', 'image', 'color', 'date', 'datetime', 'choice', 'group'])
+const FIELD_TYPES = new Set<string>(['text', 'richtext', 'number', 'boolean', 'link', 'url', 'image', 'file', 'color', 'font', 'alignment', 'textalignment', 'backgroundimage', 'date', 'datetime', 'choice', 'group', 'json'])
 const FIELD_NAME = /^[A-Za-z_]\w{0,59}$/
-const CHOICE_VALUE = /^[\w-]{1,40}$/
+// HubSpot choice values can be any short string.
+const CHOICE_VALUE = /^[^<>]{0,200}$/
 const bigNum = (v: unknown, min: number, max: number): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : undefined)
 
 function fieldDefault(type: ExtraFieldType, v: unknown): Json | undefined {
   switch (type) {
     case 'text':
-      return typeof v === 'string' ? stripTags(str(v, 1000)) : undefined
+      return typeof v === 'string' ? stripTags(str(v, 1000)) : v === null ? null : undefined
     case 'richtext':
       return typeof v === 'string' ? sanitizeHtml(str(v, 5000)) : undefined
     case 'number':
@@ -202,17 +241,19 @@ function fieldDefault(type: ExtraFieldType, v: unknown): Json | undefined {
     case 'datetime':
       return bigNum(v, 0, 4_102_444_800_000)
     case 'choice':
-      return typeof v === 'string' && CHOICE_VALUE.test(v) ? v : undefined
+      return typeof v === 'string' && CHOICE_VALUE.test(v) ? stripTags(v) : undefined
     case 'link': {
       if (!isObj(v)) return undefined
       const u = isObj(v.url) ? v.url : {}
       const href = str(u.href, 2000)
-      return { url: { type: 'EXTERNAL', href: isSafeUrl(href) ? href : '', content_id: null }, open_in_new_tab: v.open_in_new_tab === true, no_follow: v.no_follow === true }
+      // Other keys of the HubSpot value (sponsored, rel…) are kept, checked.
+      const rest = safeJson(v) as { [k: string]: Json }
+      return { ...rest, url: { ...(safeJson(u) as { [k: string]: Json }), type: typeof u.type === 'string' ? stripTags(u.type) : 'EXTERNAL', href: isSafeUrl(href) ? href : '', content_id: typeof u.content_id === 'number' ? u.content_id : null }, open_in_new_tab: v.open_in_new_tab === true, no_follow: v.no_follow === true }
     }
     case 'image': {
       if (!isObj(v)) return undefined
       const src = str(v.src, 2000)
-      return { src: isSafeUrl(src, true) ? src : '', alt: stripTags(str(v.alt, 200)), width: num(v.width, 600, 1, 4000), height: num(v.height, 300, 1, 4000) }
+      return { ...(safeJson(v) as { [k: string]: Json }), src: isSafeUrl(src, true) ? src : '', alt: stripTags(str(v.alt, 200)), width: num(v.width, 600, 1, 4000), height: num(v.height, 300, 1, 4000) }
     }
     case 'color':
       return isObj(v) ? { color: safeColor(v.color, '#000000'), opacity: num(v.opacity, 100, 0, 100) } : undefined
@@ -221,25 +262,38 @@ function fieldDefault(type: ExtraFieldType, v: unknown): Json | undefined {
   }
 }
 
-function extraField(raw: unknown, leaf = false): ExtraField | null {
-  if (!isObj(raw)) return null
+function extraField(raw: unknown, depth = 0): ExtraField | null {
+  if (!isObj(raw) || depth > 4) return null
   const name = str(raw.name, 60)
   const type = typeof raw.type === 'string' && FIELD_TYPES.has(raw.type) ? (raw.type as ExtraFieldType) : null
-  if (!FIELD_NAME.test(name) || !type || (leaf && type === 'group')) return null
+  if (!FIELD_NAME.test(name) || !type) return null
   const out: ExtraField = { name, label: stripTags(str(raw.label, 100)) || name, type }
-  const d = fieldDefault(type, raw.default)
+  if (typeof raw.hsType === 'string' && /^[a-z_]{2,30}$/.test(raw.hsType)) out.hsType = raw.hsType
+  if (raw.repeater === true) out.repeater = true
+  if (raw.keep === true) out.keep = true
+  const spec = specObj(raw.spec)
+  if (spec) out.spec = spec
+  // Simple values are checked by type; groups, lists and HubSpot-only types as bounded JSON.
+  const one = (v: unknown) => fieldDefault(type, v)
+  const d =
+    type === 'group' || type === 'json' || ['url', 'file', 'font', 'alignment', 'textalignment', 'backgroundimage'].includes(type)
+      ? raw.default === undefined
+        ? undefined
+        : safeJson(raw.default)
+      : out.repeater && Array.isArray(raw.default)
+        ? (raw.default.slice(0, 50).map(one).filter((x) => x !== undefined) as Json[])
+        : one(raw.default)
   if (d !== undefined) out.default = d
   if (type === 'choice') {
     out.options = (Array.isArray(raw.options) ? raw.options : [])
-      .slice(0, 12)
-      .map((o) => (isObj(o) && typeof o.value === 'string' && CHOICE_VALUE.test(o.value) ? { value: o.value, label: stripTags(str(o.label, 80)) || o.value } : null))
+      .slice(0, 60)
+      .map((o) => (isObj(o) && typeof o.value === 'string' && CHOICE_VALUE.test(o.value) ? { value: o.value, label: stripTags(str(o.label, 120)) || o.value } : null))
       .filter((o): o is { value: string; label: string } => !!o)
     if (!out.options.length) return null
-    if (typeof out.default !== 'string' || !out.options.some((o) => o.value === out.default)) out.default = out.options[0].value
+    if (!out.repeater && (typeof out.default !== 'string' || !out.options.some((o) => o.value === out.default))) out.default = out.options[0].value
   }
   if (type === 'group') {
-    out.children = (Array.isArray(raw.children) ? raw.children : []).slice(0, 20).map((c) => extraField(c, true)).filter((c): c is ExtraField => !!c)
-    if (raw.repeater === true) out.repeater = true
+    out.children = (Array.isArray(raw.children) ? raw.children : []).slice(0, 40).map((c) => extraField(c, depth + 1)).filter((c): c is ExtraField => !!c)
   }
   return out
 }

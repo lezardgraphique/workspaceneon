@@ -420,6 +420,15 @@ type Node =
   | { t: 'set'; name: string; e: string }
   | { t: 'seq'; body: Node[] }
 
+const chip = (label: string) =>
+  `<span style="display:inline-block;padding:10px 18px;border-radius:6px;background:#ff007f;color:#ffffff;font:700 14px/1.2 Arial,sans-serif;">${label}</span>`
+const PLACEHOLDERS: Record<string, string> = {
+  cta: chip('CTA HubSpot'),
+  icon: '<span style="font:16px/1 Arial,sans-serif;color:#ff007f;">★</span>',
+  form: '<span style="display:block;padding:16px;border:1px dashed #b4b4c8;border-radius:8px;color:#5c5c78;font:13px/1.4 Arial,sans-serif;text-align:center;">Formulaire HubSpot</span>',
+  video_player: '<span style="display:block;padding:40px 16px;background:#0f0f1a;color:#ffffff;font:13px/1.4 Arial,sans-serif;text-align:center;">▶ Vidéo HubSpot</span>',
+}
+
 const SKIP_BLOCKS = new Set(['macro', 'widget_block', 'scope_css', 'require_css', 'require_js', 'set', 'call_skip'])
 const SEQ_BLOCKS = new Set(['block', 'call'])
 
@@ -493,6 +502,15 @@ function parse(src: string): Node[] {
       const node: Node = { t: 'seq', body: [] }
       if (!cur().skip) cur().list.push(node)
       frames.push({ kind: name, list: node.body, node, skip: cur().skip })
+    } else if (name === 'inline_text' || name === 'inline_rich_text') {
+      // HubSpot's inline editing tags print their value.
+      const v = /value\s*=\s*(["'])\s*\{\{([\s\S]*?)\}\}\s*\1|value\s*=\s*([A-Za-z_][\w.]*)/.exec(rest)
+      const f = /field\s*=\s*["']([A-Za-z_]\w*)["']/.exec(rest)
+      const e = v ? (v[2] ?? v[3]).trim() : f ? `module.${f[1]}` : ''
+      if (e && !cur().skip) cur().list.push({ t: 'out', e })
+    } else if (PLACEHOLDERS[name]) {
+      // Tags drawn by HubSpot at send time: a recognisable stand-in in the preview.
+      if (!cur().skip) cur().list.push({ t: 'text', v: PLACEHOLDERS[name] })
     } else if (/^end/.test(name) || name === 'end_widget_block' || name === 'end_scope_css') {
       if (frames.length > 1) frames.pop()
     }
@@ -610,6 +628,8 @@ export function previewScope(tree: ModuleTree, contact: SampleContact = 'known')
   const contactData = contact === 'known' ? CONTACT : {}
   return {
     module,
+    // Older modules call their fields widget.<name>.
+    widget: module,
     contact: contactData,
     company: { name: 'Votre entreprise' },
     site_settings: { company_name: 'Votre entreprise', company_domain: 'exemple.fr', company_street_address_1: '1 rue de l\'Exemple', company_city: 'Paris' },
@@ -630,7 +650,9 @@ const STATEMENT = /^\s*(?:\{#(?:(?!#\})[\s\S])*#\}|\{%(?:(?!%\})[\s\S])*%\})\s*$
 
 // A raw block that is a single {% … %} statement or {# … #} comment: the logic
 // around other blocks, not content.
-export const isLogicBlock = (b: Block): boolean => b.type === 'raw' && STATEMENT.test(b.html) && !/^\s*\{%-?\s*(raw|module)\b/.test(b.html)
+// Tags that print something (inline editing, CTA, icon, form…) are content, not logic.
+export const isLogicBlock = (b: Block): boolean =>
+  b.type === 'raw' && STATEMENT.test(b.html) && !/^\s*\{%-?\s*(raw|module|inline_text|inline_rich_text|inline_link|cta|icon|form|video_player|image|logo|linked_image|menu|simple_menu)\b/.test(b.html)
 
 function statementOf(b: Block): { name: string; rest: string } | null {
   if (b.type !== 'raw') return null
@@ -666,7 +688,8 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
   }
 
   // Loop clones need ids of their own (the editor maps `id~k` back to `id`).
-  const suffixIds = (b: Block, k: number): Block =>
+  // The loop's own id is part of the suffix, so nested loops never produce the same id twice.
+  const suffixIds = (b: Block, k: number | string): Block =>
     b.type === 'section' ? { ...b, id: `${b.id}~${k}`, cells: b.cells.map((c) => c.map((x) => suffixIds(x, k))) } : { ...b, id: `${b.id}~${k}` }
 
   const list = (blocks: Block[], parent: Scope): Block[] => {
@@ -735,7 +758,7 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
                 names.forEach((n, j) => (child[n] = vals[j] ?? {}))
                 child.loop = { index: k + 1, index0: k, first: k === 0, last: k === arr.length - 1, length: arr.length }
                 const res = list(body, child)
-                out.push(...(k === 0 ? res : res.map((x) => suffixIds(x, k))))
+                out.push(...(k === 0 ? res : res.map((x) => suffixIds(x, `${b.id}.${k}`))))
               })
             }
             i = end
@@ -743,7 +766,12 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
           }
           case 'set': {
             const f = /^([\w]+)\s*=\s*([\s\S]+)$/.exec(st.rest)
-            if (f && active) sc[f[1]] = evalExpr(f[2], sc)
+            if (f && active) {
+              sc[f[1]] = evalExpr(f[2], sc)
+              // A variable set outside any loop is the whole module's (the import
+              // spreads one template over several sections).
+              if (!(f[1] in scope)) scope[f[1]] = sc[f[1]]
+            }
             break
           }
         }
@@ -758,7 +786,7 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
   const block = (b: Block, sc: Scope): Block => {
     switch (b.type) {
       case 'section':
-        return { ...b, bg: text(b.bg, sc), cells: b.cells.map((c) => list(c, sc)) }
+        return { ...b, bg: text(b.bg, sc), ...(b.css ? { css: text(b.css, sc) } : {}), cells: b.cells.map((c) => list(c, sc)) }
       case 'raw':
         return { ...b, html: text(b.html, sc) }
       case 'heading':
@@ -774,5 +802,5 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
     }
   }
 
-  return { ...tree, sections: tree.sections.map((s) => ({ ...s, bg: text(s.bg, scope), cells: s.cells.map((c) => list(c, scope)) })) }
+  return { ...tree, sections: tree.sections.map((s) => ({ ...s, bg: text(s.bg, scope), ...(s.css ? { css: text(s.css, scope) } : {}), cells: s.cells.map((c) => list(c, scope)) })) }
 }

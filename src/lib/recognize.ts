@@ -56,7 +56,7 @@ export function recognizeCode(code: string, current: ModuleTree, specs?: FieldSp
   if (!res.ok) return { ok: false, kind, error: res.error }
 
   // Every variable no block owns becomes a module field (the variable stays in the content).
-  const tree = syncExtraFields({ ...res.tree, fields: undefined }, specs)
+  const tree = syncExtraFields({ ...res.tree, fields: undefined }, specs, code)
   const created = tree.fields ?? []
 
   const st = { blocks: 0, raw: 0, cards: 0 }

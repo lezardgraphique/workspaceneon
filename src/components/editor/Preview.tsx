@@ -244,6 +244,20 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
   }
 }
 
+// "padding-top:24px;font-family:Arial" → { paddingTop: '24px', fontFamily: 'Arial' } (only plain values).
+function cssObject(css?: string): CSSProperties {
+  const out: Record<string, string> = {}
+  for (const d of (css ?? '').split(';')) {
+    const i = d.indexOf(':')
+    if (i < 1) continue
+    const prop = d.slice(0, i).trim().toLowerCase()
+    const value = d.slice(i + 1).trim()
+    if (!/^[a-z-]+$/.test(prop) || !value || /[{}<>]|url\s*\(|expression/i.test(value)) continue
+    out[prop.replace(/-([a-z])/g, (_m, c: string) => c.toUpperCase())] = value
+  }
+  return out as CSSProperties
+}
+
 function SectionView({ s, font, nested, ...p }: { s: Section; font: string; nested?: boolean } & Omit<Props, 'tree'>) {
   const stacked = p.mobile && s.behavior === 'stack'
   const { y: padY, x: padX } = sectionPad(s)
@@ -265,6 +279,8 @@ function SectionView({ s, font, nested, ...p }: { s: Section; font: string; nest
         borderRadius: s.radius,
         marginTop: sp.t || undefined,
         marginBottom: sp.b || undefined,
+        // Styles of an imported module, driven by its fields (already interpreted here).
+        ...cssObject(s.css),
       }}
     >
       <div style={{ display: 'flex', flexDirection: stacked ? 'column' : 'row', alignItems: stacked ? undefined : s.valign === 'middle' ? 'center' : s.valign === 'bottom' ? 'flex-end' : 'flex-start' }}>
