@@ -5,10 +5,12 @@ import type { ReactNode } from 'react'
 
 import { EstimatePanel } from './EstimatePanel'
 import { ImageUpload } from './ImageUpload'
+import { ExtraFieldCard } from './FieldsPanel'
 import { BLOCK_ICONS } from './Structure'
 import { htmlToBlocks, sanitizeHtml } from '@/lib/hubl'
 import { BLOCK_LABELS } from '@/lib/types'
-import type { Align, Block, ButtonBlock, Columns, ModuleTree } from '@/lib/types'
+import type { Align, Block, ButtonBlock, Columns, ModuleTree, Spacing } from '@/lib/types'
+import { headingLine, headingWeight, spacingOf, textLine } from '@/lib/look'
 import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight } from '@/lib/vml'
 import {
   countBlocks,
@@ -44,6 +46,17 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   )
 }
 
+// Same caption as Field, for a set of buttons: a <label> would give the whole
+// set's text as the name of its first button.
+export function Group({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div role="group" aria-label={label}>
+      <span className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-mute">{label}</span>
+      {children}
+    </div>
+  )
+}
+
 export function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <Field label={label}>
@@ -60,13 +73,14 @@ export function ColorField({ label, value, onChange }: { label: string; value: s
   )
 }
 
-export function RangeField(props: { label: string; value: number; min: number; max: number; unit?: string; onChange: (v: number) => void }) {
+export function RangeField(props: { label: string; value: number; min: number; max: number; step?: number; unit?: string; onChange: (v: number) => void }) {
   return (
     <Field label={`${props.label} · ${props.value}${props.unit ?? 'px'}`}>
       <input
         type="range"
         min={props.min}
         max={props.max}
+        step={props.step}
         value={props.value}
         onChange={(e) => props.onChange(Number(e.target.value))}
         className="h-7 w-full accent-pink lg:h-auto"
@@ -74,6 +88,54 @@ export function RangeField(props: { label: string; value: number; min: number; m
     </Field>
   )
 }
+
+// A setting that follows its default until it is moved; a link puts it back.
+export function OptRange(props: { label: string; value: number | undefined; base: number; min: number; max: number; step?: number; unit?: string; onChange: (v: number | undefined) => void }) {
+  const set = props.value != null
+  return (
+    <div>
+      <RangeField label={`${props.label}${set ? '' : ' (auto)'}`} value={props.value ?? props.base} min={props.min} max={Math.max(props.max, props.base)} step={props.step} unit={props.unit} onChange={props.onChange} />
+      {set && (
+        <button onClick={() => props.onChange(undefined)} className="-mt-1 text-xs text-mute underline hover:text-white">
+          Valeur par défaut ({props.base}
+          {props.unit ?? 'px'})
+        </button>
+      )}
+    </div>
+  )
+}
+
+// Margins above / below and visibility: the same block of settings for every element.
+function SpacingFields({ b, set, nested }: { b: Block; set: (patch: Partial<Block>) => void; nested?: boolean }) {
+  if (b.type === 'raw') return null
+  const def = spacingOf({ ...b, mt: undefined, mb: undefined } as Block, nested)
+  const hide = (b as Spacing).hide
+  return (
+    <div className="space-y-3 rounded-lg border border-line p-3">
+      <p className="font-mono text-[10px] tracking-wider text-mute uppercase">Espacements et visibilité</p>
+      <OptRange label="Marge au-dessus" value={(b as Spacing).mt} base={def.t} min={0} max={80} onChange={(mt) => set({ mt } as Partial<Block>)} />
+      <OptRange label="Marge en dessous" value={(b as Spacing).mb} base={def.b} min={0} max={80} onChange={(mb) => set({ mb } as Partial<Block>)} />
+      <Segmented
+        label="Affichage"
+        value={hide ?? 'all'}
+        onChange={(v) => set({ hide: v === 'all' ? undefined : v } as Partial<Block>)}
+        options={[
+          { value: 'all', label: 'Partout' },
+          { value: 'mobile', label: 'Pas sur mobile', title: 'Masqué sur les téléphones (≤ 480 px)' },
+          { value: 'desktop', label: 'Mobile seul', title: 'Affiché seulement sur les téléphones (masqué sur ordinateur et dans Outlook)' },
+        ]}
+      />
+    </div>
+  )
+}
+
+// Personalised image: the URL can hold contact variables, resolved for each recipient.
+const IMAGE_TOKENS = [
+  { label: 'Prénom', token: '{{ contact.firstname }}' },
+  { label: 'Entreprise', token: '{{ contact.company }}' },
+  { label: 'Ville', token: '{{ contact.city }}' },
+  { label: 'E-mail', token: '{{ contact.email }}' },
+]
 
 function Segmented<T extends string | number>({
   label,
@@ -87,13 +149,15 @@ function Segmented<T extends string | number>({
   onChange: (v: T) => void
 }) {
   return (
-    <Field label={label}>
+    <Group label={label}>
       <div className="flex rounded-md border border-line bg-void p-0.5">
         {options.map((o) => (
           <button
             type="button"
             key={String(o.value)}
             title={o.title}
+            aria-pressed={value === o.value}
+            aria-label={typeof o.label === 'string' ? undefined : o.title}
             onClick={() => onChange(o.value)}
             className={`flex flex-1 items-center justify-center rounded px-2 py-2 text-sm lg:py-1 lg:text-xs ${
               value === o.value ? 'bg-pink text-white' : 'text-mute hover:text-white'
@@ -103,7 +167,7 @@ function Segmented<T extends string | number>({
           </button>
         ))}
       </div>
-    </Field>
+    </Group>
   )
 }
 
@@ -112,21 +176,31 @@ export function ButtonLookFields({ b, onChange }: { b: ButtonBlock; onChange: (p
   const bw = buttonBorder(b)
   return (
     <div className="space-y-3">
+      <Segmented
+        label="Largeur"
+        value={b.fullWidth ? 'full' : 'fit'}
+        onChange={(v) => onChange({ fullWidth: v === 'full' || undefined })}
+        options={[
+          { value: 'fit', label: 'Ajustée au texte' },
+          { value: 'full', label: 'Pleine largeur' },
+        ]}
+      />
+      {!b.fullWidth && <OptRange label="Marges latérales" value={b.padX} base={26} min={6} max={70} onChange={(padX) => onChange({ padX })} />}
       <RangeField label="Hauteur" value={buttonHeight(b)} min={28} max={80} onChange={(height) => onChange({ height })} />
       <RangeField label="Taille du texte" value={buttonFontSize(b)} min={11} max={28} onChange={(fontSize) => onChange({ fontSize })} />
-      <Field label="Style du texte">
-        <div role="group" aria-label="Style du texte" className="flex rounded-md border border-line p-0.5 text-xs">
+      <Group label="Style du texte">
+        <div className="flex rounded-md border border-line p-0.5 text-xs">
           {([[true, 'Gras'], [false, 'Normal']] as const).map(([v, l]) => (
             <button key={l} aria-pressed={buttonBold(b) === v} onClick={() => onChange({ bold: v ? undefined : false })} className={`flex-1 rounded px-2 py-1 ${buttonBold(b) === v ? 'bg-violet/20 text-white' : 'text-mute hover:text-white'}`}>
               {l}
             </button>
           ))}
         </div>
-      </Field>
+      </Group>
       <RangeField label="Bordure" value={bw} min={0} max={8} onChange={(w) => onChange(w ? { borderWidth: w, borderColor: b.borderColor ?? b.color } : { borderWidth: undefined, borderColor: undefined })} />
       {bw > 0 && <ColorField label="Couleur de la bordure" value={buttonBorderColor(b)} onChange={(borderColor) => onChange({ borderColor })} />}
-      {(b.height || b.fontSize || b.bold === false || bw > 0) && (
-        <button onClick={() => onChange({ height: undefined, fontSize: undefined, bold: undefined, borderWidth: undefined, borderColor: undefined })} className="text-xs text-mute underline hover:text-white">
+      {(b.height || b.fontSize || b.bold === false || bw > 0 || b.fullWidth || b.padX != null) && (
+        <button onClick={() => onChange({ height: undefined, fontSize: undefined, bold: undefined, borderWidth: undefined, borderColor: undefined, fullWidth: undefined, padX: undefined })} className="text-xs text-mute underline hover:text-white">
           Réinitialiser l'apparence
         </button>
       )}
@@ -202,6 +276,22 @@ function MailyRewrite({ text, html, onResult }: { text: string; html: boolean; o
   )
 }
 
+// The module fields a code block uses (countdown, dynamic image…), editable right here.
+function RawFields({ html, p }: { html: string; p: Props }) {
+  const names = new Set([...html.matchAll(/module\.(\w+)/g)].map((m) => m[1]))
+  const fields = (p.tree.fields ?? []).filter((f) => names.has(f.name))
+  if (!fields.length) return null
+  return (
+    <div className="space-y-2">
+      <p className="font-mono text-[10px] tracking-wider text-mute uppercase">Réglages de ce bloc</p>
+      <p className="text-xs text-mute">Les variables de ce code, modifiables sans y toucher (aussi dans l'onglet Champs).</p>
+      {fields.map((f) => (
+        <ExtraFieldCard key={f.name} f={f} p={p} />
+      ))}
+    </div>
+  )
+}
+
 // Turns a raw block into editable blocks. Logic ({% … %}) stays raw around
 // them, so conditions and loops keep working.
 function ConvertRaw({ html, onConvert }: { html: string; onConvert: (blocks: Block[]) => void }) {
@@ -249,6 +339,19 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
           <RangeField label="Taille" value={b.size} min={12} max={64} onChange={(size) => set({ size })} />
           <ColorField label="Couleur" value={b.color} onChange={(color) => set({ color })} />
           <AlignField value={b.align} onChange={(align) => set({ align })} />
+          <Segmented
+            label="Graisse"
+            value={headingWeight(b)}
+            onChange={(weight) => set({ weight: weight === 700 ? undefined : weight })}
+            options={[
+              { value: 400, label: 'Normal' },
+              { value: 600, label: 'Semi' },
+              { value: 700, label: 'Gras' },
+              { value: 900, label: 'Extra' },
+            ]}
+          />
+          <OptRange label="Interligne" unit="" value={b.lineHeight} base={headingLine({ ...b, lineHeight: undefined })} min={0.9} max={2} step={0.05} onChange={(lineHeight) => set({ lineHeight })} />
+          <OptRange label="Espacement des lettres" value={b.letterSpacing} base={0} min={-2} max={10} step={0.5} onChange={(letterSpacing) => set({ letterSpacing: letterSpacing || undefined })} />
         </>
       )
     case 'text':
@@ -261,6 +364,8 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
           <RangeField label="Taille" value={b.size} min={10} max={32} onChange={(size) => set({ size })} />
           <ColorField label="Couleur" value={b.color} onChange={(color) => set({ color })} />
           <AlignField value={b.align} onChange={(align) => set({ align })} />
+          <OptRange label="Interligne" unit="" value={b.lineHeight} base={textLine({ ...b, lineHeight: undefined })} min={1} max={2.4} step={0.05} onChange={(lineHeight) => set({ lineHeight })} />
+          <OptRange label="Espacement des lettres" value={b.letterSpacing} base={0} min={-1} max={6} step={0.5} onChange={(letterSpacing) => set({ letterSpacing: letterSpacing || undefined })} />
         </>
       )
     case 'button':
@@ -295,20 +400,64 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
           <Field label="Texte alternatif">
             <input className={input} value={b.alt} onChange={(e) => set({ alt: e.target.value })} />
           </Field>
+          <div className="rounded-lg border border-line p-3">
+            <p className="mb-1.5 font-mono text-[10px] tracking-wider text-mute uppercase">Image dynamique</p>
+            <p className="mb-2 text-xs text-mute">
+              Insère une variable du contact dans l'URL : chaque destinataire reçoit sa propre image (service d'images personnalisées). L'aperçu utilise le contact d'exemple.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {IMAGE_TOKENS.map((t) => (
+                <button
+                  key={t.token}
+                  onClick={() => set({ src: `${b.src}${t.token}` })}
+                  title={`Ajouter ${t.token} à la fin de l'URL`}
+                  className="rounded-full border border-line bg-void px-2.5 py-1 font-mono text-[11px] text-[#e3a6ff] hover:border-violet"
+                >
+                  + {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Field label="Lien au clic (image cliquable)">
+            <input className={`${input} ${mono}`} value={b.href ?? ''} onChange={(e) => set({ href: e.target.value || undefined })} placeholder="https://… (facultatif)" />
+          </Field>
           <RangeField label="Largeur" unit="%" value={b.width} min={10} max={100} onChange={(width) => set({ width })} />
           <AlignField value={b.align} onChange={(align) => set({ align })} />
+          <RangeField label="Arrondi" value={b.radius ?? 0} min={0} max={60} onChange={(radius) => set({ radius: radius || undefined })} />
         </>
       )
     case 'divider':
-      return <ColorField label="Couleur" value={b.color} onChange={(color) => set({ color })} />
+      return (
+        <>
+          <ColorField label="Couleur" value={b.color} onChange={(color) => set({ color })} />
+          <RangeField label="Épaisseur" value={b.thickness ?? 1} min={1} max={8} onChange={(thickness) => set({ thickness: thickness === 1 ? undefined : thickness })} />
+          <Segmented
+            label="Style"
+            value={b.lineStyle ?? 'solid'}
+            onChange={(lineStyle) => set({ lineStyle: lineStyle === 'solid' ? undefined : lineStyle })}
+            options={[
+              { value: 'solid', label: 'Plein' },
+              { value: 'dashed', label: 'Tirets' },
+              { value: 'dotted', label: 'Points' },
+            ]}
+          />
+          <RangeField label="Largeur" unit="%" value={b.width ?? 100} min={10} max={100} onChange={(width) => set({ width: width === 100 ? undefined : width })} />
+        </>
+      )
     case 'spacer':
-      return <RangeField label="Hauteur" value={b.height} min={4} max={160} onChange={(height) => set({ height })} />
+      return (
+        <>
+          <RangeField label="Hauteur" value={b.height} min={4} max={160} onChange={(height) => set({ height })} />
+          <OptRange label="Hauteur sur mobile" value={b.mobileHeight} base={b.height} min={0} max={160} onChange={(mobileHeight) => set({ mobileHeight })} />
+        </>
+      )
     case 'raw':
       return (
         <>
           <Field label="Code libre (HTML, HuBL…)">
             <textarea className={`${input} ${mono} min-h-40`} value={b.html} onChange={(e) => set({ html: e.target.value })} />
           </Field>
+          <RawFields html={b.html} p={p} />
           <ConvertRaw html={b.html} onConvert={(blocks) => p.commit(replaceNode(p.tree, b.id, blocks), blocks[0]?.id ?? null)} />
         </>
       )
@@ -332,9 +481,45 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
               ]}
             />
           )}
+          {b.columns === 2 && (
+            <>
+              <Segmented
+                label="Proportion des colonnes"
+                value={b.ratio ?? 50}
+                onChange={(ratio) => set({ ratio: ratio === 50 ? undefined : ratio })}
+                options={[
+                  { value: 33, label: '1/3 · 2/3' },
+                  { value: 50, label: '1/2 · 1/2' },
+                  { value: 67, label: '2/3 · 1/3' },
+                ]}
+              />
+              <RangeField label="Largeur de la 1re colonne" unit="%" value={b.ratio ?? 50} min={20} max={80} onChange={(ratio) => set({ ratio: ratio === 50 ? undefined : ratio })} />
+            </>
+          )}
+          {b.columns > 1 && (
+            <Segmented
+              label="Alignement vertical"
+              value={b.valign ?? 'top'}
+              onChange={(valign) => set({ valign: valign === 'top' ? undefined : valign })}
+              options={[
+                { value: 'top', label: 'Haut' },
+                { value: 'middle', label: 'Milieu' },
+                { value: 'bottom', label: 'Bas' },
+              ]}
+            />
+          )}
           <ColorField label="Fond" value={b.bg} onChange={(bg) => set({ bg })} />
-          <RangeField label="Marge interne" value={b.padding} min={0} max={64} onChange={(padding) => set({ padding })} />
+          <Field label="Image de fond (facultatif)">
+            <input className={`${input} ${mono}`} value={b.bgImage ?? ''} onChange={(e) => set({ bgImage: e.target.value.trim() || undefined })} placeholder="https://…" />
+          </Field>
+          {!b.bgImage && <ImageUpload compact onUploaded={(bgImage) => set({ bgImage })} />}
+          {b.bgImage && <p className="-mt-2 text-xs text-mute">La couleur de fond reste affichée là où l'image ne l'est pas (Outlook, images bloquées) : choisis-la proche de l'image.</p>}
+          <RangeField label="Marge interne" value={b.padding} min={0} max={64} onChange={(padding) => set({ padding, padY: undefined, padX: undefined })} />
+          <OptRange label="Marge interne haut / bas" value={b.padY} base={b.padding} min={0} max={96} onChange={(padY) => set({ padY })} />
+          <OptRange label="Marge interne gauche / droite" value={b.padX} base={b.padding} min={0} max={96} onChange={(padX) => set({ padX })} />
           <RangeField label="Arrondi" value={b.radius} min={0} max={40} onChange={(radius) => set({ radius })} />
+          <RangeField label="Bordure" value={b.borderWidth ?? 0} min={0} max={8} onChange={(w) => set(w ? { borderWidth: w, borderColor: b.borderColor ?? '#e3e3ee' } : { borderWidth: undefined, borderColor: undefined })} />
+          {!!b.borderWidth && <ColorField label="Couleur de la bordure" value={b.borderColor ?? '#e3e3ee'} onChange={(borderColor) => set({ borderColor })} />}
         </>
       )
   }
@@ -354,6 +539,7 @@ export function Inspector(p: Props) {
         </div>
         <RangeField label="Largeur max" value={t.width} min={320} max={800} onChange={(width) => p.commit({ ...t, width })} />
         <ColorField label="Fond du module" value={t.bg} onChange={(bg) => p.commit({ ...t, bg })} />
+        <RangeField label="Marge au-dessus et en dessous du module" value={t.pad ?? 24} min={0} max={80} onChange={(pad) => p.commit({ ...t, pad: pad === 24 ? undefined : pad })} />
         <Field label="Police">
           <select className={input} value={t.font} onChange={(e) => p.commit({ ...t, font: e.target.value })}>
             {FONTS.map((f) => (
@@ -417,6 +603,7 @@ export function Inspector(p: Props) {
         </div>
       </div>
       <BlockFields key={node.id} b={node} set={set} p={p} />
+      <SpacingFields b={node} set={set} nested={path.length > 1} />
       <EstimatePanel key={`est-${node.id}`} tree={p.tree} node={node} />
     </div>
   )

@@ -153,7 +153,7 @@ function ExtraValue({ f, set }: { f: ExtraField; set: (v: Json) => void }) {
 
 // A variable the code uses ({{ module.nom }}, {% if module.nom %}…) that no
 // block owns. The variable stays in the content; the field supplies its value.
-function ExtraFieldCard({ f, p }: { f: ExtraField; p: Props }) {
+export function ExtraFieldCard({ f, p }: { f: ExtraField; p: Props }) {
   const update = (patch: Partial<ExtraField>) =>
     p.commit({ ...p.tree, fields: (p.tree.fields ?? []).map((x) => (x.name === f.name ? { ...x, ...patch } : x)) })
   return (

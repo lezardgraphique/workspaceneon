@@ -161,7 +161,9 @@ export function renderForClient(html: string, client: EmailClient, opts: RenderO
         return s + ';' + extra
       }),
     )
-    doc.querySelectorAll('[style]:not([data-vml])').forEach((el) => editStyle(el, (s) => dropProps(s, ['border-radius', 'max-width'])))
+    doc.querySelectorAll('[style]:not([data-vml])').forEach((el) => editStyle(el, (s) => dropProps(s, ['border-radius', 'max-width', 'background-image', 'background-size', 'background-position'])))
+    // Background images need VML in Word: only the colour shows.
+    doc.querySelectorAll('[background]').forEach((el) => el.removeAttribute('background'))
     // Links are inline in Word: no padding, the background only covers the text.
     doc.querySelectorAll('a[style]:not([data-vml])').forEach((el) => editStyle(el, (s) => dropProps(s, ['padding', 'display'])))
     // Images take their width attribute (pixels), never the CSS percentage.

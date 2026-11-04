@@ -1,4 +1,5 @@
 import { olClean } from './outlook'
+import { safeBgImage, spacingClean } from './look'
 import { isSafeUrl, sanitizeHtml, stripTags } from './sanitize'
 import { uid } from './types'
 import type { Align, Block, Columns, ExtraField, ExtraFieldType, Json, ModuleTree, Section } from './types'
@@ -52,11 +53,18 @@ function field(v: unknown) {
 
 const id = (v: unknown) => (typeof v === 'string' && /^[\w~-]{1,40}$/.test(v) ? v : uid())
 
+// Optional number: kept only when it is one, clamped.
+const opt = (v: unknown, key: string, min: number, max: number, decimals = 0): Record<string, number> => {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return {}
+  const f = 10 ** decimals
+  return { [key]: Math.round(Math.min(max, Math.max(min, v)) * f) / f }
+}
+
 function block(raw: unknown, depth: number, count: { n: number }): Block | null {
   const b = blockInner(raw, depth, count)
   if (!b || b.type === 'raw' || b.type === 'section' || !isObj(raw)) return b
   const outlook = olClean(raw.outlook)
-  return outlook ? { ...b, outlook } : b
+  return { ...b, ...spacingClean(raw), ...(outlook ? { outlook } : {}) }
 }
 
 function blockInner(raw: unknown, depth: number, count: { n: number }): Block | null {
@@ -75,6 +83,9 @@ function blockInner(raw: unknown, depth: number, count: { n: number }): Block | 
         color: safeColor(raw.color, '#0f0f1a'),
         align: align(raw.align, 'left'),
         size: num(raw.size, 26, 8, 96),
+        ...opt(raw.lineHeight, 'lineHeight', 0.8, 3, 2),
+        ...opt(raw.weight, 'weight', 100, 900),
+        ...opt(raw.letterSpacing, 'letterSpacing', -5, 20),
       }
     case 'text':
       return {
@@ -85,6 +96,8 @@ function blockInner(raw: unknown, depth: number, count: { n: number }): Block | 
         color: safeColor(raw.color, '#3a3a52'),
         align: align(raw.align, 'left'),
         size: num(raw.size, 16, 8, 64),
+        ...opt(raw.lineHeight, 'lineHeight', 0.8, 3, 2),
+        ...opt(raw.letterSpacing, 'letterSpacing', -5, 20),
       }
     case 'button': {
       const href = str(raw.href, 2000).trim()
@@ -103,6 +116,8 @@ function blockInner(raw: unknown, depth: number, count: { n: number }): Block | 
         ...(typeof raw.fontSize === 'number' && raw.fontSize > 0 ? { fontSize: num(raw.fontSize, 15, 10, 36) } : {}),
         ...(raw.bold === false ? { bold: false } : {}),
         ...(raw.msoCell === true ? { msoCell: true } : {}),
+        ...(raw.fullWidth === true ? { fullWidth: true } : {}),
+        ...opt(raw.padX, 'padX', 0, 80),
         ...(typeof raw.borderWidth === 'number' && raw.borderWidth > 0 ? { borderWidth: num(raw.borderWidth, 1, 1, 8), borderColor: safeColor(raw.borderColor, '#ffffff') } : {}),
       }
     }
@@ -116,12 +131,21 @@ function blockInner(raw: unknown, depth: number, count: { n: number }): Block | 
         alt: stripTags(str(raw.alt, 300)),
         width: num(raw.width, 100, 1, 100),
         align: align(raw.align, 'center'),
+        ...(typeof raw.href === 'string' && raw.href.trim() && isSafeUrl(raw.href.trim()) ? { href: str(raw.href, 2000).trim() } : {}),
+        ...opt(raw.radius, 'radius', 0, 200),
       }
     }
     case 'divider':
-      return { ...base, type: 'divider', color: safeColor(raw.color, '#e3e3ee') }
+      return {
+        ...base,
+        type: 'divider',
+        color: safeColor(raw.color, '#e3e3ee'),
+        ...opt(raw.thickness, 'thickness', 1, 20),
+        ...(raw.lineStyle === 'dashed' || raw.lineStyle === 'dotted' ? { lineStyle: raw.lineStyle } : {}),
+        ...opt(raw.width, 'width', 5, 100),
+      }
     case 'spacer':
-      return { ...base, type: 'spacer', height: num(raw.height, 24, 0, 400) }
+      return { ...base, type: 'spacer', height: num(raw.height, 24, 0, 400), ...opt(raw.mobileHeight, 'mobileHeight', 0, 400) }
     case 'raw':
       return { ...base, type: 'raw', html: sanitizeHtml(str(raw.html, 50_000)) }
     case 'section':
@@ -146,6 +170,13 @@ export function section(raw: unknown, depth = 0, count: { n: number } = { n: 0 }
     padding: num(raw.padding, 24, 0, 120),
     radius: num(raw.radius, 0, 0, 60),
     ...(olClean(raw.outlook) ? { outlook: olClean(raw.outlook) } : {}),
+    ...opt(raw.padY, 'padY', 0, 200),
+    ...opt(raw.padX, 'padX', 0, 200),
+    ...(typeof raw.borderWidth === 'number' && raw.borderWidth > 0 ? { ...opt(raw.borderWidth, 'borderWidth', 1, 20), borderColor: safeColor(raw.borderColor, '#e3e3ee') } : {}),
+    ...(safeBgImage(typeof raw.bgImage === 'string' ? raw.bgImage : '') ? { bgImage: safeBgImage(raw.bgImage as string) } : {}),
+    ...(cells.length === 2 ? opt(raw.ratio, 'ratio', 20, 80) : {}),
+    ...(raw.valign === 'middle' || raw.valign === 'bottom' ? { valign: raw.valign } : {}),
+    ...spacingClean(raw),
     cells,
   }
 }
@@ -224,6 +255,7 @@ export function sanitizeTree(raw: unknown): ModuleTree {
       .map((s) => section(s, 0, count))
       .filter((s): s is Section => !!s),
     ...(t.vml === true ? { vml: true } : {}),
+    ...(typeof t.pad === 'number' && Number.isFinite(t.pad) ? { pad: Math.round(Math.min(120, Math.max(0, t.pad))) } : {}),
     ...(() => {
       const seen = new Set<string>()
       const fields = (Array.isArray(t.fields) ? t.fields : [])

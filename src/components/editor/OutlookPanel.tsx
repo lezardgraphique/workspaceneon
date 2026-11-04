@@ -1,5 +1,6 @@
-import { Field, RangeField } from './Inspector'
+import { Group, RangeField } from './Inspector'
 import { findPath } from '@/lib/tree'
+import { headingLine, sectionPad, spacingOf, textLine } from '@/lib/look'
 import type { Block, ButtonBlock, ModuleTree, OutlookTweaks } from '@/lib/types'
 import { buttonWidth } from '@/lib/vml'
 
@@ -9,17 +10,17 @@ type Key = keyof OutlookTweaks
 export function olBase(tree: ModuleTree, b: Block, k: Key): number {
   switch (k) {
     case 'mt':
-      return b.type === 'divider' ? 16 : 0
+      return spacingOf(b, findPath(tree, b.id).length > 1).t
     case 'mb':
-      return b.type === 'divider' ? 16 : b.type === 'section' ? (findPath(tree, b.id).length > 1 ? 12 : 0) : b.type === 'spacer' ? 0 : 12
+      return spacingOf(b, findPath(tree, b.id).length > 1).b
     case 'lh':
-      return b.type === 'heading' ? Math.round(b.size * 1.25) : b.type === 'text' ? Math.round(b.size * 1.6) : 20
+      return b.type === 'heading' ? Math.round(b.size * headingLine(b)) : b.type === 'text' ? Math.round(b.size * textLine(b)) : 20
     case 'h':
       return b.type === 'spacer' ? b.height : 0
     case 'w':
       return b.type === 'image' ? Math.round((tree.width * b.width) / 100) : 0
     case 'pad':
-      return b.type === 'section' ? b.padding : 0
+      return b.type === 'section' ? sectionPad(b).y : 0
   }
 }
 
@@ -100,15 +101,15 @@ function ButtonOutlook({ tree, b, onChange, onTree }: { tree: ModuleTree; b: But
   const auto = buttonWidth(b.label, b)
   return (
     <div className="space-y-3 rounded-lg border border-line p-3">
-      <Field label="Bouton dans Outlook sans VML">
-        <div role="group" aria-label="Bouton dans Outlook sans VML" className="flex rounded-md border border-line p-0.5 text-xs">
+      <Group label="Bouton dans Outlook sans VML">
+        <div className="flex rounded-md border border-line p-0.5 text-xs">
           {([[false, 'Texte surligné'], [true, 'Bloc coloré']] as const).map(([v, l]) => (
             <button key={l} aria-pressed={cell === v} onClick={() => onChange({ msoCell: v || undefined } as Partial<Block>)} className={`flex-1 rounded px-2 py-1 ${cell === v ? 'bg-violet/20 text-white' : 'text-mute hover:text-white'}`}>
               {l}
             </button>
           ))}
         </div>
-      </Field>
+      </Group>
       <p className="text-xs text-mute">
         {cell
           ? 'Outlook affiche un bloc de la couleur du bouton, avec ses marges et la largeur choisie (coins carrés, seul le texte est cliquable).'

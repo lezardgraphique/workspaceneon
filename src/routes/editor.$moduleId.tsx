@@ -49,11 +49,22 @@ import { KOFI_URL } from '@/lib/links'
 import type { FieldSpec } from '@/lib/module-fields'
 import { findNode, findPath, insertInCell, moveNode, moveNodeTo, removeNode, replaceNode, updateNode } from '@/lib/tree'
 import { BLOCK_LABELS, createBlock } from '@/lib/types'
-import type { ImageBlock, ModuleRecord, ModuleTree, Section } from '@/lib/types'
+import type { Block, ImageBlock, ModuleRecord, ModuleTree, Section } from '@/lib/types'
 import { adoptServerModule, loadModule, persistModule } from '@/lib/data'
 
 // Maily's panel (chat + Markdown renderer) is the heaviest part: loaded on demand.
 const MailyPanel = lazy(() => import('@/components/editor/MailyPanel').then((m) => ({ default: m.MailyPanel })))
+
+// Ids in document order: changes when blocks are added, removed or moved.
+function structureKey(t: ModuleTree): string {
+  const out: string[] = []
+  const walk = (b: Block) => {
+    out.push(b.id)
+    if (b.type === 'section') b.cells.forEach((c, i) => (out.push(`|${i}`), c.forEach(walk)))
+  }
+  t.sections.forEach(walk)
+  return out.join(',')
+}
 
 export const Route = createFileRoute('/editor/$moduleId')({
   // ?maily=1: open straight on Maily's chat (the "Parler à Maily" button of the home page).
@@ -129,9 +140,11 @@ function Editor({ initial }: { initial: ModuleRecord }) {
   const codeTyped = useRef(false)
 
   // Rapid successive edits (slider drags, typing) collapse into one undo step.
-  const pushHistory = useCallback((prev: ModuleTree) => {
+  // Edits within 600 ms (typing, a slider) make one undo step; a change of
+  // structure (add, delete, move, duplicate) always gets its own.
+  const pushHistory = useCallback((prev: ModuleTree, next?: ModuleTree) => {
     const now = Date.now()
-    if (now - lastPush.current > 600) setPast((p) => [...p.slice(-60), prev])
+    if (now - lastPush.current > 600 || (next && structureKey(prev) !== structureKey(next))) setPast((p) => [...p.slice(-60), prev])
     lastPush.current = now
     setFuture([])
   }, [])
@@ -140,7 +153,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
   const commit = (raw: ModuleTree, select?: string | null) => {
     // Variables used by the code get their module field (and lose it when gone).
     const next = syncExtraFields(raw)
-    pushHistory(tree)
+    pushHistory(tree, next)
     setTree(next)
     setCode(treeToCode(next, name))
     setCodeError(null)

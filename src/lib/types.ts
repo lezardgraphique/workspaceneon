@@ -26,7 +26,18 @@ export interface OutlookTweaks {
   pad?: number
 }
 
-export interface HeadingBlock {
+// Spacing and visibility shared by every element (sections included). Absent =
+// the historical values (12px under a block, 16px around a divider…).
+export type Hide = 'mobile' | 'desktop'
+export interface Spacing {
+  /** Margin above / below, px. */
+  mt?: number
+  mb?: number
+  /** Hidden on phones (≤ 480px) or shown only on phones. */
+  hide?: Hide
+}
+
+export interface HeadingBlock extends Spacing {
   id: string
   outlook?: OutlookTweaks
   type: 'heading'
@@ -36,9 +47,15 @@ export interface HeadingBlock {
   color: string
   align: Align
   size: number
+  /** Line height as a ratio of the size (1.25 when absent). */
+  lineHeight?: number
+  /** 400–900, 700 when absent. */
+  weight?: number
+  /** Letter spacing, px. */
+  letterSpacing?: number
 }
 
-export interface TextBlock {
+export interface TextBlock extends Spacing {
   id: string
   outlook?: OutlookTweaks
   type: 'text'
@@ -47,9 +64,12 @@ export interface TextBlock {
   color: string
   align: Align
   size: number
+  /** Line height as a ratio of the size (1.6 when absent). */
+  lineHeight?: number
+  letterSpacing?: number
 }
 
-export interface ButtonBlock {
+export interface ButtonBlock extends Spacing {
   id: string
   outlook?: OutlookTweaks
   type: 'button'
@@ -70,9 +90,13 @@ export interface ButtonBlock {
   borderColor?: string
   /** Outlook without VML: a coloured box (ghost table cell) instead of highlighted text. */
   msoCell?: boolean
+  /** Spans the whole column. */
+  fullWidth?: boolean
+  /** Left/right padding, px (26 when absent). */
+  padX?: number
 }
 
-export interface ImageBlock {
+export interface ImageBlock extends Spacing {
   id: string
   outlook?: OutlookTweaks
   type: 'image'
@@ -81,20 +105,29 @@ export interface ImageBlock {
   alt: string
   width: number
   align: Align
+  /** Link opened by a click on the image (CTA image). */
+  href?: string
+  radius?: number
 }
 
-export interface DividerBlock {
+export interface DividerBlock extends Spacing {
   id: string
   outlook?: OutlookTweaks
   type: 'divider'
   color: string
+  thickness?: number
+  lineStyle?: 'solid' | 'dashed' | 'dotted'
+  /** Width in %, centred (100 when absent). */
+  width?: number
 }
 
-export interface SpacerBlock {
+export interface SpacerBlock extends Spacing {
   id: string
   outlook?: OutlookTweaks
   type: 'spacer'
   height: number
+  /** Height on phones (≤ 480px). */
+  mobileHeight?: number
 }
 
 // Free HTML/HuBL kept verbatim (e.g. `{% if contact.firstname %}`). Can be
@@ -109,7 +142,7 @@ export type Columns = 1 | 2 | 3
 // side = columns stay side by side on mobile, stack = they stack vertically
 export type Behavior = 'side' | 'stack'
 
-export interface Section {
+export interface Section extends Spacing {
   id: string
   outlook?: OutlookTweaks
   type: 'section'
@@ -119,6 +152,16 @@ export interface Section {
   padding: number
   radius: number
   cells: Block[][]
+  /** Top/bottom and left/right padding when they differ from `padding`. */
+  padY?: number
+  padX?: number
+  borderWidth?: number
+  borderColor?: string
+  /** Background image (https), the colour stays as a fallback (Outlook). */
+  bgImage?: string
+  /** Width of the first column in % (2 columns only, 50 when absent). */
+  ratio?: number
+  valign?: 'top' | 'middle' | 'bottom'
 }
 
 export type Block =
@@ -162,6 +205,8 @@ export interface ModuleTree {
   fields?: ExtraField[]
   /** Draws the buttons as VML shapes for Outlook on Windows (see lib/vml.ts). */
   vml?: boolean
+  /** Space above and below the module, px (24 when absent). */
+  pad?: number
 }
 
 export interface ModuleRecord {

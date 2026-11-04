@@ -7,6 +7,7 @@ import { bindFieldsFromCode } from './module-fields'
 import { isSafeUrl, sanitizeHtml as strictHtml } from './sanitize'
 import type { FieldBinding, FieldSpec } from './module-fields'
 import { olAttr, olParse, olStyle } from './outlook'
+import { classAttr, columnWidths, dividerLine, headingLine, headingWeight, hideClass, hideStyle, marginCss, responsiveCss, safeBgImage, sectionPad, spacingAttrs, spacingOf, spacingParse, textLine } from './look'
 import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight, buttonWidth, msoCell, msoOnly, notMso, vmlShape } from './vml'
 import { uid } from './types'
 import type { Align, Behavior, Block, Columns, ExtraField, ModuleTree, Section } from './types'
@@ -83,15 +84,16 @@ const indent = (text: string, by: string) => text.split('\n').map((l) => by + l)
 // width attribute of images (Outlook on Windows ignores percentage widths).
 function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number): string {
   const p = pad(d)
+  const sp = spacingOf(b)
   switch (b.type) {
     case 'heading': {
       // Content that holds a variable stays in place: it is not a field of its own.
       const content = ctx.mode === 'hubspot' && !hasHubl(b.text) ? `{{ module.${ctx.field(b, '', '', 'text', b.text)} }}` : escKeep(b.text)
-      return `${p}<h${b.level}${ctx.attrs({ neon: 'heading', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size, ...olAttr(b.outlook) })} style="margin:0 0 12px;font-family:${esc(font)};font-size:${b.size}px;line-height:1.25;font-weight:700;color:${escKeep(b.color)};text-align:${b.align};${olStyle(b.outlook, { line: true })}">${content}</h${b.level}>`
+      return `${p}<h${b.level}${ctx.attrs({ neon: 'heading', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size, ...(b.lineHeight != null ? { lh: b.lineHeight } : {}), ...(b.weight != null ? { weight: b.weight } : {}), ...(b.letterSpacing ? { ls: b.letterSpacing } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}font-family:${esc(font)};font-size:${b.size}px;line-height:${headingLine(b)};font-weight:${headingWeight(b)};${b.letterSpacing ? `letter-spacing:${b.letterSpacing}px;` : ''}color:${escKeep(b.color)};text-align:${b.align};${olStyle(b.outlook, { line: true })}">${content}</h${b.level}>`
     }
     case 'text': {
       const content = ctx.mode === 'hubspot' && !hasHubl(b.html) ? `{{ module.${ctx.field(b, '', '', 'richtext', b.html)} }}` : b.html
-      return `${p}<div${ctx.attrs({ neon: 'text', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size, ...olAttr(b.outlook) })} style="margin:0 0 12px;font-family:${esc(font)};font-size:${b.size}px;line-height:1.6;color:${escKeep(b.color)};text-align:${b.align};${olStyle(b.outlook, { line: true })}">${content}</div>`
+      return `${p}<div${ctx.attrs({ neon: 'text', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size, ...(b.lineHeight != null ? { lh: b.lineHeight } : {}), ...(b.letterSpacing ? { ls: b.letterSpacing } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}font-family:${esc(font)};font-size:${b.size}px;line-height:${textLine(b)};${b.letterSpacing ? `letter-spacing:${b.letterSpacing}px;` : ''}color:${escKeep(b.color)};text-align:${b.align};${olStyle(b.outlook, { line: true })}">${content}</div>`
     }
     case 'button': {
       // javascript:, data: and other schemes never reach the generated code.
@@ -112,22 +114,23 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
         }
       }
       const bw = buttonBorder(b)
-      const pad = b.height ? `padding:0 26px;line-height:${b.height - 2 * bw}px;` : 'padding:12px 26px;'
+      const px = b.padX ?? 26
+      const pad = b.height ? `padding:0 ${px}px;line-height:${b.height - 2 * bw}px;` : `padding:12px ${px}px;`
       const border = bw ? `border:${bw}px solid ${escKeep(buttonBorderColor(b))};` : ''
-      const link = `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display:inline-block;${pad}background:${escKeep(b.bg)};color:${escKeep(b.color)};${border}border-radius:${b.radius}px;font-family:${esc(font)};font-size:${buttonFontSize(b)}px;font-weight:${buttonBold(b) ? 700 : 400};text-decoration:none;">${label}</a>`
+      const link = `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display:${b.fullWidth ? 'block;text-align:center' : 'inline-block'};${pad}background:${escKeep(b.bg)};color:${escKeep(b.color)};${border}border-radius:${b.radius}px;font-family:${esc(font)};font-size:${buttonFontSize(b)}px;font-weight:${buttonBold(b) ? 700 : 400};text-decoration:none;">${label}</a>`
       // With VML on, Outlook for Windows gets a drawn shape (rounded, padded,
       // clickable); every other client keeps the plain link.
       const inner = ctx.vml
-        ? `${indent(msoOnly(vmlShape({ href, label, bg: escKeep(b.bg), color: escKeep(b.color), radius: b.radius, font: esc(font), width: b.vmlWidth ?? buttonWidth(b.label, b), height: buttonHeight(b), fontSize: buttonFontSize(b), bold: buttonBold(b), borderWidth: bw, borderColor: escKeep(buttonBorderColor(b)) })), p + '  ')}
+        ? `${indent(msoOnly(vmlShape({ href, label, bg: escKeep(b.bg), color: escKeep(b.color), radius: b.radius, font: esc(font), width: b.fullWidth ? Math.round(avail) : (b.vmlWidth ?? buttonWidth(b.label, b)), height: buttonHeight(b), fontSize: buttonFontSize(b), bold: buttonBold(b), borderWidth: bw, borderColor: escKeep(buttonBorderColor(b)) })), p + '  ')}
 ${indent(notMso(`  ${link}`), p + '  ')}`
         : b.msoCell
           ? (() => {
               // Outlook without VML: a coloured cell around the link (see msoCell).
-              const [open, close] = msoCell({ bg: escKeep(b.bg), align: b.align, look: b, width: b.vmlWidth, border })
+              const [open, close] = msoCell({ bg: escKeep(b.bg), align: b.align, look: b, width: b.fullWidth ? Math.round(avail) : b.vmlWidth, border })
               return `${p}  ${open}\n${p}  ${link}\n${p}  ${close}`
             })()
           : `${p}  ${link}`
-      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}), ...(b.height ? { height: b.height } : {}), ...(b.fontSize ? { 'font-size': b.fontSize } : {}), ...(b.bold === false ? { bold: 0 } : {}), ...(bw ? { 'border-width': bw, 'border-color': b.borderColor || b.color } : {}), ...(b.msoCell ? { 'mso-cell': 1 } : {}), ...olAttr(b.outlook) })} style="margin:0 0 12px;text-align:${b.align};${olStyle(b.outlook)}">
+      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}), ...(b.height ? { height: b.height } : {}), ...(b.fontSize ? { 'font-size': b.fontSize } : {}), ...(b.bold === false ? { bold: 0 } : {}), ...(bw ? { 'border-width': bw, 'border-color': b.borderColor || b.color } : {}), ...(b.msoCell ? { 'mso-cell': 1 } : {}), ...(b.fullWidth ? { full: 1 } : {}), ...(b.padX != null ? { 'pad-x': b.padX } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}text-align:${b.align};${olStyle(b.outlook)}">
 ${inner}
 ${p}</div>`
     }
@@ -139,14 +142,21 @@ ${p}</div>`
         src = `{{ module.${f}.src }}`
         alt = `{{ module.${f}.alt }}`
       }
-      return `${p}<div${ctx.attrs({ neon: 'image', ...ctx.fieldAttrs(b), align: b.align, width: b.width, ...olAttr(b.outlook) })} style="margin:0 0 12px;text-align:${b.align};${olStyle(b.outlook)}">
-${p}  <img src="${src}" alt="${alt}" width="${b.outlook?.w ?? Math.round((avail * b.width) / 100)}" style="display:inline-block;width:${b.width}%;max-width:100%;height:auto;border:0;">
+      // Optional link (CTA image) and rounded corners.
+      let link = b.href && isSafeUrl(b.href) ? escKeep(b.href) : ''
+      if (link && ctx.mode === 'hubspot' && !hasHubl(b.href!) && ctx.defs.has(b.id)) {
+        const u = ctx.field(b, 'link', 'lien', 'link', { url: { content_id: null, type: 'EXTERNAL', href: b.href }, open_in_new_tab: true, no_follow: false })
+        link = `{{ module.${u}.url.href }}`
+      }
+      const img = `<img src="${src}" alt="${alt}" width="${b.outlook?.w ?? Math.round((avail * b.width) / 100)}" style="display:inline-block;width:${b.width}%;max-width:100%;height:auto;border:0;${b.radius ? `border-radius:${b.radius}px;` : ''}">`
+      return `${p}<div${ctx.attrs({ neon: 'image', ...ctx.fieldAttrs(b), align: b.align, width: b.width, ...(b.href ? { href: b.href } : {}), ...(b.radius ? { radius: b.radius } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}text-align:${b.align};${olStyle(b.outlook)}">
+${p}  ${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">${img}</a>` : img}
 ${p}</div>`
     }
     case 'divider':
-      return `${p}<hr${ctx.attrs({ neon: 'divider', color: b.color, ...olAttr(b.outlook) })} style="border:0;border-top:1px solid ${esc(b.color)};margin:16px 0;${olStyle(b.outlook)}">`
+      return `${p}<hr${ctx.attrs({ neon: 'divider', color: b.color, ...(b.thickness ? { thickness: b.thickness } : {}), ...(b.lineStyle && b.lineStyle !== 'solid' ? { style: b.lineStyle } : {}), ...(b.width && b.width < 100 ? { width: b.width } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}border:0;border-top:${esc(dividerLine(b))};${b.width && b.width < 100 ? `margin:${sp.t}px auto ${sp.b}px;width:${b.width}%;` : marginCss(sp.t, sp.b)}${olStyle(b.outlook)}">`
     case 'spacer':
-      return `${p}<div${ctx.attrs({ neon: 'spacer', height: b.height, ...olAttr(b.outlook) })} style="height:${b.height}px;line-height:${b.height}px;font-size:0;${b.outlook?.h != null ? `mso-line-height-alt:${b.outlook.h}px;mso-line-height-rule:exactly;` : ''}${olStyle(b.outlook)}">&nbsp;</div>`
+      return `${p}<div${ctx.attrs({ neon: 'spacer', height: b.height, ...(b.mobileHeight != null ? { 'mobile-height': b.mobileHeight } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide), b.mobileHeight != null ? `neon-mh-${b.mobileHeight}` : '')} style="${hideStyle(b.hide)}${b.mt != null || b.mb != null ? marginCss(sp.t, sp.b) : ''}height:${b.height}px;line-height:${b.height}px;font-size:0;${b.outlook?.h != null ? `mso-line-height-alt:${b.outlook.h}px;mso-line-height-rule:exactly;` : ''}${olStyle(b.outlook)}">&nbsp;</div>`
     case 'raw':
       return ctx.mode === 'hubspot' ? `${p}${b.html}` : `${p}<div data-neon="raw">${b.html}</div>`
     case 'section':
@@ -156,22 +166,45 @@ ${p}</div>`
 
 function renderSection(s: Section, ctx: Ctx, d: number, font: string, nested: boolean, avail: number): string {
   const p = pad(d)
-  const width = Math.floor(100 / s.columns)
-  const inner = Math.max(40, (avail - s.padding * (s.columns + 1)) / s.columns)
-  const cls = `neon-section${s.behavior === 'stack' ? ' neon-stack' : ''}`
+  const widths = columnWidths(s)
+  const { y: padY, x: padX } = sectionPad(s)
+  const cls = `neon-section${s.behavior === 'stack' ? ' neon-stack' : ''}${s.hide ? ` ${hideClass(s.hide)}` : ''}`
   const cells = s.cells
     .map((cell, i) => {
-      const left = i === 0 ? s.padding : s.padding / 2
-      const right = i === s.cells.length - 1 ? s.padding : s.padding / 2
+      const left = i === 0 ? padX : padX / 2
+      const right = i === s.cells.length - 1 ? padX : padX / 2
+      // Equal columns keep the historical computation (same pixel widths as before).
+      const inner = s.columns === 2 && s.ratio && s.ratio !== 50 ? Math.max(40, (avail * widths[i]) / 100 - left - right) : Math.max(40, (avail - padX * (s.columns + 1)) / s.columns)
       const blocks = cell.map((b) => renderBlock(b, ctx, d + 3, font, inner)).join('\n')
       const op = s.outlook?.pad
       const msoPad = op != null ? `mso-padding-alt:${op}px ${i === s.cells.length - 1 ? op : op / 2}px ${op}px ${i === 0 ? op : op / 2}px;` : ''
-      return `${p}    <td${ctx.attrs({ neon: 'column' })} class="neon-col" width="${width}%" valign="top" style="padding:${s.padding}px ${right}px ${s.padding}px ${left}px;${msoPad}">
+      return `${p}    <td${ctx.attrs({ neon: 'column' })} class="neon-col" width="${widths[i]}%" valign="${s.valign ?? 'top'}" style="padding:${padY}px ${right}px ${padY}px ${left}px;${msoPad}">
 ${blocks}
 ${p}    </td>`
     })
     .join('\n')
-  return `${p}<table${ctx.attrs({ neon: 'section', columns: s.columns, behavior: s.behavior, bg: s.bg, padding: s.padding, radius: s.radius, ...olAttr(s.outlook) })} class="${cls}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${escKeep(s.bg)};border-radius:${s.radius}px;border-collapse:separate;${nested ? 'margin:0 0 12px;' : ''}${olStyle(s.outlook)}">
+  const sp = spacingOf(s, nested)
+  const margin = nested || s.mt != null || s.mb != null ? marginCss(sp.t, sp.b) : ''
+  const border = s.borderWidth ? `border:${s.borderWidth}px solid ${escKeep(s.borderColor ?? '#e3e3ee')};` : ''
+  const img = safeBgImage(s.bgImage)
+  // The colour stays first: Outlook (and anyone blocking images) shows it.
+  const bgImg = img ? `background-image:url('${img}');background-size:cover;background-position:center;` : ''
+  return `${p}<table${ctx.attrs({
+    neon: 'section',
+    columns: s.columns,
+    behavior: s.behavior,
+    bg: s.bg,
+    padding: s.padding,
+    radius: s.radius,
+    ...(s.padY != null ? { 'pad-y': s.padY } : {}),
+    ...(s.padX != null ? { 'pad-x': s.padX } : {}),
+    ...(s.borderWidth ? { 'border-width': s.borderWidth, 'border-color': s.borderColor ?? '#e3e3ee' } : {}),
+    ...(img ? { 'bg-image': img } : {}),
+    ...(s.columns === 2 && s.ratio && s.ratio !== 50 ? { ratio: s.ratio } : {}),
+    ...(s.valign && s.valign !== 'top' ? { valign: s.valign } : {}),
+    ...spacingAttrs(s),
+    ...olAttr(s.outlook),
+  })} class="${cls}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"${img ? ` background="${img}"` : ''} style="${hideStyle(s.hide)}width:100%;background:${escKeep(s.bg)};${bgImg}${border}border-radius:${s.radius}px;border-collapse:separate;${margin}${olStyle(s.outlook)}">
 ${p}  <tr>
 ${cells}
 ${p}  </tr>
@@ -182,7 +215,7 @@ function renderModule(tree: ModuleTree, ctx: Ctx): string {
   const body = tree.sections.map((s) => renderSection(s, ctx, 3, tree.font, false, tree.width)).join('\n')
   // The conditional "ghost" table gives Outlook on Windows (which ignores
   // max-width) a fixed width; other clients skip it as a comment.
-  return `<div${ctx.attrs({ neon: 'module', width: tree.width, bg: tree.bg, font: tree.font, ...(tree.vml ? { vml: 1 } : {}) })} style="background:${esc(tree.bg)};padding:24px 0;">
+  return `<div${ctx.attrs({ neon: 'module', width: tree.width, bg: tree.bg, font: tree.font, ...(tree.vml ? { vml: 1 } : {}), ...(tree.pad != null ? { pad: tree.pad } : {}) })} style="background:${esc(tree.bg)};padding:${tree.pad ?? 24}px 0;">
   <!--[if mso]><table role="presentation" width="${tree.width}" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:${tree.width}px;margin:0 auto;">
     <tr><td>
@@ -198,7 +231,7 @@ export function treeToCode(tree: ModuleTree, name: string): string {
    Édite le contenu et les attributs data-* : l'aperçu se met à jour en direct.
    Tout HTML/HuBL sans data-neon dans une colonne est conservé comme bloc brut. #}
 <style>
-${STACK_CSS}
+${STACK_CSS}${responsiveCss(tree)}
 </style>
 ${renderModule(tree, new Ctx('sync', tree))}
 `
@@ -261,7 +294,7 @@ export function treeToHubSpot(tree: ModuleTree, name: string): HubSpotExport {
   return {
     // The name sits in a HuBL comment: it must not be able to close it.
     'module.html': `{# ${name.replace(/[{}#%]/g, ' ').trim()} — généré par Neon Sandbox Pro #}\n${html}\n`,
-    'module.css': `${STACK_CSS}\n`,
+    'module.css': `${STACK_CSS}${responsiveCss(tree)}\n`,
     'fields.json': JSON.stringify([...fields, ...extra], null, 2) + '\n',
     'meta.json': JSON.stringify(meta, null, 2) + '\n',
   }
@@ -276,6 +309,12 @@ const asAlign = (v: string | null, def: Align): Align => (ALIGNS.includes(v as A
 const asNum = (v: string | null, def: number, min = 0, max = 2000) => {
   const n = Number(v)
   return Number.isFinite(n) && v !== null && v !== '' ? Math.min(max, Math.max(min, n)) : def
+}
+// Optional number attribute: absent stays absent (the default look is kept).
+const optNum = (v: string | null, key: string, min: number, max: number, round = true): Record<string, number> => {
+  if (v === null || v.trim() === '' || !Number.isFinite(Number(v))) return {}
+  const n = Math.min(max, Math.max(min, Number(v)))
+  return { [key]: round ? Math.round(n) : Math.round(n * 100) / 100 }
 }
 const asColor = (v: string | null, def: string) => (v && /^#[0-9a-f]{3,8}$|^[a-z]+$|^rgba?\(/i.test(v.trim()) ? v.trim() : def)
 
@@ -294,7 +333,7 @@ const ownerSection = (el: Element) => el.parentElement?.closest('[data-neon="sec
 function parseBlock(el: Element): Block | null {
   const b = parseBlockInner(el)
   if (!b || b.type === 'raw' || b.type === 'section') return b
-  return { ...b, ...olParse(el.getAttribute('data-ol')) }
+  return { ...b, ...spacingParse((k) => el.getAttribute(`data-${k}`)), ...olParse(el.getAttribute('data-ol')) }
 }
 
 function parseBlockInner(el: Element): Block | null {
@@ -326,6 +365,9 @@ function parseBlockInner(el: Element): Block | null {
         align: asAlign(g('align'), 'left'),
         color: asColor(g('color'), '#0f0f1a'),
         size: asNum(g('size'), 26, 8, 96),
+        ...optNum(g('lh'), 'lineHeight', 0.8, 3, false),
+        ...optNum(g('weight'), 'weight', 100, 900),
+        ...optNum(g('ls'), 'letterSpacing', -5, 20),
       }
     }
     case 'text':
@@ -337,6 +379,8 @@ function parseBlockInner(el: Element): Block | null {
         align: asAlign(g('align'), 'left'),
         color: asColor(g('color'), '#3a3a52'),
         size: asNum(g('size'), 16, 8, 64),
+        ...optNum(g('lh'), 'lineHeight', 0.8, 3, false),
+        ...optNum(g('ls'), 'letterSpacing', -5, 20),
       }
     case 'button': {
       const a = el.querySelector('a')
@@ -355,6 +399,8 @@ function parseBlockInner(el: Element): Block | null {
         ...(g('font-size') ? { fontSize: asNum(g('font-size'), 15, 10, 36) } : {}),
         ...(g('bold') === '0' ? { bold: false } : {}),
         ...(g('mso-cell') === '1' ? { msoCell: true } : {}),
+        ...(g('full') === '1' ? { fullWidth: true } : {}),
+        ...optNum(g('pad-x'), 'padX', 0, 80),
         ...(g('border-width') ? { borderWidth: asNum(g('border-width'), 1, 1, 8), borderColor: asColor(g('border-color'), '#ffffff') } : {}),
       }
     }
@@ -368,12 +414,21 @@ function parseBlockInner(el: Element): Block | null {
         alt: img?.getAttribute('alt') ?? '',
         align: asAlign(g('align'), 'center'),
         width: asNum(g('width'), 100, 5, 100),
+        ...(g('href') && isSafeUrl(g('href')!) ? { href: g('href')! } : {}),
+        ...optNum(g('radius'), 'radius', 0, 200),
       }
     }
     case 'divider':
-      return { id, type: 'divider', color: asColor(g('color'), '#e3e3ee') }
+      return {
+        id,
+        type: 'divider',
+        color: asColor(g('color'), '#e3e3ee'),
+        ...optNum(g('thickness'), 'thickness', 1, 20),
+        ...(g('style') === 'dashed' || g('style') === 'dotted' ? { lineStyle: g('style') as 'dashed' | 'dotted' } : {}),
+        ...optNum(g('width'), 'width', 5, 100),
+      }
     case 'spacer':
-      return { id, type: 'spacer', height: asNum(g('height'), 24, 0, 400) }
+      return { id, type: 'spacer', height: asNum(g('height'), 24, 0, 400), ...optNum(g('mobile-height'), 'mobileHeight', 0, 400) }
     case 'raw':
       return { id, type: 'raw', html: strictHtml(el.innerHTML.trim()) }
     case 'section':
@@ -422,6 +477,13 @@ function parseSection(el: Element): Section {
     bg: asColor(g('bg'), '#ffffff'),
     padding: asNum(g('padding'), 24, 0, 120),
     radius: asNum(g('radius'), 0, 0, 60),
+    ...optNum(g('pad-y'), 'padY', 0, 200),
+    ...optNum(g('pad-x'), 'padX', 0, 200),
+    ...(g('border-width') ? { ...optNum(g('border-width'), 'borderWidth', 1, 20), borderColor: asColor(g('border-color'), '#e3e3ee') } : {}),
+    ...(safeBgImage(g('bg-image') ?? '') ? { bgImage: safeBgImage(g('bg-image')!) } : {}),
+    ...(cells.length === 2 ? optNum(g('ratio'), 'ratio', 20, 80) : {}),
+    ...(g('valign') === 'middle' || g('valign') === 'bottom' ? { valign: g('valign') as 'middle' | 'bottom' } : {}),
+    ...spacingParse(g),
     ...olParse(g('ol')),
     cells,
   }
@@ -464,6 +526,7 @@ export function codeToTree(code: string, fallback: ModuleTree, specs?: FieldSpec
       font: g('font')?.replace(/[;{}<>"]/g, '') || fallback.font,
       sections: sectionEls.map(parseSection),
       ...(g('vml') === '1' ? { vml: true } : {}),
+      ...optNum(g('pad'), 'pad', 0, 120),
     },
   }
 }
@@ -811,7 +874,7 @@ export function standaloneEmail(tree: ModuleTree, name: string): string {
 <title>${esc(name)}</title>
 <style>
 body { margin: 0; }
-${STACK_CSS}
+${STACK_CSS}${responsiveCss(tree)}
 </style>
 </head>
 <body>

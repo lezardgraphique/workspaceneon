@@ -242,8 +242,9 @@ body {
 
 /* In the base layer so Tailwind utilities (hidden, min-h-14…) still win. */
 @layer base {
-  /* An icon alone in a button or link sits in the middle, whatever the button's size. */
-  button > svg:only-child,
+  /* An icon alone in an icon button (named by aria-label) sits in the middle,
+     whatever the button's size. Not for icon + text: :only-child ignores text nodes. */
+  button[aria-label] > svg:only-child,
   a[aria-label] > svg:only-child {
     margin-inline: auto;
   }

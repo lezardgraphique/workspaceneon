@@ -8,6 +8,8 @@ import { isSafeUrl, sanitizeHtml } from '@/lib/sanitize'
 
 import type { MoveTarget } from '@/lib/tree'
 import { BLOCK_LABELS } from '@/lib/types'
+import { columnWidths, dividerLine, headingLine, headingWeight, safeBgImage, sectionPad, spacingOf, textLine } from '@/lib/look'
+import type { Spacing } from '@/lib/types'
 import type { Block, ModuleTree, Section } from '@/lib/types'
 
 // React mirror of the generated email HTML (same metrics as src/lib/hubl.ts),
@@ -105,6 +107,7 @@ function Editable({
 
 function Node({
   id,
+  hidden,
   label,
   editable,
   selectedId,
@@ -114,6 +117,7 @@ function Node({
   onDropImage,
 }: {
   id: string
+  hidden?: boolean
   label: string
   editable?: boolean
   selectedId: string | null
@@ -128,7 +132,7 @@ function Node({
       data-nid={id}
       {...(onDropImage ? dropProps({ block: id }, onDropImage) : {})}
       data-selected={selectedId === id}
-      style={style}
+      style={hidden ? { ...style, opacity: 0.35 } : style}
       onClick={(e: MouseEvent) => {
         e.stopPropagation()
         onSelect(id)
@@ -146,12 +150,18 @@ function Node({
 function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, 'tree'>) {
   const active = p.selectedId === b.id
   const edit = (patch: Partial<Block>) => p.onEdit(b.id, patch)
+  // Margins as in the generated code; an element hidden on the device shown is
+  // kept (to stay selectable) but faded, and its tag says why.
+  const sp = spacingOf(b)
+  const hide = (b as Spacing).hide
+  const hidden = (hide === 'mobile' && p.mobile) || (hide === 'desktop' && !p.mobile)
   const node = (children: ReactNode, style?: CSSProperties) => (
     <Node
       id={b.id}
-      label={b.type !== 'section' && 'field' in b && b.field?.label ? b.field.label : BLOCK_LABELS[b.type]}
+      hidden={hidden}
+      label={`${b.type !== 'section' && 'field' in b && b.field?.label ? b.field.label : BLOCK_LABELS[b.type]}${hide === 'mobile' ? ' · masqué sur mobile' : hide === 'desktop' ? ' · mobile seulement' : ''}`}
       editable={b.type === 'heading' || b.type === 'text' || b.type === 'button'}
-      selectedId={p.selectedId} onSelect={p.onSelect} style={style} onDropImage={p.onDropImage}>
+      selectedId={p.selectedId} onSelect={p.onSelect} style={{ marginTop: sp.t || undefined, marginBottom: sp.b || undefined, ...style }} onDropImage={p.onDropImage}>
       {children}
     </Node>
   )
@@ -159,19 +169,17 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
     case 'heading': {
       const Tag = `h${b.level}` as 'h2'
       return node(
-        <Tag style={{ margin: 0, fontFamily: font, fontSize: b.size, lineHeight: 1.25, fontWeight: 700, color: b.color, textAlign: b.align }}>
+        <Tag style={{ margin: 0, fontFamily: font, fontSize: b.size, lineHeight: headingLine(b), fontWeight: headingWeight(b), letterSpacing: b.letterSpacing || undefined, color: b.color, textAlign: b.align }}>
           {b.text || ' '}
         </Tag>,
-        { marginBottom: 12 },
       )
     }
     case 'text':
       return node(
         <div
-          style={{ fontFamily: font, fontSize: b.size, lineHeight: 1.6, color: b.color, textAlign: b.align }}
+          style={{ fontFamily: font, fontSize: b.size, lineHeight: textLine(b), letterSpacing: b.letterSpacing || undefined, color: b.color, textAlign: b.align }}
           dangerouslySetInnerHTML={{ __html: sanitizeHtml(b.html) || '&nbsp;' }}
         />,
-        { marginBottom: 12 },
       )
     case 'button':
       return node(
@@ -183,8 +191,9 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
             placeholder="Bouton"
             onChange={(label) => edit({ label })}
             style={{
-              display: 'inline-block',
-              padding: b.height ? '0 26px' : '12px 26px',
+              display: b.fullWidth ? 'block' : 'inline-block',
+              textAlign: 'center',
+              padding: b.height ? `0 ${b.padX ?? 26}px` : `12px ${b.padX ?? 26}px`,
               ...(b.height ? { lineHeight: `${b.height - 2 * buttonBorder(b)}px` } : {}),
               background: b.bg,
               color: b.color,
@@ -196,13 +205,12 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
             }}
           />
         </div>,
-        { marginBottom: 12 },
       )
     case 'image':
       return node(
         <div style={{ textAlign: b.align, lineHeight: 0 }}>
           {b.src ? (
-            <img src={isSafeUrl(b.src, true) ? b.src : ''} alt={b.alt} style={{ display: 'inline-block', width: `${b.width}%`, maxWidth: '100%', height: 'auto' }} />
+            <img src={isSafeUrl(b.src, true) ? b.src : ''} alt={b.alt} title={b.href ? `Lien : ${b.href}` : undefined} style={{ display: 'inline-block', width: `${b.width}%`, maxWidth: '100%', height: 'auto', borderRadius: b.radius || undefined, outline: b.href ? '2px dashed rgba(0,229,255,.5)' : undefined, outlineOffset: 2 }} />
           ) : (
             <div
               style={{ width: `${b.width}%`, display: 'inline-flex' }}
@@ -212,12 +220,16 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
             </div>
           )}
         </div>,
-        { marginBottom: 12 },
       )
     case 'divider':
-      return node(<hr style={{ border: 0, borderTop: `1px solid ${b.color}`, margin: 0 }} />, { padding: '16px 0' })
+      // Margins of a divider are padding here, so its whole height stays clickable.
+      return node(<hr style={{ border: 0, borderTop: dividerLine(b), margin: '0 auto', width: b.width && b.width < 100 ? `${b.width}%` : undefined }} />, {
+        marginTop: 0,
+        marginBottom: 0,
+        padding: `${sp.t}px 0 ${sp.b}px`,
+      })
     case 'spacer':
-      return node(<div style={{ height: b.height }} />)
+      return node(<div style={{ height: p.mobile && b.mobileHeight != null ? b.mobileHeight : b.height }} />)
     case 'raw':
       // The tree reaching the preview is already interpreted: show the result.
       return node(
@@ -226,7 +238,6 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
         ) : (
           <div className="h-3" />
         ),
-        { marginBottom: 12 },
       )
     case 'section':
       return <SectionView s={b} font={font} nested {...p} />
@@ -235,28 +246,41 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
 
 function SectionView({ s, font, nested, ...p }: { s: Section; font: string; nested?: boolean } & Omit<Props, 'tree'>) {
   const stacked = p.mobile && s.behavior === 'stack'
+  const { y: padY, x: padX } = sectionPad(s)
+  const widths = columnWidths(s)
+  const sp = spacingOf(s, nested)
+  const img = safeBgImage(s.bgImage)
+  const hidden = (s.hide === 'mobile' && p.mobile) || (s.hide === 'desktop' && !p.mobile)
   return (
     <Node
       id={s.id}
-      label={`${nested ? 'Card' : 'Section'} · ${s.columns} col`}
+      hidden={hidden}
+      label={`${nested ? 'Card' : 'Section'} · ${s.columns} col${s.hide === 'mobile' ? ' · masqué sur mobile' : s.hide === 'desktop' ? ' · mobile seulement' : ''}`}
       selectedId={p.selectedId}
       onSelect={p.onSelect}
-      style={{ background: s.bg, borderRadius: s.radius, marginBottom: nested ? 12 : 0 }}
+      style={{
+        background: s.bg,
+        ...(img ? { backgroundImage: `url('${img}')`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}),
+        ...(s.borderWidth ? { border: `${s.borderWidth}px solid ${s.borderColor ?? '#e3e3ee'}` } : {}),
+        borderRadius: s.radius,
+        marginTop: sp.t || undefined,
+        marginBottom: sp.b || undefined,
+      }}
     >
-      <div style={{ display: 'flex', flexDirection: stacked ? 'column' : 'row' }}>
+      <div style={{ display: 'flex', flexDirection: stacked ? 'column' : 'row', alignItems: stacked ? undefined : s.valign === 'middle' ? 'center' : s.valign === 'bottom' ? 'flex-end' : 'flex-start' }}>
         {s.cells.map((cell, i) => {
           const last = i === s.cells.length - 1
-          const left = stacked || i === 0 ? s.padding : s.padding / 2
-          const right = stacked || last ? s.padding : s.padding / 2
+          const left = stacked || i === 0 ? padX : padX / 2
+          const right = stacked || last ? padX : padX / 2
           return (
             <div
               key={i}
               data-cell={`${s.id}:${i}`}
               {...dropProps({ section: s.id, cell: i }, p.onDropImage)}
               style={{
-                flex: '1 1 0',
+                flex: stacked ? '1 1 auto' : `${widths[i]} 1 0`,
                 minWidth: 0,
-                padding: `${stacked && i > 0 ? 0 : s.padding}px ${right}px ${s.padding}px ${left}px`,
+                padding: `${stacked && i > 0 ? 0 : padY}px ${right}px ${padY}px ${left}px`,
               }}
             >
               {cell.length === 0 && (
@@ -459,8 +483,8 @@ export function Preview({ tree, ...p }: Props) {
   return (
     <div
       ref={root}
-      className="min-h-full py-6"
-      style={{ background: tree.bg, color: '#3a3a52', fontFamily: tree.font }}
+      className="min-h-full"
+      style={{ background: tree.bg, color: '#3a3a52', fontFamily: tree.font, padding: `${tree.pad ?? 24}px 0` }}
       onClick={() => p.onSelect(null)}
     >
       <div style={{ maxWidth: p.mobile ? 375 : tree.width, margin: '0 auto', transition: 'max-width 200ms' }}>

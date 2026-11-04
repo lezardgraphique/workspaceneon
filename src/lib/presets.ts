@@ -113,6 +113,7 @@ export const PRESETS: Preset[] = [
         `lb=${col('couleur_texte')}`,
         'r={{ module.rayon|int }}',
         's={{ module.taille|int }}',
+        'g={{ module.espacement|int }}',
         'urg={{ module.seuil_urgence_heures|int }}',
         `al=${col('couleur_alerte')}`,
         'end={{ module.message_fin|urlencode }}',
