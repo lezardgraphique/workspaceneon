@@ -240,28 +240,42 @@ body {
   .auth-tile, .auth-rise { animation: none; }
 }
 
-/* Touch screens: comfortable targets (≥ 40px) for buttons, selects and text inputs. */
-@media (pointer: coarse) {
-  button:not(.underline):not([role='switch']):not(.tap-auto),
-  select,
-  [role='tab'],
-  input:not([type]),
-  input[type='text'],
-  input[type='url'],
-  input[type='number'],
-  input[type='email'],
-  input[type='search'] {
-    min-height: 2.5rem;
+/* In the base layer so Tailwind utilities (hidden, min-h-14…) still win. */
+@layer base {
+  /* An icon alone in a button or link sits in the middle, whatever the button's size. */
+  button > svg:only-child,
+  a[aria-label] > svg:only-child {
+    margin-inline: auto;
   }
-  a[aria-label],
-  header a[href] {
-    min-height: 2.5rem;
-  }
-  button[aria-label]:not(.underline):not([role='switch']):not(.tap-auto),
+  button[aria-label],
   a[aria-label] {
-    min-width: 2.5rem;
+    justify-content: center;
+    align-items: center;
   }
-  input[type='range'] {
-    min-height: 2.25rem;
+
+  /* Touch screens: comfortable targets (≥ 40px) for buttons, selects and text inputs. */
+  @media (pointer: coarse) {
+    button:not(.underline):not([role='switch']):not(.tap-auto),
+    select,
+    [role='tab'],
+    input:not([type]),
+    input[type='text'],
+    input[type='url'],
+    input[type='number'],
+    input[type='email'],
+    input[type='search'] {
+      min-height: 2.5rem;
+    }
+    a[aria-label],
+    header a[href] {
+      min-height: 2.5rem;
+    }
+    button[aria-label]:not(.underline):not([role='switch']):not(.tap-auto),
+    a[aria-label] {
+      min-width: 2.5rem;
+    }
+    input[type='range'] {
+      min-height: 2.25rem;
+    }
   }
 }

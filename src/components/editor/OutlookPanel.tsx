@@ -1,6 +1,7 @@
 import { Field, RangeField } from './Inspector'
 import { findPath } from '@/lib/tree'
-import type { Block, ModuleTree, OutlookTweaks } from '@/lib/types'
+import type { Block, ButtonBlock, ModuleTree, OutlookTweaks } from '@/lib/types'
+import { buttonWidth } from '@/lib/vml'
 
 type Key = keyof OutlookTweaks
 
@@ -20,6 +21,23 @@ export function olBase(tree: ModuleTree, b: Block, k: Key): number {
     case 'pad':
       return b.type === 'section' ? b.padding : 0
   }
+}
+
+// The same change on every button of the module (nested cards included).
+export function patchAllButtons(tree: ModuleTree, patch: Partial<ButtonBlock>): ModuleTree {
+  const walk = (b: Block): Block =>
+    b.type === 'button' ? ({ ...b, ...patch } as Block) : b.type === 'section' ? { ...b, cells: b.cells.map((c) => c.map(walk)) } : b
+  return { ...tree, sections: tree.sections.map((s) => walk(s) as typeof s) }
+}
+
+export const countButtons = (tree: ModuleTree, pred: (b: ButtonBlock) => boolean = () => true): number => {
+  let n = 0
+  const walk = (b: Block) => {
+    if (b.type === 'button' && pred(b)) n++
+    if (b.type === 'section') b.cells.forEach((c) => c.forEach(walk))
+  }
+  tree.sections.forEach(walk)
+  return n
 }
 
 export const olPatch = (b: Block, k: Key, v: number | undefined): Partial<Block> => {
@@ -45,7 +63,7 @@ function OverrideField({ label, value, base, min, max, onChange }: { label: stri
 
 // Adjustments that only Outlook for Windows reads (written as mso-* properties):
 // the other messageries keep the element as it is.
-export function OutlookPanel({ tree, node, onChange }: { tree: ModuleTree; node: Block; onChange: (patch: Partial<Block>) => void }) {
+export function OutlookPanel({ tree, node, onChange, onTree }: { tree: ModuleTree; node: Block; onChange: (patch: Partial<Block>) => void; onTree: (t: ModuleTree) => void }) {
   if (node.type === 'raw') return <p className="p-3 text-sm text-mute">Le code libre n'a pas de réglage Outlook : modifie son code directement.</p>
   const o: OutlookTweaks = (node as { outlook?: OutlookTweaks }).outlook ?? {}
   const f = (k: Key, label: string, min: number, max: number) => (
@@ -63,14 +81,46 @@ export function OutlookPanel({ tree, node, onChange }: { tree: ModuleTree; node:
       {node.type === 'section' && f('pad', 'Marges intérieures', 0, 80)}
       {node.type !== 'spacer' && f('mt', 'Marge au-dessus', 0, 80)}
       {f('mb', 'Marge en dessous', 0, 80)}
-      {node.type === 'button' && (
-        <Field label="Largeur du bouton">
-          <p className="text-xs text-mute">Réglée dans l'onglet Édition (« Largeur dans Outlook »), ou en tirant le bord droit du bouton avec le VML actif.</p>
-        </Field>
-      )}
+      {node.type === 'button' && <ButtonOutlook tree={tree} b={node} onChange={onChange} onTree={onTree} />}
       {reset && (
         <button onClick={() => onChange({ outlook: undefined } as Partial<Block>)} className="text-xs text-mute underline hover:text-white">
           Tout remettre comme dans les autres messageries
+        </button>
+      )}
+    </div>
+  )
+}
+
+// What Outlook can show of a button without VML: highlighted text (default), or a
+// coloured box with padding and a set width (ghost table cell, square corners).
+function ButtonOutlook({ tree, b, onChange, onTree }: { tree: ModuleTree; b: ButtonBlock; onChange: (patch: Partial<Block>) => void; onTree: (t: ModuleTree) => void }) {
+  const cell = !!b.msoCell
+  const total = countButtons(tree)
+  const others = countButtons(tree, (x) => x.id !== b.id && !!x.msoCell !== cell)
+  const auto = buttonWidth(b.label, b)
+  return (
+    <div className="space-y-3 rounded-lg border border-line p-3">
+      <Field label="Bouton dans Outlook sans VML">
+        <div role="group" aria-label="Bouton dans Outlook sans VML" className="flex rounded-md border border-line p-0.5 text-xs">
+          {([[false, 'Texte surligné'], [true, 'Bloc coloré']] as const).map(([v, l]) => (
+            <button key={l} aria-pressed={cell === v} onClick={() => onChange({ msoCell: v || undefined } as Partial<Block>)} className={`flex-1 rounded px-2 py-1 ${cell === v ? 'bg-violet/20 text-white' : 'text-mute hover:text-white'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <p className="text-xs text-mute">
+        {cell
+          ? 'Outlook affiche un bloc de la couleur du bouton, avec ses marges et la largeur choisie (coins carrés, seul le texte est cliquable).'
+          : 'Outlook ignore les marges d\u2019un lien : sans VML, le bouton n\u2019y est qu\u2019un texte surligné.'}
+        {tree.vml && ' Le VML est actif : c\u2019est son dessin qu\u2019Outlook affiche, ce réglage sert si tu le désactives.'}
+      </p>
+      {(cell || tree.vml) && (
+        <OverrideField label="Largeur dans Outlook" value={b.vmlWidth} base={auto} min={80} max={400} onChange={(v) => onChange({ vmlWidth: v } as Partial<Block>)} />
+      )}
+      {total > 1 && others > 0 && (
+        <button onClick={() => onTree(patchAllButtons(tree, { msoCell: cell || undefined }))} className="text-xs text-cyan underline hover:text-white">
+          Appliquer « {cell ? 'Bloc coloré' : 'Texte surligné'} » aux {total} boutons du module
         </button>
       )}
     </div>

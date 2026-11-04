@@ -52,7 +52,7 @@ function ModulePreview() {
     setTimeout(() => setCopied(false), 1500)
   }
 
-  const toggle = (active: boolean) => `rounded p-1.5 ${active ? 'bg-cyan/15 text-cyan' : 'text-mute hover:text-white'}`
+  const toggle = (active: boolean) => `inline-flex items-center justify-center rounded p-1.5 max-sm:flex-1 ${active ? 'bg-cyan/15 text-cyan' : 'text-mute hover:text-white'}`
 
   return (
     <div className="flex min-h-dvh flex-col bg-void">
@@ -64,7 +64,9 @@ function ModulePreview() {
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan">Aperçu du module</p>
           <h1 className="truncate font-display text-base font-semibold">{mod.name}</h1>
         </div>
-        <div className="flex rounded-md border border-line p-0.5">
+        {/* Phones: the controls take a full row of their own under the title. */}
+        <div className="flex items-center gap-2 max-sm:w-full">
+        <div className="flex rounded-md border border-line p-0.5 max-sm:flex-1">
           <button onClick={() => setMobile(false)} className={toggle(!mobile)} aria-label="Aperçu bureau" title="Bureau">
             <Monitor className="size-4" />
           </button>
@@ -72,7 +74,7 @@ function ModulePreview() {
             <Smartphone className="size-4" />
           </button>
         </div>
-        <div className="flex rounded-md border border-line p-0.5">
+        <div className="flex rounded-md border border-line p-0.5 max-sm:flex-1">
           <button onClick={() => setDark(false)} className={toggle(!dark)} aria-label="Mode clair" title="Mode clair">
             <Sun className="size-4" />
           </button>
@@ -80,20 +82,21 @@ function ModulePreview() {
             <Moon className="size-4" />
           </button>
         </div>
-        <button onClick={copyLink} title="Copier le lien de l'aperçu" className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-sm hover:border-cyan">
+        <button onClick={copyLink} title="Copier le lien de l'aperçu" aria-label="Copier le lien de l'aperçu" className="inline-flex items-center justify-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-sm hover:border-cyan">
           {copied ? <Check className="size-4 text-cyan" /> : <Link2 className="size-4" />}
           <span className="hidden sm:inline">{copied ? 'Copié' : 'Lien'}</span>
         </button>
-        <button onClick={() => setTesting(true)} className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-sm hover:border-cyan">
+        <button onClick={() => setTesting(true)} aria-label="Tester dans les clients de messagerie" className="inline-flex items-center justify-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-sm hover:border-cyan">
           <MailCheck className="size-4" /> <span className="hidden sm:inline">Clients</span>
         </button>
         <Link
           to="/editor/$moduleId"
           params={{ moduleId: mod.id }}
-          className="glow-pink inline-flex items-center gap-1.5 rounded-md bg-pink px-2.5 py-1.5 text-sm font-semibold text-white sm:px-3"
+          aria-label="Modifier le module" className="glow-pink inline-flex items-center justify-center gap-1.5 rounded-md bg-pink px-2.5 py-1.5 text-sm font-semibold text-white sm:px-3"
         >
           <Pencil className="size-4" /> <span className="hidden sm:inline">Modifier</span>
         </Link>
+        </div>
       </header>
 
       <main className="neon-grid flex-1 p-3 sm:p-8">

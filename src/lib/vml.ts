@@ -79,6 +79,19 @@ export function vmlShape(p: VmlButtonParams): string {
 </v:${shape}>`
 }
 
+// Outlook without VML ignores a link's padding and display, so the button shrinks
+// to highlighted text. A table cell read only by Outlook (conditional comments)
+// gives it back its coloured box and padding; corners stay square and only the
+// text is clickable. Other clients never see the table.
+export function msoCell(p: { bg: string; align: 'left' | 'center' | 'right'; look: ButtonLook; width?: number; border?: string }): [string, string] {
+  const bw = buttonBorder(p.look)
+  const v = p.look.height ? Math.max(0, Math.round((p.look.height - 2 * bw - Math.round(buttonFontSize(p.look) * 1.2)) / 2)) : 12
+  const h = p.width ? 0 : SIDE_PADDING
+  const align = p.align === 'left' ? '' : ` align="${p.align}"`
+  const open = `<!--[if mso]><table role="presentation" cellpadding="0" cellspacing="0" border="0"${align}><tr><td bgcolor="${p.bg}" align="center"${p.width ? ` width="${p.width}"` : ''} style="background:${p.bg};padding:${v}px ${h}px;${p.border ?? ''}"><![endif]-->`
+  return [open, '<!--[if mso]></td></tr></table><![endif]-->']
+}
+
 // The Outlook-only branch; the regular link goes in the `[if !mso]` branch.
 export const msoOnly = (inner: string) => `<!--[if mso]>\n${inner}\n<![endif]-->`
 export const notMso = (inner: string) => `<!--[if !mso]><!-->\n${inner}\n<!--<![endif]-->`

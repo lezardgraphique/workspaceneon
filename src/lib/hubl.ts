@@ -7,7 +7,7 @@ import { bindFieldsFromCode } from './module-fields'
 import { isSafeUrl, sanitizeHtml as strictHtml } from './sanitize'
 import type { FieldBinding, FieldSpec } from './module-fields'
 import { olAttr, olParse, olStyle } from './outlook'
-import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight, buttonWidth, msoOnly, notMso, vmlShape } from './vml'
+import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight, buttonWidth, msoCell, msoOnly, notMso, vmlShape } from './vml'
 import { uid } from './types'
 import type { Align, Behavior, Block, Columns, ExtraField, ModuleTree, Section } from './types'
 
@@ -120,8 +120,14 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
       const inner = ctx.vml
         ? `${indent(msoOnly(vmlShape({ href, label, bg: escKeep(b.bg), color: escKeep(b.color), radius: b.radius, font: esc(font), width: b.vmlWidth ?? buttonWidth(b.label, b), height: buttonHeight(b), fontSize: buttonFontSize(b), bold: buttonBold(b), borderWidth: bw, borderColor: escKeep(buttonBorderColor(b)) })), p + '  ')}
 ${indent(notMso(`  ${link}`), p + '  ')}`
-        : `${p}  ${link}`
-      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}), ...(b.height ? { height: b.height } : {}), ...(b.fontSize ? { 'font-size': b.fontSize } : {}), ...(b.bold === false ? { bold: 0 } : {}), ...(bw ? { 'border-width': bw, 'border-color': b.borderColor || b.color } : {}), ...olAttr(b.outlook) })} style="margin:0 0 12px;text-align:${b.align};${olStyle(b.outlook)}">
+        : b.msoCell
+          ? (() => {
+              // Outlook without VML: a coloured cell around the link (see msoCell).
+              const [open, close] = msoCell({ bg: escKeep(b.bg), align: b.align, look: b, width: b.vmlWidth, border })
+              return `${p}  ${open}\n${p}  ${link}\n${p}  ${close}`
+            })()
+          : `${p}  ${link}`
+      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}), ...(b.height ? { height: b.height } : {}), ...(b.fontSize ? { 'font-size': b.fontSize } : {}), ...(b.bold === false ? { bold: 0 } : {}), ...(bw ? { 'border-width': bw, 'border-color': b.borderColor || b.color } : {}), ...(b.msoCell ? { 'mso-cell': 1 } : {}), ...olAttr(b.outlook) })} style="margin:0 0 12px;text-align:${b.align};${olStyle(b.outlook)}">
 ${inner}
 ${p}</div>`
     }
@@ -348,6 +354,7 @@ function parseBlockInner(el: Element): Block | null {
         ...(g('height') ? { height: asNum(g('height'), 42, 24, 100) } : {}),
         ...(g('font-size') ? { fontSize: asNum(g('font-size'), 15, 10, 36) } : {}),
         ...(g('bold') === '0' ? { bold: false } : {}),
+        ...(g('mso-cell') === '1' ? { msoCell: true } : {}),
         ...(g('border-width') ? { borderWidth: asNum(g('border-width'), 1, 1, 8), borderColor: asColor(g('border-color'), '#ffffff') } : {}),
       }
     }

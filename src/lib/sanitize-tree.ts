@@ -102,6 +102,7 @@ function blockInner(raw: unknown, depth: number, count: { n: number }): Block | 
         ...(typeof raw.height === 'number' && raw.height > 0 ? { height: num(raw.height, 42, 24, 100) } : {}),
         ...(typeof raw.fontSize === 'number' && raw.fontSize > 0 ? { fontSize: num(raw.fontSize, 15, 10, 36) } : {}),
         ...(raw.bold === false ? { bold: false } : {}),
+        ...(raw.msoCell === true ? { msoCell: true } : {}),
         ...(typeof raw.borderWidth === 'number' && raw.borderWidth > 0 ? { borderWidth: num(raw.borderWidth, 1, 1, 8), borderColor: safeColor(raw.borderColor, '#ffffff') } : {}),
       }
     }

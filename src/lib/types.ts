@@ -68,6 +68,8 @@ export interface ButtonBlock {
   bold?: boolean
   borderWidth?: number
   borderColor?: string
+  /** Outlook without VML: a coloured box (ghost table cell) instead of highlighted text. */
+  msoCell?: boolean
 }
 
 export interface ImageBlock {

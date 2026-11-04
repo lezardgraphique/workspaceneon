@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Copy, GripHorizontal, Minus, Plus, Shapes, X } from 'lucide-react'
+import { Check, Copy, Minus, Plus, Shapes, X } from 'lucide-react'
 
 import { EmailFrame } from '@/components/EmailFrame'
 import { CLIENTS, renderForClient } from '@/lib/clients'
@@ -8,7 +8,7 @@ import { standaloneEmail } from '@/lib/hubl'
 import { BLOCK_LABELS } from '@/lib/types'
 
 import { highlight } from '@/components/editor/CodeEditor'
-import { OutlookPanel, olBase, olPatch } from './OutlookPanel'
+import { OutlookPanel, countButtons, olBase, olPatch, patchAllButtons } from './OutlookPanel'
 import { AlignField, ButtonLookFields, ColorField, Field, Inspector, RangeField, input, mono } from '@/components/editor/Inspector'
 import { BLOCK_ICONS } from '@/components/editor/Structure'
 import { esc, escKeep } from '@/lib/hubl'
@@ -184,12 +184,14 @@ function OutlookPreview({
   selectedId,
   onSelect,
   onTweak,
+  onTree,
 }: {
   tree: ModuleTree
   name: string
   selectedId: string | null
   onSelect: (id: string | null) => void
   onTweak: (id: string, patch: Partial<Block>) => void
+  onTree: (t: ModuleTree) => void
 }) {
   // "normal" reproduces the editor's preview (modern mail client); the two
   // others show what Outlook for Windows draws without / with the VML.
@@ -225,7 +227,8 @@ function OutlookPreview({
     doc.querySelectorAll('.nsp-h').forEach((h) => h.remove())
     const node = findNode(treeRef.current, id)
     if (!node || node.type === 'raw' || modeRef.current === 'normal') return
-    const vmlBtn = node.type === 'button' ? (el.querySelector('a[data-vml]') as HTMLElement | null) : null
+    // A button's box in Outlook: the VML shape, or the coloured cell without VML.
+    const vmlBtn = node.type === 'button' ? ((el.querySelector('a[data-vml]') ?? el.querySelector('td[bgcolor]')) as HTMLElement | null) : null
     const target = (node.type === 'image' ? el.querySelector('img') : vmlBtn) as HTMLElement | null
     const make = (cls: string, title: string, rect: { left: number; top: number }, run: (d: number) => { live: () => void; commit: () => void } | null, axis: 'x' | 'y', start: () => number) => {
       const h = doc.createElement('div')
@@ -358,11 +361,38 @@ function OutlookPreview({
           ))}
         </div>
       </div>
+      {mode === 'sans' && countButtons(tree, (b) => !b.msoCell) > 0 && (
+        <div className="mx-3 mb-2 flex shrink-0 flex-wrap items-center gap-2 rounded-md border border-cyan/30 bg-cyan/5 px-3 py-1.5 text-xs">
+          <span className="min-w-0 flex-1 text-mute">
+            Sans VML, Outlook réduit {countButtons(tree, (b) => !b.msoCell) > 1 ? 'les boutons' : 'le bouton'} à du texte surligné.
+          </span>
+          <button onClick={() => onTree(patchAllButtons(tree, { msoCell: true }))} className="rounded-md bg-cyan/15 px-2.5 py-1 font-semibold text-cyan hover:bg-cyan/25">
+            Passer en blocs colorés
+          </button>
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto bg-white/[0.03] p-2">
         <EmailFrame html={html} width={tree.width + 40} title="Aperçu du module" pickable onDocument={onDocument} />
       </div>
     </div>
   )
+}
+
+// The panel is docked in the editor's layout (it never covers the work): under
+// it on desktop, tablets and phones held upright, beside it on phones held
+// sideways. Its share of the space is kept in this browser.
+const SIZE_KEY = 'nsp-vml-size'
+const clampSize = (v: number) => Math.min(0.85, Math.max(0.2, v))
+function useMedia(query: string) {
+  const [match, setMatch] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const update = () => setMatch(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [query])
+  return match
 }
 
 export function VmlWindow({
@@ -385,11 +415,37 @@ export function VmlWindow({
   const { groups, rounded } = useMemo(() => collectVml(tree), [tree])
   const all = useMemo(() => groups.flatMap((g) => g.items), [groups])
   const [copied, setCopied] = useState<string | null>(null)
-  const [min, setMin] = useState(false)
+  const [minState, setMin] = useState(false)
   const [tab, setTab] = useState<'structure' | 'apercu' | 'edition'>('apercu')
   const [edit, setEdit] = useState<'edit' | 'outlook' | 'code'>('edit')
-  const [pos, setPos] = useState({ x: 0, y: 0 })
-  const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null)
+  const row = useMedia('(max-height: 500px)')
+  const desk = useMedia('(min-width: 1024px)')
+  const [size, setSize] = useState<number | null>(null)
+  useEffect(() => {
+    try {
+      const v = Number(localStorage.getItem(SIZE_KEY))
+      if (v) setSize(clampSize(v))
+    } catch {
+      /* storage blocked: default size */
+    }
+  }, [])
+  useEffect(() => {
+    if (size == null) return
+    try {
+      localStorage.setItem(SIZE_KEY, String(size))
+    } catch {
+      /* storage blocked */
+    }
+  }, [size])
+  const frac = size ?? (row ? 0.55 : desk ? 0.45 : 0.6)
+  // Sideways on a phone the panel can't shrink to its title bar: always open.
+  const min = minState && !row
+  const asideRef = useRef<HTMLElement>(null)
+  const resizeTo = (x: number, y: number) => {
+    const box = asideRef.current?.parentElement?.getBoundingClientRect()
+    if (!box) return
+    setSize(clampSize(row ? (box.right - x) / box.width : (box.bottom - y) / box.height))
+  }
 
   const current = all.find((i) => i.id === selectedId)
   const node = selectedId ? findNode(tree, selectedId) : null
@@ -417,35 +473,52 @@ export function VmlWindow({
 
   return (
     <aside
-      role="dialog"
-      aria-label="Fenêtre VML pour Outlook"
+      ref={asideRef}
+      aria-label="Volet VML pour Outlook"
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
-      style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
-      className={`fixed inset-x-0 bottom-0 z-40 flex flex-col rounded-t-xl border border-line bg-night/97 shadow-2xl backdrop-blur-md lg:inset-x-auto lg:right-4 lg:bottom-4 lg:w-[min(66rem,calc(100vw-2rem))] lg:rounded-xl ${min ? '' : 'h-[80dvh] lg:h-[min(46rem,90vh)] [@media(max-height:500px)]:h-dvh [@media(max-height:500px)]:rounded-none'}`}
+      style={min ? undefined : { flexBasis: `${frac * 100}%` }}
+      className={`relative flex min-h-0 min-w-0 shrink-0 grow-0 flex-col bg-night ${row ? 'border-l' : 'border-t'} border-line`}
     >
-      <header
-        className="flex shrink-0 cursor-grab touch-none items-center gap-2 border-b border-line px-3 py-2 select-none active:cursor-grabbing"
-        onPointerDown={(e) => {
-          if ((e.target as HTMLElement).closest('button')) return
-          drag.current = { x: e.clientX, y: e.clientY, px: pos.x, py: pos.y }
-          e.currentTarget.setPointerCapture(e.pointerId)
-        }}
-        onPointerMove={(e) => {
-          const d = drag.current
-          if (d) setPos({ x: d.px + e.clientX - d.x, y: d.py + e.clientY - d.y })
-        }}
-        onPointerUp={() => (drag.current = null)}
-      >
+      {!min && (
+        <div
+          role="separator"
+          aria-orientation={row ? 'vertical' : 'horizontal'}
+          aria-label="Redimensionner le volet VML"
+          aria-valuemin={20}
+          aria-valuemax={85}
+          aria-valuenow={Math.round(frac * 100)}
+          tabIndex={0}
+          title="Glisser pour redimensionner"
+          onPointerDown={(e) => {
+            e.preventDefault()
+            e.currentTarget.setPointerCapture(e.pointerId)
+          }}
+          onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && resizeTo(e.clientX, e.clientY)}
+          onKeyDown={(e) => {
+            const step = ({ ArrowUp: 0.05, ArrowDown: -0.05, ArrowLeft: 0.05, ArrowRight: -0.05 } as Record<string, number>)[e.key]
+            if (step) {
+              e.preventDefault()
+              setSize(clampSize(frac + step))
+            }
+          }}
+          className={`group absolute z-20 flex touch-none items-center justify-center outline-none ${row ? 'inset-y-0 -left-2 w-4 cursor-col-resize' : 'inset-x-0 -top-2 h-4 cursor-row-resize'}`}
+        >
+          <span className={`rounded-full bg-mute/50 transition group-hover:bg-violet group-focus-visible:bg-violet group-active:bg-violet ${row ? 'h-12 w-1' : 'h-1 w-12'}`} />
+        </div>
+      )}
+      <header className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-1.5">
         <Shapes className="size-4 text-violet" />
         <h2 className="min-w-0 truncate font-display text-sm font-semibold">VML · Outlook<span className="max-sm:hidden"> · module entier</span></h2>
         <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-cyan/40 px-2 py-0.5 text-[10px] text-cyan" title="Se met à jour à chaque modification">
           <span className="size-1.5 animate-pulse rounded-full bg-cyan motion-reduce:animate-none" /> En direct
         </span>
-        <GripHorizontal className="ml-auto hidden size-4 text-mute lg:block" aria-hidden />
-        <button onClick={() => setMin((m) => !m)} aria-label={min ? 'Agrandir la fenêtre VML' : 'Réduire la fenêtre VML'} className="rounded p-1 text-mute hover:bg-white/5 hover:text-white">
-          {min ? <Plus className="size-4" /> : <Minus className="size-4" />}
-        </button>
-        <button onClick={onClose} aria-label="Fermer la fenêtre VML" className="rounded p-1 text-mute hover:bg-white/5 hover:text-white">
+        <span className="flex-1" />
+        {!row && (
+          <button onClick={() => setMin((m) => !m)} aria-label={min ? 'Agrandir le volet VML' : 'Réduire le volet VML'} className="rounded p-1 text-mute hover:bg-white/5 hover:text-white">
+            {min ? <Plus className="size-4" /> : <Minus className="size-4" />}
+          </button>
+        )}
+        <button onClick={onClose} aria-label="Fermer le volet VML" className="rounded p-1 text-mute hover:bg-white/5 hover:text-white">
           <X className="size-4" />
         </button>
       </header>
@@ -483,7 +556,7 @@ export function VmlWindow({
             </section>
 
             <section aria-label="Aperçu Outlook" className={panel('apercu', 'min-w-0 flex-1 lg:border-r lg:border-line')}>
-              <OutlookPreview tree={tree} name={name} selectedId={selectedId} onSelect={select} onTweak={(id, patch) => commit(updateNode(tree, id, patch), id)} />
+              <OutlookPreview tree={tree} name={name} selectedId={selectedId} onSelect={select} onTweak={(id, patch) => commit(updateNode(tree, id, patch), id)} onTree={(t) => commit(t, selectedId)} />
             </section>
 
             <section aria-label="Édition" className={panel('edition', 'flex-1 lg:w-[22rem] lg:flex-none lg:shrink-0')}>
@@ -498,7 +571,7 @@ export function VmlWindow({
               )}
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {node && node.type !== 'raw' && edit === 'outlook' ? (
-                  <OutlookPanel tree={tree} node={node} onChange={(patch) => commit(updateNode(tree, node.id, patch), node.id)} />
+                  <OutlookPanel tree={tree} node={node} onChange={(patch) => commit(updateNode(tree, node.id, patch), node.id)} onTree={(t) => commit(t, node.id)} />
                 ) : current && edit === 'code' ? (
                   <div className="p-3">
                     <div className="mb-2 flex justify-end">
@@ -577,7 +650,16 @@ function ButtonEditor({ item, font, vml, onChange }: { item: Item; font: string;
         <div className={`${row} ${!vml ? 'border-cyan/60' : 'border-line'}`}>
           {tag(!vml, 'Outlook sans VML')}
           <div className="min-w-0 flex-1 overflow-hidden">
-            <span style={{ ...base, background: bg, whiteSpace: 'nowrap' }}>{b.label || ' '}</span>
+            {b.msoCell ? (
+              // Coloured cell: padding and width kept, corners square.
+              <span
+                style={{ ...base, display: 'inline-block', boxSizing: 'border-box', padding: b.vmlWidth ? `${Math.max(0, (bh - 2 * bw - Math.round(buttonFontSize(b) * 1.2)) / 2)}px 0` : `${Math.max(0, (bh - 2 * bw - Math.round(buttonFontSize(b) * 1.2)) / 2)}px 26px`, width: b.vmlWidth, textAlign: 'center', background: bg, border: borderCss, whiteSpace: 'nowrap' }}
+              >
+                {b.label || ' '}
+              </span>
+            ) : (
+              <span style={{ ...base, background: bg, whiteSpace: 'nowrap' }}>{b.label || ' '}</span>
+            )}
           </div>
         </div>
         <div className={`${row} ${vml ? 'border-cyan/60' : 'border-line'}`}>

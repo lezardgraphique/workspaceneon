@@ -425,8 +425,8 @@ function Editor({ initial }: { initial: ModuleRecord }) {
         </select>
         <button
           onClick={() => setVmlOpen((v) => !v)}
-          title="Fenêtre VML pour Outlook, structure en direct"
-          aria-label="Fenêtre VML pour Outlook"
+          title="Volet VML pour Outlook, structure en direct"
+          aria-label="Volet VML pour Outlook"
           aria-pressed={vmlOpen}
           className={`order-2 inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-sm hover:text-white max-sm:flex-1 sm:order-none sm:ml-1 sm:px-2.5 ${vmlOpen ? 'border-violet text-white' : 'border-line text-mute hover:border-violet'}`}
         >
@@ -478,6 +478,9 @@ function Editor({ initial }: { initial: ModuleRecord }) {
         </button>
       </header>
 
+      {/* Work area + docked VML panel: under the work, or beside it on a phone held sideways. */}
+      <div className="flex min-h-0 flex-1 flex-col [@media(max-height:500px)]:flex-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
         {/* Left column: structure / Maily */}
         <aside className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-72 lg:shrink-0 lg:border-r xl:w-80">
@@ -610,6 +613,25 @@ function Editor({ initial }: { initial: ModuleRecord }) {
         </div>
       )}
 
+      </div>
+
+      {vmlOpen && (
+        <VmlWindow
+          tree={tree}
+          name={name.trim() || 'Sans titre'}
+          selectedId={selectedId}
+          onSelect={select}
+          onToggle={() => {
+            const { vml: _v, ...rest } = tree
+            void _v
+            commit(tree.vml ? rest : { ...rest, vml: true })
+          }}
+          onClose={() => setVmlOpen(false)}
+          commit={commit}
+        />
+      )}
+      </div>
+
       {/* Mobile pane switcher */}
       <nav
         aria-label="Panneaux de l'éditeur"
@@ -643,21 +665,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
         ))}
       </nav>
 
-      {vmlOpen && (
-        <VmlWindow
-          tree={tree}
-          name={name.trim() || 'Sans titre'}
-          selectedId={selectedId}
-          onSelect={select}
-          onToggle={() => {
-            const { vml: _v, ...rest } = tree
-            void _v
-            commit(tree.vml ? rest : { ...rest, vml: true })
-          }}
-          onClose={() => setVmlOpen(false)}
-          commit={commit}
-        />
-      )}
+
       {testing && (
         <ClientsDialog
           tree={tree}
