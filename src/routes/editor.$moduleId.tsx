@@ -15,6 +15,7 @@ import {
   ListChecks,
   Loader2,
   MailCheck,
+  Shapes,
   Monitor,
   Pencil,
   Redo2,
@@ -32,6 +33,7 @@ import { NeonLogo } from '@/components/Maily'
 import { CodeEditor } from '@/components/editor/CodeEditor'
 import { ValidatorPanel } from '@/components/editor/ValidatorPanel'
 import { ClientsDialog } from '@/components/editor/ClientsDialog'
+import { VmlWindow } from '@/components/editor/VmlWindow'
 import { ExportDialog } from '@/components/editor/ExportDialog'
 import { FieldsPanel } from '@/components/editor/FieldsPanel'
 import { Inspector } from '@/components/editor/Inspector'
@@ -115,6 +117,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
   const [pane, setPane] = useState<Pane>(openMaily ? 'maily' : 'preview')
   const [exporting, setExporting] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [vmlOpen, setVmlOpen] = useState(false)
   const [save, setSave] = useState<SaveState>('saved')
   const [conflictCopy, setConflictCopy] = useState<string | null>(null)
   const [past, setPast] = useState<ModuleTree[]>([])
@@ -392,7 +395,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
             <Redo2 className="size-4" />
           </button>
         </div>
-        <div className="flex shrink-0 rounded-md border border-line p-0.5">
+        <div className="hidden shrink-0 rounded-md border border-line p-0.5 sm:flex">
           {[
             { m: false, icon: Monitor, label: 'Bureau' },
             { m: true, icon: Smartphone, label: 'Mobile' },
@@ -419,6 +422,16 @@ function Editor({ initial }: { initial: ModuleRecord }) {
           <option value="unknown">Contact inconnu</option>
         </select>
         <button
+          onClick={() => setVmlOpen((v) => !v)}
+          title="Fenêtre VML pour Outlook, structure en direct"
+          aria-label="Fenêtre VML pour Outlook"
+          aria-pressed={vmlOpen}
+          className={`ml-1 inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1.5 text-sm hover:text-white sm:px-2.5 ${vmlOpen ? 'border-violet text-white' : 'border-line text-mute hover:border-violet'}`}
+        >
+          <Shapes className="size-4" /> <span className="hidden xl:inline">VML</span>
+          {tree.vml && <span className="size-1.5 rounded-full bg-cyan" aria-label="VML actif" />}
+        </button>
+        <button
           onClick={() => setTesting(true)}
           title="Tester dans les clients de messagerie"
           aria-label="Tester dans les clients de messagerie"
@@ -440,7 +453,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
           rel="noreferrer"
           aria-label="Fichiers"
           title="Fichiers (nouvel onglet)"
-          className="inline-flex shrink-0 items-center rounded-md border border-line px-2 py-1.5 text-mute hover:border-cyan hover:text-cyan"
+          className="hidden shrink-0 items-center rounded-md border border-line px-2 py-1.5 text-mute hover:border-cyan hover:text-cyan sm:inline-flex"
         >
           <FolderOpen className="size-4" />
         </a>
@@ -450,7 +463,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
           rel="noreferrer"
           aria-label="Laisser un commentaire sur Ko-fi"
           title="Laisser un commentaire (Ko-fi)"
-          className="inline-flex shrink-0 items-center rounded-md border border-line px-2 py-1.5 text-mute hover:border-pink hover:text-pink"
+          className="hidden shrink-0 items-center rounded-md border border-line px-2 py-1.5 text-mute hover:border-pink hover:text-pink sm:inline-flex"
         >
           <Heart className="size-4" />
         </a>
@@ -628,6 +641,22 @@ function Editor({ initial }: { initial: ModuleRecord }) {
         ))}
       </nav>
 
+      {vmlOpen && (
+        <VmlWindow
+          tree={tree}
+          selectedId={selectedId}
+          onSelect={(id) => {
+            select(id)
+            setPane('preview')
+          }}
+          onToggle={() => {
+            const { vml: _v, ...rest } = tree
+            void _v
+            commit(tree.vml ? rest : { ...rest, vml: true })
+          }}
+          onClose={() => setVmlOpen(false)}
+        />
+      )}
       {testing && (
         <ClientsDialog
           tree={tree}

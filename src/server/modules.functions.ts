@@ -26,6 +26,9 @@ const treeSchema = z
     bg: z.string(),
     font: z.string(),
     sections: z.array(z.any()).max(200),
+    // Optional parts of the tree: without them zod would drop them before sanitizeTree sees them.
+    fields: z.array(z.any()).max(100).optional(),
+    vml: z.boolean().optional(),
   })
   .refine((t) => JSON.stringify(t).length < 500_000, 'Module trop volumineux')
   .transform((t) => sanitizeTree(t))

@@ -115,9 +115,28 @@ const editStyle = (el: Element, fn: (style: string) => string) => {
 const dropProps = (style: string, props: string[]) =>
   style.replace(new RegExp(`(^|;)\\s*(${props.join('|')})\\s*:[^;]*`, 'gi'), '$1')
 
+// Browsers can't draw VML: shapes are shown as the boxes Word would draw
+// (rounded, filled, sized as declared), tagged so the Word limits skip them.
+function simulateVml(html: string): string {
+  return html.replace(/<v:(roundrect|rect)\b([^>]*)>([\s\S]*?)<\/v:\1>/gi, (_m, _shape, attrs: string, inner: string) => {
+    const num = (re: RegExp, d: number) => Number(re.exec(attrs)?.[1] ?? d)
+    const w = num(/width:\s*(\d+)px/i, 200)
+    const h = num(/height:\s*(\d+)px/i, 42)
+    const arc = num(/arcsize="(\d+(?:\.\d+)?)%"/i, 0)
+    const fill = /fillcolor="([^"]*)"/i.exec(attrs)?.[1] ?? '#cccccc'
+    const href = /\shref="([^"]*)"/i.exec(attrs)?.[1] ?? '#'
+    const radius = Math.round((arc / 100) * Math.min(w, h))
+    return `<a data-vml="1" href="${href}" style="display:inline-block;width:${w}px;height:${h}px;line-height:${h}px;background:${fill};border-radius:${radius}px;text-align:center;text-decoration:none;">${inner.replace(/<w:anchorlock\s*\/?>/gi, '')}</a>`
+  })
+}
+
 export function renderForClient(html: string, client: EmailClient, opts: RenderOptions): string {
   // Only the Word engine reads Outlook conditional comments.
-  if (client.engine === 'word') html = html.replace(/<!--\[if mso\]>([\s\S]*?)<!\[endif\]-->/g, '$1')
+  if (client.engine === 'word') {
+    // Word keeps `[if mso]` and skips `[if !mso]`; its VML shapes are drawn by Word itself.
+    html = html.replace(/<!--\[if !mso\]><!-->[\s\S]*?<!--<!\[endif\]-->/g, '')
+    html = simulateVml(html.replace(/<!--\[if mso\]>([\s\S]*?)<!\[endif\]-->/g, '$1'))
+  }
   const doc = new DOMParser().parseFromString(html, 'text/html')
 
   if (client.engine === 'no-style') doc.querySelectorAll('style').forEach((s) => s.remove())
@@ -125,9 +144,9 @@ export function renderForClient(html: string, client: EmailClient, opts: RenderO
     doc.querySelectorAll('style').forEach((s) => {
       if (/@media/.test(s.textContent ?? '')) s.remove()
     })
-    doc.querySelectorAll('[style]').forEach((el) => editStyle(el, (s) => dropProps(s, ['border-radius', 'max-width'])))
+    doc.querySelectorAll('[style]:not([data-vml])').forEach((el) => editStyle(el, (s) => dropProps(s, ['border-radius', 'max-width'])))
     // Links are inline in Word: no padding, the background only covers the text.
-    doc.querySelectorAll('a[style]').forEach((el) => editStyle(el, (s) => dropProps(s, ['padding', 'display'])))
+    doc.querySelectorAll('a[style]:not([data-vml])').forEach((el) => editStyle(el, (s) => dropProps(s, ['padding', 'display'])))
     // Images take their width attribute (pixels), never the CSS percentage.
     doc.querySelectorAll('img').forEach((img) => {
       editStyle(img, (s) => dropProps(s, ['width', 'height']))
@@ -210,9 +229,13 @@ export function auditModule(tree: ModuleTree, name: string): { issues: Issue[]; 
           const c = contrast(b.color, b.bg)
           if (c != null && c < 3)
             add({ key: `cbtn-${b.id}`, level: 'warn', title: 'Bouton peu lisible', detail: `Contraste texte / fond de ${c.toFixed(1)}:1 (3:1 minimum).`, clients: ALL, blockId: b.id })
+          if (tree.vml) {
+            add({ key: 'vml-on', level: 'info', title: 'Boutons dessinés en VML', detail: 'Outlook sur Windows affiche des boutons arrondis et cliquables sur toute leur surface ; la largeur est estimée d\'après le texte (fenêtre VML).', clients: ['outlook-win'], blockId: b.id })
+            break
+          }
           if (b.radius > 0)
-            add({ key: 'radius-btn', level: 'info', title: 'Boutons aux coins carrés', detail: 'Outlook sur Windows ignore border-radius : les boutons y apparaissent rectangulaires.', clients: ['outlook-win'], blockId: b.id })
-          add({ key: 'btn-padding', level: 'info', title: 'Zone cliquable réduite', detail: 'Outlook sur Windows ignore la marge intérieure des liens : la couleur et le clic se limitent au texte du bouton.', clients: ['outlook-win'], blockId: b.id })
+            add({ key: 'radius-btn', level: 'info', title: 'Boutons aux coins carrés', detail: 'Outlook sur Windows ignore border-radius : les boutons y apparaissent rectangulaires. Active le VML (bouton « VML » de l\'éditeur) pour les arrondir.', clients: ['outlook-win'], blockId: b.id })
+          add({ key: 'btn-padding', level: 'info', title: 'Zone cliquable réduite', detail: 'Outlook sur Windows ignore la marge intérieure des liens : la couleur et le clic se limitent au texte du bouton. Le VML (bouton « VML » de l\'éditeur) les dessine en forme pleine.', clients: ['outlook-win'], blockId: b.id })
           break
         }
         case 'heading':

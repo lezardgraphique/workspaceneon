@@ -132,6 +132,8 @@ export interface ModuleTree {
   font: string
   sections: Section[]
   fields?: ExtraField[]
+  /** Draws the buttons as VML shapes for Outlook on Windows (see lib/vml.ts). */
+  vml?: boolean
 }
 
 export interface ModuleRecord {

@@ -208,6 +208,7 @@ export function sanitizeTree(raw: unknown): ModuleTree {
     sections: (Array.isArray(t.sections) ? t.sections.slice(0, 100) : [])
       .map((s) => section(s, 0, count))
       .filter((s): s is Section => !!s),
+    ...(t.vml === true ? { vml: true } : {}),
     ...(() => {
       const seen = new Set<string>()
       const fields = (Array.isArray(t.fields) ? t.fields : [])

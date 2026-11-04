@@ -6,6 +6,7 @@ import { analyzeFieldRefs, exposedNames, hubspotField } from './extra-fields'
 import { bindFieldsFromCode } from './module-fields'
 import { isSafeUrl, sanitizeHtml as strictHtml } from './sanitize'
 import type { FieldBinding, FieldSpec } from './module-fields'
+import { BUTTON_HEIGHT, buttonWidth, msoOnly, notMso, vmlShape } from './vml'
 import { uid } from './types'
 import type { Align, Behavior, Block, Columns, ExtraField, ModuleTree, Section } from './types'
 
@@ -44,7 +45,9 @@ interface Field {
 class Ctx {
   fields: Field[] = []
   defs: Map<string, ModuleField>
+  vml: boolean
   constructor(public mode: Mode, tree: ModuleTree) {
+    this.vml = !!tree.vml
     this.defs = new Map(mode === 'hubspot' ? collectFields(tree).map((f) => [f.block.id, f]) : [])
   }
   // Registers a fields.json entry for the block and returns its HuBL name.
@@ -73,6 +76,7 @@ class Ctx {
 }
 
 const pad = (depth: number) => '  '.repeat(depth)
+const indent = (text: string, by: string) => text.split('\n').map((l) => by + l).join('\n')
 
 // `avail` is the content width (px) available to the node, used for the pixel
 // width attribute of images (Outlook on Windows ignores percentage widths).
@@ -106,8 +110,15 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
           href = `{{ module.${u}.url.href }}`
         }
       }
+      const link = `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 26px;background:${escKeep(b.bg)};color:${escKeep(b.color)};border-radius:${b.radius}px;font-family:${esc(font)};font-size:15px;font-weight:700;text-decoration:none;">${label}</a>`
+      // With VML on, Outlook for Windows gets a drawn shape (rounded, padded,
+      // clickable); every other client keeps the plain link.
+      const inner = ctx.vml
+        ? `${indent(msoOnly(vmlShape({ href, label, bg: escKeep(b.bg), color: escKeep(b.color), radius: b.radius, font: esc(font), width: buttonWidth(b.label), height: BUTTON_HEIGHT })), p + '  ')}
+${indent(notMso(`  ${link}`), p + '  ')}`
+        : `${p}  ${link}`
       return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius })} style="margin:0 0 12px;text-align:${b.align};">
-${p}  <a href="${href}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 26px;background:${escKeep(b.bg)};color:${escKeep(b.color)};border-radius:${b.radius}px;font-family:${esc(font)};font-size:15px;font-weight:700;text-decoration:none;">${label}</a>
+${inner}
 ${p}</div>`
     }
     case 'image': {
@@ -159,7 +170,7 @@ function renderModule(tree: ModuleTree, ctx: Ctx): string {
   const body = tree.sections.map((s) => renderSection(s, ctx, 3, tree.font, false, tree.width)).join('\n')
   // The conditional "ghost" table gives Outlook on Windows (which ignores
   // max-width) a fixed width; other clients skip it as a comment.
-  return `<div${ctx.attrs({ neon: 'module', width: tree.width, bg: tree.bg, font: tree.font })} style="background:${esc(tree.bg)};padding:24px 0;">
+  return `<div${ctx.attrs({ neon: 'module', width: tree.width, bg: tree.bg, font: tree.font, ...(tree.vml ? { vml: 1 } : {}) })} style="background:${esc(tree.bg)};padding:24px 0;">
   <!--[if mso]><table role="presentation" width="${tree.width}" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:${tree.width}px;margin:0 auto;">
     <tr><td>
@@ -427,6 +438,7 @@ export function codeToTree(code: string, fallback: ModuleTree, specs?: FieldSpec
       bg: asColor(g('bg'), fallback.bg),
       font: g('font')?.replace(/[;{}<>"]/g, '') || fallback.font,
       sections: sectionEls.map(parseSection),
+      ...(g('vml') === '1' ? { vml: true } : {}),
     },
   }
 }
