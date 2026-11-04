@@ -146,6 +146,21 @@ export function renderForClient(html: string, client: EmailClient, opts: RenderO
     doc.querySelectorAll('style').forEach((s) => {
       if (/@media/.test(s.textContent ?? '')) s.remove()
     })
+    // Word-only adjustments (mso-*-alt) override the regular values.
+    doc.querySelectorAll('[style*="mso-"]').forEach((el) =>
+      editStyle(el, (s) => {
+        let extra = ''
+        const take = (alt: string, prop: string) => {
+          const m = new RegExp(`(?:^|;)\\s*${alt}\\s*:\\s*([^;]+)`, 'i').exec(s)
+          if (m) extra += `${prop}:${m[1].trim()};`
+        }
+        take('mso-margin-top-alt', 'margin-top')
+        take('mso-margin-bottom-alt', 'margin-bottom')
+        take('mso-padding-alt', 'padding')
+        take('mso-line-height-alt', 'line-height')
+        return s + ';' + extra
+      }),
+    )
     doc.querySelectorAll('[style]:not([data-vml])').forEach((el) => editStyle(el, (s) => dropProps(s, ['border-radius', 'max-width'])))
     // Links are inline in Word: no padding, the background only covers the text.
     doc.querySelectorAll('a[style]:not([data-vml])').forEach((el) => editStyle(el, (s) => dropProps(s, ['padding', 'display'])))

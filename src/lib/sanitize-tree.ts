@@ -1,3 +1,4 @@
+import { olClean } from './outlook'
 import { isSafeUrl, sanitizeHtml, stripTags } from './sanitize'
 import { uid } from './types'
 import type { Align, Block, Columns, ExtraField, ExtraFieldType, Json, ModuleTree, Section } from './types'
@@ -52,6 +53,13 @@ function field(v: unknown) {
 const id = (v: unknown) => (typeof v === 'string' && /^[\w~-]{1,40}$/.test(v) ? v : uid())
 
 function block(raw: unknown, depth: number, count: { n: number }): Block | null {
+  const b = blockInner(raw, depth, count)
+  if (!b || b.type === 'raw' || b.type === 'section' || !isObj(raw)) return b
+  const outlook = olClean(raw.outlook)
+  return outlook ? { ...b, outlook } : b
+}
+
+function blockInner(raw: unknown, depth: number, count: { n: number }): Block | null {
   if (!isObj(raw) || count.n++ > MAX_BLOCKS) return null
   const base = { id: id(raw.id) }
   const f = field(raw.field)
@@ -136,6 +144,7 @@ export function section(raw: unknown, depth = 0, count: { n: number } = { n: 0 }
     bg: safeColor(raw.bg, '#ffffff'),
     padding: num(raw.padding, 24, 0, 120),
     radius: num(raw.radius, 0, 0, 60),
+    ...(olClean(raw.outlook) ? { outlook: olClean(raw.outlook) } : {}),
     cells,
   }
 }

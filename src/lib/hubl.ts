@@ -6,6 +6,7 @@ import { analyzeFieldRefs, exposedNames, hubspotField } from './extra-fields'
 import { bindFieldsFromCode } from './module-fields'
 import { isSafeUrl, sanitizeHtml as strictHtml } from './sanitize'
 import type { FieldBinding, FieldSpec } from './module-fields'
+import { olAttr, olParse, olStyle } from './outlook'
 import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight, buttonWidth, msoOnly, notMso, vmlShape } from './vml'
 import { uid } from './types'
 import type { Align, Behavior, Block, Columns, ExtraField, ModuleTree, Section } from './types'
@@ -86,11 +87,11 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
     case 'heading': {
       // Content that holds a variable stays in place: it is not a field of its own.
       const content = ctx.mode === 'hubspot' && !hasHubl(b.text) ? `{{ module.${ctx.field(b, '', '', 'text', b.text)} }}` : escKeep(b.text)
-      return `${p}<h${b.level}${ctx.attrs({ neon: 'heading', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size })} style="margin:0 0 12px;font-family:${esc(font)};font-size:${b.size}px;line-height:1.25;font-weight:700;color:${escKeep(b.color)};text-align:${b.align};">${content}</h${b.level}>`
+      return `${p}<h${b.level}${ctx.attrs({ neon: 'heading', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size, ...olAttr(b.outlook) })} style="margin:0 0 12px;font-family:${esc(font)};font-size:${b.size}px;line-height:1.25;font-weight:700;color:${escKeep(b.color)};text-align:${b.align};${olStyle(b.outlook, { line: true })}">${content}</h${b.level}>`
     }
     case 'text': {
       const content = ctx.mode === 'hubspot' && !hasHubl(b.html) ? `{{ module.${ctx.field(b, '', '', 'richtext', b.html)} }}` : b.html
-      return `${p}<div${ctx.attrs({ neon: 'text', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size })} style="margin:0 0 12px;font-family:${esc(font)};font-size:${b.size}px;line-height:1.6;color:${escKeep(b.color)};text-align:${b.align};">${content}</div>`
+      return `${p}<div${ctx.attrs({ neon: 'text', ...ctx.fieldAttrs(b), align: b.align, color: b.color, size: b.size, ...olAttr(b.outlook) })} style="margin:0 0 12px;font-family:${esc(font)};font-size:${b.size}px;line-height:1.6;color:${escKeep(b.color)};text-align:${b.align};${olStyle(b.outlook, { line: true })}">${content}</div>`
     }
     case 'button': {
       // javascript:, data: and other schemes never reach the generated code.
@@ -120,7 +121,7 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
         ? `${indent(msoOnly(vmlShape({ href, label, bg: escKeep(b.bg), color: escKeep(b.color), radius: b.radius, font: esc(font), width: b.vmlWidth ?? buttonWidth(b.label, b), height: buttonHeight(b), fontSize: buttonFontSize(b), bold: buttonBold(b), borderWidth: bw, borderColor: escKeep(buttonBorderColor(b)) })), p + '  ')}
 ${indent(notMso(`  ${link}`), p + '  ')}`
         : `${p}  ${link}`
-      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}), ...(b.height ? { height: b.height } : {}), ...(b.fontSize ? { 'font-size': b.fontSize } : {}), ...(b.bold === false ? { bold: 0 } : {}), ...(bw ? { 'border-width': bw, 'border-color': b.borderColor || b.color } : {}) })} style="margin:0 0 12px;text-align:${b.align};">
+      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}), ...(b.height ? { height: b.height } : {}), ...(b.fontSize ? { 'font-size': b.fontSize } : {}), ...(b.bold === false ? { bold: 0 } : {}), ...(bw ? { 'border-width': bw, 'border-color': b.borderColor || b.color } : {}), ...olAttr(b.outlook) })} style="margin:0 0 12px;text-align:${b.align};${olStyle(b.outlook)}">
 ${inner}
 ${p}</div>`
     }
@@ -132,14 +133,14 @@ ${p}</div>`
         src = `{{ module.${f}.src }}`
         alt = `{{ module.${f}.alt }}`
       }
-      return `${p}<div${ctx.attrs({ neon: 'image', ...ctx.fieldAttrs(b), align: b.align, width: b.width })} style="margin:0 0 12px;text-align:${b.align};">
-${p}  <img src="${src}" alt="${alt}" width="${Math.round((avail * b.width) / 100)}" style="display:inline-block;width:${b.width}%;max-width:100%;height:auto;border:0;">
+      return `${p}<div${ctx.attrs({ neon: 'image', ...ctx.fieldAttrs(b), align: b.align, width: b.width, ...olAttr(b.outlook) })} style="margin:0 0 12px;text-align:${b.align};${olStyle(b.outlook)}">
+${p}  <img src="${src}" alt="${alt}" width="${b.outlook?.w ?? Math.round((avail * b.width) / 100)}" style="display:inline-block;width:${b.width}%;max-width:100%;height:auto;border:0;">
 ${p}</div>`
     }
     case 'divider':
-      return `${p}<hr${ctx.attrs({ neon: 'divider', color: b.color })} style="border:0;border-top:1px solid ${esc(b.color)};margin:16px 0;">`
+      return `${p}<hr${ctx.attrs({ neon: 'divider', color: b.color, ...olAttr(b.outlook) })} style="border:0;border-top:1px solid ${esc(b.color)};margin:16px 0;${olStyle(b.outlook)}">`
     case 'spacer':
-      return `${p}<div${ctx.attrs({ neon: 'spacer', height: b.height })} style="height:${b.height}px;line-height:${b.height}px;font-size:0;">&nbsp;</div>`
+      return `${p}<div${ctx.attrs({ neon: 'spacer', height: b.height, ...olAttr(b.outlook) })} style="height:${b.height}px;line-height:${b.height}px;font-size:0;${b.outlook?.h != null ? `mso-line-height-alt:${b.outlook.h}px;mso-line-height-rule:exactly;` : ''}${olStyle(b.outlook)}">&nbsp;</div>`
     case 'raw':
       return ctx.mode === 'hubspot' ? `${p}${b.html}` : `${p}<div data-neon="raw">${b.html}</div>`
     case 'section':
@@ -157,12 +158,14 @@ function renderSection(s: Section, ctx: Ctx, d: number, font: string, nested: bo
       const left = i === 0 ? s.padding : s.padding / 2
       const right = i === s.cells.length - 1 ? s.padding : s.padding / 2
       const blocks = cell.map((b) => renderBlock(b, ctx, d + 3, font, inner)).join('\n')
-      return `${p}    <td${ctx.attrs({ neon: 'column' })} class="neon-col" width="${width}%" valign="top" style="padding:${s.padding}px ${right}px ${s.padding}px ${left}px;">
+      const op = s.outlook?.pad
+      const msoPad = op != null ? `mso-padding-alt:${op}px ${i === s.cells.length - 1 ? op : op / 2}px ${op}px ${i === 0 ? op : op / 2}px;` : ''
+      return `${p}    <td${ctx.attrs({ neon: 'column' })} class="neon-col" width="${width}%" valign="top" style="padding:${s.padding}px ${right}px ${s.padding}px ${left}px;${msoPad}">
 ${blocks}
 ${p}    </td>`
     })
     .join('\n')
-  return `${p}<table${ctx.attrs({ neon: 'section', columns: s.columns, behavior: s.behavior, bg: s.bg, padding: s.padding, radius: s.radius })} class="${cls}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${escKeep(s.bg)};border-radius:${s.radius}px;border-collapse:separate;${nested ? 'margin:0 0 12px;' : ''}">
+  return `${p}<table${ctx.attrs({ neon: 'section', columns: s.columns, behavior: s.behavior, bg: s.bg, padding: s.padding, radius: s.radius, ...olAttr(s.outlook) })} class="${cls}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:${escKeep(s.bg)};border-radius:${s.radius}px;border-collapse:separate;${nested ? 'margin:0 0 12px;' : ''}${olStyle(s.outlook)}">
 ${p}  <tr>
 ${cells}
 ${p}  </tr>
@@ -283,6 +286,12 @@ function sanitize(root: ParentNode) {
 const ownerSection = (el: Element) => el.parentElement?.closest('[data-neon="section"]') ?? null
 
 function parseBlock(el: Element): Block | null {
+  const b = parseBlockInner(el)
+  if (!b || b.type === 'raw' || b.type === 'section') return b
+  return { ...b, ...olParse(el.getAttribute('data-ol')) }
+}
+
+function parseBlockInner(el: Element): Block | null {
   const kind = el.getAttribute('data-neon')
   const g = (k: string) => el.getAttribute(`data-${k}`)
   const id = uid()
@@ -406,6 +415,7 @@ function parseSection(el: Element): Section {
     bg: asColor(g('bg'), '#ffffff'),
     padding: asNum(g('padding'), 24, 0, 120),
     radius: asNum(g('radius'), 0, 0, 60),
+    ...olParse(g('ol')),
     cells,
   }
 }

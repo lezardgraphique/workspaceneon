@@ -8,11 +8,12 @@ import { standaloneEmail } from '@/lib/hubl'
 import { BLOCK_LABELS } from '@/lib/types'
 
 import { highlight } from '@/components/editor/CodeEditor'
+import { OutlookPanel, olBase, olPatch } from './OutlookPanel'
 import { AlignField, ButtonLookFields, ColorField, Field, Inspector, RangeField, input, mono } from '@/components/editor/Inspector'
 import { BLOCK_ICONS } from '@/components/editor/Structure'
 import { esc, escKeep } from '@/lib/hubl'
 import { isSafeUrl } from '@/lib/sanitize'
-import { updateNode } from '@/lib/tree'
+import { findNode, updateNode } from '@/lib/tree'
 import type { Block, ButtonBlock, ModuleTree, Section } from '@/lib/types'
 import { arcSize, buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight, buttonWidth, msoOnly, vmlShape } from '@/lib/vml'
 
@@ -182,11 +183,13 @@ function OutlookPreview({
   name,
   selectedId,
   onSelect,
+  onTweak,
 }: {
   tree: ModuleTree
   name: string
   selectedId: string | null
   onSelect: (id: string | null) => void
+  onTweak: (id: string, patch: Partial<Block>) => void
 }) {
   // "normal" reproduces the editor's preview (modern mail client); the two
   // others show what Outlook for Windows draws without / with the VML.
@@ -206,24 +209,130 @@ function OutlookPreview({
   const pick = useRef(onSelect)
   pick.current = onSelect
 
-  const mark = useCallback((doc: Document | null) => {
-    if (!doc) return
-    doc.querySelectorAll('[data-nsp-sel]').forEach((e) => e.removeAttribute('data-nsp-sel'))
-    const els = doc.querySelectorAll(NODE)
-    if (els.length !== idsRef.current.length || !selRef.current) return
-    // Loop clones carry "id~k": the base id is what the editor knows.
-    const i = idsRef.current.findIndex((id) => id.split('~')[0] === selRef.current)
-    if (i >= 0) els[i].setAttribute('data-nsp-sel', '1')
+  const dragEnd = useRef(0)
+  const treeRef = useRef(tree)
+  treeRef.current = tree
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  const tweak = useRef(onTweak)
+  tweak.current = onTweak
+
+  // Pink handles on the selected element, in the Outlook views: drag the bottom /
+  // top edge for the margins (height of a spacer, padding of a section), the right
+  // edge for the width of an image or of a button drawn in VML. The element follows
+  // the pointer; the change is committed on release.
+  const handles = useCallback((doc: Document, el: Element, id: string) => {
+    doc.querySelectorAll('.nsp-h').forEach((h) => h.remove())
+    const node = findNode(treeRef.current, id)
+    if (!node || node.type === 'raw' || modeRef.current === 'normal') return
+    const vmlBtn = node.type === 'button' ? (el.querySelector('a[data-vml]') as HTMLElement | null) : null
+    const target = (node.type === 'image' ? el.querySelector('img') : vmlBtn) as HTMLElement | null
+    const make = (cls: string, title: string, rect: { left: number; top: number }, run: (d: number) => { live: () => void; commit: () => void } | null, axis: 'x' | 'y', start: () => number) => {
+      const h = doc.createElement('div')
+      h.className = `nsp-h nsp-${cls}`
+      h.title = title
+      h.style.cssText = `position:absolute;left:${rect.left}px;top:${rect.top}px;z-index:9;touch-action:none;`
+      let from = 0
+      let base = 0
+      let scale = 1
+      let act: ReturnType<NonNullable<typeof run>> | null = null
+      // Screen coordinates (not the iframe's own) so the drag keeps going when the
+      // pointer leaves the frame; divided by the frame's scale to get frame pixels.
+      const move = (e: PointerEvent) => {
+        const d = Math.round(((axis === 'x' ? e.screenX : e.screenY) - from) / scale)
+        act = run(base + d)
+        act?.live()
+      }
+      const end = () => {
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', end)
+        doc.removeEventListener('pointermove', move)
+        doc.removeEventListener('pointerup', end)
+        dragEnd.current = Date.now()
+        act?.commit()
+      }
+      h.addEventListener('pointerdown', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        const fe = doc.defaultView?.frameElement as HTMLElement | null
+        scale = fe && fe.offsetWidth ? fe.getBoundingClientRect().width / fe.offsetWidth : 1
+        from = axis === 'x' ? e.screenX : e.screenY
+        base = start()
+        act = null
+        window.addEventListener('pointermove', move)
+        window.addEventListener('pointerup', end)
+        doc.addEventListener('pointermove', move)
+        doc.addEventListener('pointerup', end)
+      })
+      h.addEventListener('click', (e) => e.stopPropagation())
+      doc.body.appendChild(h)
+    }
+    const r = (target ?? el).getBoundingClientRect()
+    const er = el.getBoundingClientRect()
+    const sy = doc.defaultView?.scrollY ?? 0
+    const sx = doc.defaultView?.scrollX ?? 0
+    const key = (k: 'mt' | 'mb' | 'pad' | 'h' | 'w') => (node.outlook?.[k] as number | undefined) ?? olBase(treeRef.current, node, k)
+    const apply = (k: 'mt' | 'mb' | 'pad' | 'h' | 'w', v: number) => tweak.current(id, olPatch(node, k, Math.max(0, v)))
+    const html = el as HTMLElement
+    // bottom edge
+    const bk = node.type === 'spacer' ? 'h' : node.type === 'section' ? 'pad' : 'mb'
+    make('b', bk === 'h' ? 'Hauteur (Outlook)' : bk === 'pad' ? 'Marges intérieures (Outlook)' : 'Marge en dessous (Outlook)', { left: er.left + sx + er.width / 2 - 20, top: er.bottom + sy - 5 }, (v) => ({
+      live: () => {
+        if (bk === 'h') html.style.height = `${Math.max(0, v)}px`
+        else if (bk === 'mb') html.style.marginBottom = `${Math.max(0, v)}px`
+        else html.querySelectorAll('td').forEach((td) => ((td as HTMLElement).style.paddingBottom = `${Math.max(0, v)}px`))
+      },
+      commit: () => apply(bk, v),
+    }), 'y', () => key(bk))
+    if (node.type !== 'spacer' && node.type !== 'section') {
+      make('t', 'Marge au-dessus (Outlook)', { left: er.left + sx + er.width / 2 - 20, top: er.top + sy - 5 }, (v) => ({
+        live: () => (html.style.marginTop = `${Math.max(0, v)}px`),
+        commit: () => apply('mt', v),
+      }), 'y', () => key('mt'))
+    }
+    if (node.type === 'image' && target) {
+      make('r', 'Largeur (Outlook)', { left: r.right + sx - 5, top: r.top + sy + r.height / 2 - 20 }, (v) => ({
+        live: () => (target.style.width = `${Math.max(20, v)}px`),
+        commit: () => apply('w', Math.max(20, v)),
+      }), 'x', () => Math.round(r.width))
+    }
+    if (node.type === 'button' && vmlBtn) {
+      make('r', 'Largeur dans Outlook', { left: r.right + sx - 5, top: r.top + sy + r.height / 2 - 20 }, (v) => ({
+        live: () => (vmlBtn.style.width = `${Math.max(80, v)}px`),
+        commit: () => tweak.current(id, { vmlWidth: Math.min(600, Math.max(80, v)) } as Partial<Block>),
+      }), 'x', () => Math.round(r.width))
+    }
   }, [])
+
+  const mark = useCallback(
+    (doc: Document | null) => {
+      if (!doc) return
+      doc.querySelectorAll('[data-nsp-sel]').forEach((e) => e.removeAttribute('data-nsp-sel'))
+      doc.querySelectorAll('.nsp-h').forEach((h) => h.remove())
+      const els = doc.querySelectorAll(NODE)
+      if (els.length !== idsRef.current.length || !selRef.current) return
+      // Loop clones carry "id~k": the base id is what the editor knows.
+      const i = idsRef.current.findIndex((id) => id.split('~')[0] === selRef.current)
+      if (i >= 0) {
+        els[i].setAttribute('data-nsp-sel', '1')
+        handles(doc, els[i], selRef.current)
+      }
+    },
+    [handles],
+  )
 
   const onDocument = useCallback(
     (doc: Document) => {
       docRef.current = doc
       const st = doc.createElement('style')
-      st.textContent = '[data-neon]{cursor:pointer}[data-nsp-sel]{outline:2px solid #ff007f !important;outline-offset:2px}'
+      st.textContent =
+        '[data-neon]{cursor:pointer}[data-nsp-sel]{outline:2px solid #ff007f !important;outline-offset:2px}' +
+        '.nsp-h{background:#ff007f;border:2px solid #fff;border-radius:6px;box-shadow:0 1px 4px #0006}.nsp-b,.nsp-t{width:40px;height:10px;cursor:ns-resize}.nsp-r{width:10px;height:40px;cursor:ew-resize}'
       doc.head.appendChild(st)
       doc.addEventListener('click', (e) => {
         e.preventDefault()
+        // The click that ends a drag is not a selection.
+        if (Date.now() - dragEnd.current < 500) return
         const els = Array.from(doc.querySelectorAll(NODE))
         if (els.length !== idsRef.current.length) return
         const hit = (e.target as Element).closest(NODE)
@@ -235,6 +344,7 @@ function OutlookPreview({
     [mark],
   )
   useEffect(() => mark(docRef.current), [selectedId, mark])
+  useEffect(() => mark(docRef.current), [mode, mark])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -277,11 +387,15 @@ export function VmlWindow({
   const [copied, setCopied] = useState<string | null>(null)
   const [min, setMin] = useState(false)
   const [tab, setTab] = useState<'structure' | 'apercu' | 'edition'>('apercu')
-  const [edit, setEdit] = useState<'edit' | 'code'>('edit')
+  const [edit, setEdit] = useState<'edit' | 'outlook' | 'code'>('edit')
   const [pos, setPos] = useState({ x: 0, y: 0 })
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null)
 
   const current = all.find((i) => i.id === selectedId)
+  const node = selectedId ? findNode(tree, selectedId) : null
+  useEffect(() => {
+    if (edit === 'code' && !current) setEdit('edit')
+  }, [edit, current])
   const on = !!tree.vml
 
   const copy = async (key: string, text: string) => {
@@ -369,13 +483,13 @@ export function VmlWindow({
             </section>
 
             <section aria-label="Aperçu Outlook" className={panel('apercu', 'min-w-0 flex-1 lg:border-r lg:border-line')}>
-              <OutlookPreview tree={tree} name={name} selectedId={selectedId} onSelect={select} />
+              <OutlookPreview tree={tree} name={name} selectedId={selectedId} onSelect={select} onTweak={(id, patch) => commit(updateNode(tree, id, patch), id)} />
             </section>
 
             <section aria-label="Édition" className={panel('edition', 'flex-1 lg:w-[22rem] lg:flex-none lg:shrink-0')}>
-              {current && (
-                <div role="tablist" aria-label="Affichage du bouton" className="m-3 mb-0 flex shrink-0 rounded-md border border-line p-0.5 text-xs">
-                  {([['edit', 'Édition'], ['code', 'Code VML']] as const).map(([k, l]) => (
+              {node && node.type !== 'raw' && (
+                <div role="tablist" aria-label="Réglages de l'élément" className="m-3 mb-0 flex shrink-0 rounded-md border border-line p-0.5 text-xs">
+                  {([['edit', 'Édition'], ['outlook', 'Outlook'], ...(current ? [['code', 'Code VML']] : [])] as [typeof edit, string][]).map(([k, l]) => (
                     <button key={k} role="tab" aria-selected={edit === k} onClick={() => setEdit(k)} className={`flex-1 rounded px-2.5 py-1 ${edit === k ? 'bg-violet/20 text-white' : 'text-mute hover:text-white'}`}>
                       {l}
                     </button>
@@ -383,7 +497,9 @@ export function VmlWindow({
                 </div>
               )}
               <div className="min-h-0 flex-1 overflow-y-auto">
-                {current && edit === 'code' ? (
+                {node && node.type !== 'raw' && edit === 'outlook' ? (
+                  <OutlookPanel tree={tree} node={node} onChange={(patch) => commit(updateNode(tree, node.id, patch), node.id)} />
+                ) : current && edit === 'code' ? (
                   <div className="p-3">
                     <div className="mb-2 flex justify-end">
                       <button

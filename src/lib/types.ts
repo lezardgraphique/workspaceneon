@@ -15,8 +15,20 @@ export interface FieldDef {
   linkName?: string
 }
 
+// Adjustments read only by Outlook for Windows (see outlook.ts): margin top /
+// bottom, exact line height, spacer height, image width, section padding (px).
+export interface OutlookTweaks {
+  mt?: number
+  mb?: number
+  lh?: number
+  h?: number
+  w?: number
+  pad?: number
+}
+
 export interface HeadingBlock {
   id: string
+  outlook?: OutlookTweaks
   type: 'heading'
   field?: FieldDef
   text: string
@@ -28,6 +40,7 @@ export interface HeadingBlock {
 
 export interface TextBlock {
   id: string
+  outlook?: OutlookTweaks
   type: 'text'
   field?: FieldDef
   html: string
@@ -38,6 +51,7 @@ export interface TextBlock {
 
 export interface ButtonBlock {
   id: string
+  outlook?: OutlookTweaks
   type: 'button'
   field?: FieldDef
   label: string
@@ -58,6 +72,7 @@ export interface ButtonBlock {
 
 export interface ImageBlock {
   id: string
+  outlook?: OutlookTweaks
   type: 'image'
   field?: FieldDef
   src: string
@@ -68,12 +83,14 @@ export interface ImageBlock {
 
 export interface DividerBlock {
   id: string
+  outlook?: OutlookTweaks
   type: 'divider'
   color: string
 }
 
 export interface SpacerBlock {
   id: string
+  outlook?: OutlookTweaks
   type: 'spacer'
   height: number
 }
@@ -92,6 +109,7 @@ export type Behavior = 'side' | 'stack'
 
 export interface Section {
   id: string
+  outlook?: OutlookTweaks
   type: 'section'
   columns: Columns
   behavior: Behavior
