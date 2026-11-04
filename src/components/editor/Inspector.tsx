@@ -106,7 +106,7 @@ function Segmented<T extends string | number>({
   )
 }
 
-const AlignField = ({ value, onChange }: { value: Align; onChange: (v: Align) => void }) => (
+export const AlignField = ({ value, onChange }: { value: Align; onChange: (v: Align) => void }) => (
   <Segmented
     label="Alignement"
     value={value}

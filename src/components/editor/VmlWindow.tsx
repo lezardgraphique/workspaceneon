@@ -1,8 +1,15 @@
-import { useMemo, useRef, useState } from 'react'
-import { Check, CheckCircle2, Circle, Copy, GripHorizontal, Minus, Plus, Shapes, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Check, Copy, GripHorizontal, Minus, Plus, Shapes, X } from 'lucide-react'
+
+import { EmailFrame } from '@/components/EmailFrame'
+import { CLIENTS, renderForClient } from '@/lib/clients'
+import { interpretTree, previewScope } from '@/lib/hubl-render'
+import { standaloneEmail } from '@/lib/hubl'
+import { BLOCK_LABELS } from '@/lib/types'
 
 import { highlight } from '@/components/editor/CodeEditor'
-import { ColorField, Field, RangeField, input, mono } from '@/components/editor/Inspector'
+import { AlignField, ColorField, Field, Inspector, RangeField, input, mono } from '@/components/editor/Inspector'
+import { BLOCK_ICONS } from '@/components/editor/Structure'
 import { esc, escKeep } from '@/lib/hubl'
 import { isSafeUrl } from '@/lib/sanitize'
 import { updateNode } from '@/lib/tree'
@@ -81,8 +88,170 @@ export function collectVml(tree: ModuleTree): { groups: Group[]; rounded: number
   return { groups, rounded }
 }
 
+// Order of the editable nodes in the rendered email: sections, then the blocks
+// of each cell, nested cards included (columns and the module are not nodes).
+function orderedIds(sections: Section[]): string[] {
+  const out: string[] = []
+  const block = (b: Block) => {
+    out.push(b.id)
+    if (b.type === 'section') b.cells.forEach((c) => c.forEach(block))
+  }
+  sections.forEach(block)
+  return out
+}
+
+const NODE = '[data-neon]:not([data-neon="column"]):not([data-neon="module"])'
+
+const summary = (b: Block): string => {
+  switch (b.type) {
+    case 'heading':
+      return b.text
+    case 'text':
+      return b.html.replace(/<[^>]+>/g, ' ').trim()
+    case 'button':
+      return b.label
+    case 'image':
+      return b.alt || 'image'
+    case 'spacer':
+      return `${b.height}px`
+    case 'raw':
+      return b.html.replace(/<[^>]+>/g, ' ').trim().slice(0, 40) || 'code'
+    default:
+      return ''
+  }
+}
+
+function Outline({ tree, selectedId, onSelect }: { tree: ModuleTree; selectedId: string | null; onSelect: (id: string | null) => void }) {
+  const rows: { b: Block; depth: number; title: string }[] = []
+  const walk = (b: Block, depth: number, title: string) => {
+    rows.push({ b, depth, title })
+    if (b.type === 'section') {
+      b.cells.forEach((cell, ci) => cell.forEach((c) => walk(c, depth + 1 + (b.columns > 1 ? 1 : 0), b.columns > 1 ? `col. ${ci + 1}` : '')))
+    }
+  }
+  tree.sections.forEach((s) => walk(s, 0, ''))
+  let n = 0
+  return (
+    <ul className="space-y-0.5" aria-label="Structure du module">
+      <li>
+        <button
+          onClick={() => onSelect(null)}
+          aria-current={selectedId === null}
+          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${selectedId === null ? 'bg-violet/15 text-white' : 'text-mute hover:bg-white/5 hover:text-white'}`}
+        >
+          Module · {tree.width}px
+        </button>
+      </li>
+      {rows.map(({ b, depth, title }) => {
+        const Icon = BLOCK_ICONS[b.type]
+        const isSection = b.type === 'section'
+        if (isSection && depth === 0) n++
+        const active = selectedId === b.id
+        const label = isSection ? (depth === 0 ? `Section ${n}` : 'Card') : BLOCK_LABELS[b.type]
+        return (
+          <li key={b.id} style={{ paddingLeft: depth * 12 }}>
+            {title && <p className="px-2 pt-1 font-mono text-[9px] uppercase tracking-wider text-mute/70">{title}</p>}
+            <button
+              onClick={() => onSelect(b.id)}
+              aria-current={active}
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${active ? 'bg-violet/15 text-white' : 'text-mute hover:bg-white/5 hover:text-white'}`}
+            >
+              <Icon className={`size-3.5 shrink-0 ${b.type === 'button' ? 'text-pink' : isSection ? 'text-violet' : 'text-cyan'}`} />
+              <span className="min-w-0 flex-1 truncate">
+                {label}
+                {!isSection && summary(b) && <span className="ml-1.5 text-xs text-mute">{summary(b)}</span>}
+                {isSection && <span className="ml-1.5 text-xs text-mute">{(b as Section).columns} col</span>}
+              </span>
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+// The whole module as Outlook for Windows draws it, live. Click an element to
+// edit it; the comparison switch shows the module without or with VML.
+function OutlookPreview({
+  tree,
+  name,
+  selectedId,
+  onSelect,
+}: {
+  tree: ModuleTree
+  name: string
+  selectedId: string | null
+  onSelect: (id: string | null) => void
+}) {
+  const [withVml, setWithVml] = useState(!!tree.vml)
+  useEffect(() => setWithVml(!!tree.vml), [tree.vml])
+  const docRef = useRef<Document | null>(null)
+
+  const { html, ids } = useMemo(() => {
+    const interp = interpretTree({ ...tree, vml: withVml }, previewScope(tree, 'known'))
+    const client = CLIENTS.find((c) => c.id === 'outlook-win')!
+    return { html: renderForClient(standaloneEmail(interp, name), client, { imagesOff: false }), ids: orderedIds(interp.sections) }
+  }, [tree, name, withVml])
+
+  const idsRef = useRef(ids)
+  idsRef.current = ids
+  const selRef = useRef(selectedId)
+  selRef.current = selectedId
+  const pick = useRef(onSelect)
+  pick.current = onSelect
+
+  const mark = useCallback((doc: Document | null) => {
+    if (!doc) return
+    doc.querySelectorAll('[data-nsp-sel]').forEach((e) => e.removeAttribute('data-nsp-sel'))
+    const els = doc.querySelectorAll(NODE)
+    if (els.length !== idsRef.current.length || !selRef.current) return
+    // Loop clones carry "id~k": the base id is what the editor knows.
+    const i = idsRef.current.findIndex((id) => id.split('~')[0] === selRef.current)
+    if (i >= 0) els[i].setAttribute('data-nsp-sel', '1')
+  }, [])
+
+  const onDocument = useCallback(
+    (doc: Document) => {
+      docRef.current = doc
+      const st = doc.createElement('style')
+      st.textContent = '[data-neon]{cursor:pointer}[data-nsp-sel]{outline:2px solid #ff007f !important;outline-offset:2px}'
+      doc.head.appendChild(st)
+      doc.addEventListener('click', (e) => {
+        e.preventDefault()
+        const els = Array.from(doc.querySelectorAll(NODE))
+        if (els.length !== idsRef.current.length) return
+        const hit = (e.target as Element).closest(NODE)
+        const i = hit ? els.indexOf(hit) : -1
+        pick.current(i >= 0 ? idsRef.current[i].split('~')[0] : null)
+      })
+      mark(doc)
+    },
+    [mark],
+  )
+  useEffect(() => mark(docRef.current), [selectedId, mark])
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center gap-2 px-3 py-2">
+        <span className="min-w-0 flex-1 truncate text-xs text-mute">Outlook 2016–2021 · clique un élément pour le modifier</span>
+        <div role="group" aria-label="Comparaison Outlook" className="flex shrink-0 rounded-md border border-line p-0.5 text-xs">
+          {([[false, 'Sans VML'], [true, 'Avec VML']] as const).map(([v, l]) => (
+            <button key={l} aria-pressed={withVml === v} onClick={() => setWithVml(v)} className={`rounded px-2 py-0.5 ${withVml === v ? 'bg-cyan/15 text-cyan' : 'text-mute hover:text-white'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto bg-white/[0.03] p-2">
+        <EmailFrame html={html} width={tree.width + 40} title="Aperçu du module dans Outlook" pickable onDocument={onDocument} />
+      </div>
+    </div>
+  )
+}
+
 export function VmlWindow({
   tree,
+  name,
   selectedId,
   onSelect,
   onToggle,
@@ -90,22 +259,23 @@ export function VmlWindow({
   commit,
 }: {
   tree: ModuleTree
+  name: string
   selectedId: string | null
-  onSelect: (id: string) => void
+  onSelect: (id: string | null) => void
   onToggle: () => void
   onClose: () => void
   commit: (t: ModuleTree, select?: string | null) => void
 }) {
   const { groups, rounded } = useMemo(() => collectVml(tree), [tree])
   const all = useMemo(() => groups.flatMap((g) => g.items), [groups])
-  const [picked, setPicked] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [min, setMin] = useState(false)
-  const [tab, setTab] = useState<'preview' | 'code'>('preview')
+  const [tab, setTab] = useState<'structure' | 'apercu' | 'edition'>('apercu')
+  const [edit, setEdit] = useState<'edit' | 'code'>('edit')
   const [pos, setPos] = useState({ x: 0, y: 0 })
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null)
 
-  const current = all.find((i) => i.id === selectedId) ?? all.find((i) => i.id === picked) ?? all[0]
+  const current = all.find((i) => i.id === selectedId)
   const on = !!tree.vml
 
   const copy = async (key: string, text: string) => {
@@ -118,13 +288,20 @@ export function VmlWindow({
     }
   }
 
+  const select = (id: string | null) => {
+    onSelect(id)
+    // On a phone the three panels are tabs: go and edit what was picked.
+    if (window.matchMedia('(max-width: 1023px)').matches) setTab('edition')
+  }
+  const panel = (t: typeof tab, extra = '') => `${tab === t ? 'flex' : 'hidden'} lg:flex min-h-0 flex-col ${extra}`
+
   return (
     <aside
       role="dialog"
       aria-label="Fenêtre VML pour Outlook"
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
       style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
-      className="fixed inset-x-0 bottom-0 z-40 flex max-h-[72vh] flex-col rounded-t-xl border border-line bg-night/97 shadow-2xl backdrop-blur-md lg:inset-x-auto lg:right-4 lg:bottom-4 lg:w-[27rem] lg:max-h-[min(42rem,88vh)] lg:rounded-xl"
+      className={`fixed inset-x-0 bottom-0 z-40 flex flex-col rounded-t-xl border border-line bg-night/97 shadow-2xl backdrop-blur-md lg:inset-x-auto lg:right-4 lg:bottom-4 lg:w-[min(66rem,calc(100vw-2rem))] lg:rounded-xl ${min ? '' : 'h-[80vh] lg:h-[min(46rem,90vh)]'}`}
     >
       <header
         className="flex shrink-0 cursor-grab touch-none items-center gap-2 border-b border-line px-3 py-2 select-none active:cursor-grabbing"
@@ -140,7 +317,7 @@ export function VmlWindow({
         onPointerUp={() => (drag.current = null)}
       >
         <Shapes className="size-4 text-violet" />
-        <h2 className="font-display text-sm font-semibold">VML · Outlook</h2>
+        <h2 className="font-display text-sm font-semibold">VML · Outlook · module entier</h2>
         <span className="flex items-center gap-1 rounded-full border border-cyan/40 px-2 py-0.5 text-[10px] text-cyan" title="Se met à jour à chaque modification">
           <span className="size-1.5 animate-pulse rounded-full bg-cyan motion-reduce:animate-none" /> En direct
         </span>
@@ -154,129 +331,93 @@ export function VmlWindow({
       </header>
 
       {!min && (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="flex items-start gap-3 border-b border-line px-4 py-3">
+        <>
+          <div className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-2">
             <button
               role="switch"
               aria-checked={on}
               aria-label="Ajouter le VML au code et à l'export"
               onClick={onToggle}
-              className={`mt-0.5 h-5 w-9 shrink-0 rounded-full border transition ${on ? 'border-cyan bg-cyan/30' : 'border-line bg-void'}`}
+              className={`h-5 w-9 shrink-0 rounded-full border transition ${on ? 'border-cyan bg-cyan/30' : 'border-line bg-void'}`}
             >
               <span className={`block size-3.5 rounded-full transition ${on ? 'translate-x-[18px] bg-cyan' : 'translate-x-0.5 bg-mute'}`} />
             </button>
-            <div className="min-w-0 text-sm">
-              <p className="font-semibold">{on ? 'VML actif dans le code et l’export' : 'VML désactivé'}</p>
-              <p className="mt-0.5 text-xs text-mute">
-                Outlook sur Windows ignore les coins arrondis et la marge des liens. Avec le VML, il dessine chaque bouton en forme pleine, arrondie et cliquable ; les autres messageries gardent le lien normal.
-              </p>
-            </div>
+            <p className="min-w-0 flex-1 text-xs text-mute">
+              <span className="font-semibold text-white">{on ? 'VML actif dans le code et l\u2019export' : 'VML désactivé'}</span> · Outlook sur Windows dessine alors les boutons arrondis et cliquables sur toute leur surface ; les autres messageries gardent le lien normal.
+              {rounded > 0 && ` ${rounded} section${rounded > 1 ? 's' : ''} arrondie${rounded > 1 ? 's' : ''} restent carrées dans Outlook (sans gravité).`}
+            </p>
           </div>
 
-          <section className="px-4 py-3" aria-label="Structure en direct">
-            <h3 className="mb-2 font-mono text-[10px] uppercase tracking-wider text-mute">
-              Structure en direct · {all.length} bouton{all.length > 1 ? 's' : ''}
-            </h3>
-            {all.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-line p-3 text-sm text-mute">Aucun bouton pour l'instant : ajoute-en un dans Structure et son VML apparaît ici.</p>
-            ) : (
-              <ul className="space-y-2">
-                {groups.map((g) => (
-                  <li key={g.id}>
-                    <p className="mb-1 text-xs text-mute">{g.title}</p>
-                    <ul className="space-y-1">
-                      {g.items.map((it) => {
-                        const active = current?.id === it.id
-                        return (
-                          <li key={it.id}>
-                            <button
-                              onClick={() => {
-                                setPicked(it.id)
-                                onSelect(it.id)
-                              }}
-                              aria-current={active}
-                              className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm transition ${active ? 'border-violet bg-violet/10' : 'border-line hover:border-violet/60'}`}
-                            >
-                              {on ? <CheckCircle2 className="size-4 shrink-0 text-cyan" aria-label="VML actif" /> : <Circle className="size-4 shrink-0 text-mute" aria-label="VML inactif" />}
-                              <span className="min-w-0 flex-1 truncate">
-                                {it.label}
-                                {it.path && <span className="ml-1 text-xs text-mute">· {it.path}</span>}
-                              </span>
-                              <span className="shrink-0 font-mono text-[11px] text-mute">
-                                {it.width}×{BUTTON_HEIGHT}
-                                {it.arc ? ` · ${it.arc} %` : ''}
-                              </span>
-                            </button>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {rounded > 0 && (
-              <p className="mt-2 text-xs text-mute">
-                {rounded} section{rounded > 1 ? 's' : ''} à coins arrondis : Outlook les affiche carrées (sans gravité, aucun VML nécessaire).
-              </p>
-            )}
-          </section>
+          <div role="tablist" aria-label="Panneaux" className="flex shrink-0 border-b border-line text-sm lg:hidden">
+            {([['structure', 'Structure'], ['apercu', 'Aperçu'], ['edition', 'Édition']] as const).map(([k, l]) => (
+              <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`flex-1 py-2 ${tab === k ? 'border-b-2 border-violet text-white' : 'text-mute'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
 
-          {current && (
-            <section className="border-t border-line px-4 py-3" aria-label={`Bouton ${current.label}`}>
-              <div className="mb-3 flex items-center gap-2">
-                <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">« {current.label} »</h3>
-                <div role="tablist" aria-label="Affichage" className="flex shrink-0 rounded-md border border-line p-0.5 text-xs">
-                  {([['preview', 'Aperçu'], ['code', 'Code VML']] as const).map(([k, l]) => (
-                    <button
-                      key={k}
-                      role="tab"
-                      aria-selected={tab === k}
-                      onClick={() => setTab(k)}
-                      className={`rounded px-2.5 py-1 ${tab === k ? 'bg-violet/20 text-white' : 'text-mute hover:text-white'}`}
-                    >
+          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+            <section aria-label="Structure en direct" className={panel('structure', 'overflow-y-auto p-3 lg:w-56 lg:shrink-0 lg:border-r lg:border-line')}>
+              <h3 className="mb-2 font-mono text-[10px] uppercase tracking-wider text-mute">Structure en direct</h3>
+              <Outline tree={tree} selectedId={selectedId} onSelect={select} />
+            </section>
+
+            <section aria-label="Aperçu Outlook" className={panel('apercu', 'min-w-0 flex-1 lg:border-r lg:border-line')}>
+              <OutlookPreview tree={tree} name={name} selectedId={selectedId} onSelect={select} />
+            </section>
+
+            <section aria-label="Édition" className={panel('edition', 'flex-1 lg:w-[22rem] lg:flex-none lg:shrink-0')}>
+              {current && (
+                <div role="tablist" aria-label="Affichage du bouton" className="m-3 mb-0 flex shrink-0 rounded-md border border-line p-0.5 text-xs">
+                  {([['edit', 'Édition'], ['code', 'Code VML']] as const).map(([k, l]) => (
+                    <button key={k} role="tab" aria-selected={edit === k} onClick={() => setEdit(k)} className={`flex-1 rounded px-2.5 py-1 ${edit === k ? 'bg-violet/20 text-white' : 'text-mute hover:text-white'}`}>
                       {l}
                     </button>
                   ))}
                 </div>
-              </div>
-
-              {tab === 'preview' ? (
-                <ButtonEditor item={current} font={tree.font} vml={on} onChange={(patch) => commit(updateNode(tree, current.id, patch), current.id)} />
-              ) : (
-                <>
-                  <div className="mb-2 flex justify-end">
-                    <button
-                      onClick={() => copy(current.id, current.code)}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-xs text-mute hover:border-cyan hover:text-white"
-                    >
-                      {copied === current.id ? <Check className="size-3.5 text-cyan" /> : <Copy className="size-3.5" />} {copied === current.id ? 'Copié' : 'Copier'}
-                    </button>
-                  </div>
-                  <pre
-                    className="max-h-44 overflow-auto rounded-lg border border-line bg-void p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all"
-                    // highlight() escapes everything it prints.
-                    dangerouslySetInnerHTML={{ __html: highlightVml(current.code) }}
-                  />
-                  <p className="mt-2 text-xs text-mute">
-                    {on ? 'Ce code est dans ton module.' : 'Ce code sera ajouté au module quand tu actives le VML.'} Le lien classique est ajouté automatiquement pour les autres clients.
-                  </p>
-                </>
               )}
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {current && edit === 'code' ? (
+                  <div className="p-3">
+                    <div className="mb-2 flex justify-end">
+                      <button
+                        onClick={() => copy(current.id, current.code)}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-xs text-mute hover:border-cyan hover:text-white"
+                      >
+                        {copied === current.id ? <Check className="size-3.5 text-cyan" /> : <Copy className="size-3.5" />} {copied === current.id ? 'Copié' : 'Copier'}
+                      </button>
+                    </div>
+                    <pre
+                      className="max-h-80 overflow-auto rounded-lg border border-line bg-void p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all"
+                      // highlight() escapes everything it prints.
+                      dangerouslySetInnerHTML={{ __html: highlightVml(current.code) }}
+                    />
+                    <p className="mt-2 text-xs text-mute">
+                      {on ? 'Ce code est dans ton module.' : 'Ce code sera ajouté au module quand tu actives le VML.'} Le lien classique est ajouté automatiquement pour les autres clients.
+                    </p>
+                    {all.length > 1 && (
+                      <button
+                        onClick={() => copy('all', all.map((i) => i.code).join('\n\n'))}
+                        className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs text-mute hover:border-cyan hover:text-white"
+                      >
+                        {copied === 'all' ? <Check className="size-3.5 text-cyan" /> : <Copy className="size-3.5" />} {copied === 'all' ? 'Copié' : `Copier les ${all.length} VML`}
+                      </button>
+                    )}
+                  </div>
+                ) : current ? (
+                  <div className="p-3">
+                    <ButtonEditor item={current} font={tree.font} vml={on} onChange={(patch) => commit(updateNode(tree, current.id, patch), current.id)} />
+                  </div>
+                ) : (
+                  // Any other element (or the module itself): the same settings as the editor's panel.
+                  <div className="flex h-full min-h-0 flex-col">
+                    <Inspector tree={tree} selectedId={selectedId} onSelect={onSelect} commit={commit} />
+                  </div>
+                )}
+              </div>
             </section>
-          )}
-
-          {all.length > 1 && (
-            <div className="border-t border-line px-4 py-3">
-              <button
-                onClick={() => copy('all', all.map((i) => i.code).join('\n\n'))}
-                className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs text-mute hover:border-cyan hover:text-white"
-              >
-                {copied === 'all' ? <Check className="size-3.5 text-cyan" /> : <Copy className="size-3.5" />} {copied === 'all' ? 'Copié' : `Copier les ${all.length} VML`}
-              </button>
-            </div>
-          )}
-        </div>
+          </div>
+        </>
       )}
     </aside>
   )
@@ -340,6 +481,9 @@ function ButtonEditor({ item, font, vml, onChange }: { item: Item; font: string;
           <ColorField label="Texte" value={b.color} onChange={(v) => onChange({ color: v })} />
         </div>
         <RangeField label="Arrondi" value={b.radius} min={0} max={40} onChange={(radius) => onChange({ radius })} />
+        <Field label="Alignement">
+          <AlignField value={b.align} onChange={(align) => onChange({ align })} />
+        </Field>
         <div>
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className="font-mono text-[10px] tracking-wider text-mute uppercase">Largeur dans Outlook · {item.width}px</span>

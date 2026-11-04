@@ -9,6 +9,8 @@ export function EmailFrame({
   width,
   maxHeight,
   interactive,
+  pickable,
+  onDocument,
   title,
 }: {
   html: string
@@ -17,6 +19,10 @@ export function EmailFrame({
   maxHeight?: number
   /** Links open in a new tab; otherwise the frame ignores the pointer. */
   interactive?: boolean
+  /** The frame receives the pointer (clicks are handled by the parent through `onDocument`). */
+  pickable?: boolean
+  /** Called each time the document has loaded (same origin: the parent may read and listen to it). */
+  onDocument?: (doc: Document) => void
   title: string
 }) {
   const box = useRef<HTMLDivElement>(null)
@@ -39,6 +45,7 @@ export function EmailFrame({
     cleanup.current()
     const doc = frame.current?.contentDocument
     if (!doc?.body) return
+    onDocument?.(doc)
     // body, not documentElement: the latter never gets smaller than the frame.
     const measure = () => setHeight(Math.max(40, doc.body.scrollHeight))
     measure()
@@ -68,7 +75,7 @@ export function EmailFrame({
           display: 'block',
           transform: scale < 1 ? `scale(${scale})` : undefined,
           transformOrigin: '0 0',
-          pointerEvents: interactive ? undefined : 'none',
+          pointerEvents: interactive || pickable ? undefined : 'none',
           // Centre when the screen is narrower than the container.
           marginInline: scale === 1 ? 'auto' : undefined,
         }}

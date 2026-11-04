@@ -644,11 +644,9 @@ function Editor({ initial }: { initial: ModuleRecord }) {
       {vmlOpen && (
         <VmlWindow
           tree={tree}
+          name={name.trim() || 'Sans titre'}
           selectedId={selectedId}
-          onSelect={(id) => {
-            select(id)
-            setPane('preview')
-          }}
+          onSelect={select}
           onToggle={() => {
             const { vml: _v, ...rest } = tree
             void _v
