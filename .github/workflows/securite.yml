@@ -4,7 +4,8 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    - cron: '0 6 * * 1' # chaque lundi, même sans modification du code
+    - cron: '17 5 * * *' # chaque jour, même sans modification du code (nouvelles failles publiées)
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -20,5 +21,32 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Échoue dès qu'une faille de gravité haute ou critique est connue.
       - run: pnpm audit --audit-level=high
+      # Les failles moindres sont listées sans bloquer (corrigées par Dependabot / la veille).
+      - run: pnpm audit || true
       - run: npx tsc --noEmit
       - run: npx vite build
+
+  # Aucun secret (clé d'API, jeton, mot de passe) dans le code ni dans l'historique.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Une demande de fusion ne peut pas ajouter de dépendance vulnérable.
+  dependances:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
