@@ -9,6 +9,7 @@ import { collectFields } from '@/lib/fields'
 import { treeToCode } from '@/lib/hubl'
 import { KOFI_URL } from '@/lib/links'
 import { parseFieldsJson } from '@/lib/module-fields'
+import { importSpecs, parseForeignJson } from '@/lib/json-import'
 import type { FieldSpec } from '@/lib/module-fields'
 import { validateModuleCode } from '@/lib/module-agent'
 import { extractCode, looksLikeCode, recognizeCode, wantsConversion } from '@/lib/recognize'
@@ -167,7 +168,7 @@ export function MailyPanel({
   tree: ModuleTree
   code: string
   moduleName: string
-  applyCode: (code: string, specs?: FieldSpec[]) => string | null
+  applyCode: (code: string, specs?: FieldSpec[], values?: Record<string, unknown> | null) => string | null
   // Appends a custom block to the open module; returns a message when it is refused (duplicate)
   addSection: (section: Section) => string | null
 }) {
@@ -371,14 +372,17 @@ export function MailyPanel({
     const typed = extractCode(content)
     const sent = typed ? [...files.slice(0, 3), { name: 'code-colle.html', kind: 'code' as const, text: typed.code }] : files
     const instruction = typed ? typed.instruction : content
-    const source = sent
+    const jsonFiles = sent.filter((f) => f.kind === 'code' && /\.json$/i.test(f.name))
+    // An attached fields.json gives the exact names, labels and defaults; any
+    // other JSON (another tool's fields, values, schema, API module…) helps too.
+    const fieldsJson = jsonFiles.flatMap((f) => (/^\s*\[/.test(f.text ?? '') ? (parseFieldsJson(f.text ?? '') ?? []) : []))
+    const foreign = jsonFiles.map((f) => (/^\s*\[/.test(f.text ?? '') ? null : parseForeignJson(f.text ?? ''))).find((x) => !!x) ?? null
+    const pasted = sent
       .filter((f) => f.kind === 'code' && !/\.json$/i.test(f.name))
       .map((f) => f.text)
       .join('\n')
-    // An attached fields.json gives the exact names, labels and defaults.
-    const specs = sent
-      .filter((f) => f.kind === 'code' && /\.json$/i.test(f.name))
-      .flatMap((f) => parseFieldsJson(f.text ?? '') ?? [])
+    const source = pasted || foreign?.html || ''
+    const specs = source ? (importSpecs(source, fieldsJson, foreign) ?? []) : fieldsJson
 
     // Recognised code is rendered right away; Maily then reviews it (or
     // recreates it herself when the direct conversion is too lossy).
@@ -387,7 +391,7 @@ export function MailyPanel({
     let issue: string | undefined
     if (source && wantsConversion(instruction, mode)) {
       const rec = recognizeCode(source, tree, specs)
-      if (rec.ok && rec.complete && !applyCode(source, specs)) {
+      if (rec.ok && rec.complete && !applyCode(source, specs, foreign?.values)) {
         imported = rec.summary
         requestCode = treeToCode(rec.tree, moduleName)
       } else {

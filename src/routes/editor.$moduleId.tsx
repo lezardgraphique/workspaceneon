@@ -48,7 +48,7 @@ import { interpretTree, previewScope } from '@/lib/hubl-render'
 import type { SampleContact } from '@/lib/hubl-render'
 import { KOFI_URL } from '@/lib/links'
 import type { FieldSpec } from '@/lib/module-fields'
-import { parseFieldsJson } from '@/lib/module-fields'
+import { applyValues } from '@/lib/json-import'
 import { HubSpotImport } from '@/components/editor/HubSpotImport'
 import { findNode, findPath, insertInCell, moveNode, moveNodeTo, removeNode, replaceNode, updateNode } from '@/lib/tree'
 import { BLOCK_LABELS, createBlock } from '@/lib/types'
@@ -192,11 +192,12 @@ function Editor({ initial }: { initial: ModuleRecord }) {
   }, [code])
 
   // Used by Maily: returns an error message, or null when applied.
-  const applyCode = (generated: string, specs?: FieldSpec[]) => {
+  const applyCode = (generated: string, specs?: FieldSpec[], values?: Record<string, unknown> | null) => {
     const res = codeToTree(generated, tree, specs)
     if (!res.ok) return res.error
-    // A whole new module: its variables become its fields (types from fields.json when given).
-    const next = syncExtraFields({ ...res.tree, fields: undefined }, specs, generated)
+    // A whole new module: its variables become its fields (types from fields.json when given),
+    // then the values of an imported JSON fill them.
+    const next = applyValues(syncExtraFields({ ...res.tree, fields: undefined }, specs, generated), values ?? null).tree
     setNewFields((next.fields ?? []).map((f) => f.name))
     commit(next, null)
     return null
@@ -706,7 +707,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
         <HubSpotImport
           tree={tree}
           onClose={() => setHsImport(false)}
-          onImport={(html, json) => applyCode(html, json.trim() ? (parseFieldsJson(json) ?? undefined) : undefined)}
+          onImport={({ source, specs, values }) => applyCode(source, specs, values)}
         />
       )}
       {exporting && <ExportDialog tree={tree} name={name.trim() || 'Sans titre'} onClose={() => setExporting(false)} />}

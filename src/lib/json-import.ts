@@ -1,0 +1,462 @@
+import { humanize } from './module-fields'
+import { extractFieldRefs } from './module-fields'
+import type { FieldSpec } from './module-fields'
+import type { Block, ExtraField, Json, ModuleTree } from './types'
+
+// JSON copied from other tools, turned into what the import understands:
+// field definitions (as fields.json entries), field values, and the module's
+// code when the JSON carries it. Formats recognised:
+// - HubSpot fields.json, or any object holding it ({ fields: [...] }, the
+//   design manager / CMS API module JSON with `source`, `css`, `fields`);
+// - HubSpot values (`widget_data`, `body`, `params` of a module in a page or
+//   e-mail: { titre: "…", image: { src }, cartes: [ … ] });
+// - JSON Schema ({ type: "object", properties: { … } });
+// - Contentful content types ({ fields: [{ id, name, type, linkType, items }] });
+// - Storyblok-like schemas ({ schema: { titre: { type: "text" } } });
+// - any list of field definitions using other key names (id/key/slug,
+//   title/displayName, fieldType/kind/control, defaultValue/value, options…).
+
+type Obj = Record<string, unknown>
+const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v)
+
+export interface ForeignJson {
+  /** Readable name of what was recognised. */
+  format: string
+  /** Definitions the JSON states (exact). */
+  specs: FieldSpec[]
+  /** Definitions guessed from values: used only for names the code doesn't type itself. */
+  guessed: FieldSpec[]
+  /** Values by field name (applied to the recognised fields and blocks). */
+  values: Obj | null
+  html?: string
+  css?: string
+}
+
+const NAME_KEYS = ['name', 'id', 'key', 'slug', 'field', 'fieldName', 'field_name', 'apiKey', 'api_key', 'handle']
+const LABEL_KEYS = ['label', 'title', 'displayName', 'display_name', 'name', 'caption']
+const TYPE_KEYS = ['type', 'fieldType', 'field_type', 'kind', 'widget', 'control', 'inputType', 'input_type', 'component']
+const DEFAULT_KEYS = ['default', 'defaultValue', 'default_value', 'value', 'initialValue', 'initial_value', 'example']
+const CHILD_KEYS = ['children', 'fields', 'subfields', 'sub_fields', 'items', 'properties', 'schema']
+const OPTION_KEYS = ['choices', 'options', 'enum', 'values', 'allowedValues', 'validations']
+
+const pick = (o: Obj, keys: string[]) => {
+  for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k]
+  return undefined
+}
+
+const snake = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 59)
+const fieldName = (s: string) => {
+  const n = /^[A-Za-z_]\w{0,59}$/.test(s) ? s : snake(s)
+  return /^[A-Za-z_]/.test(n) ? n : n ? `f_${n}` : ''
+}
+
+// Type names of other tools → HubSpot types.
+const TYPE_MAP: [RegExp, string][] = [
+  [/^(text|string|symbol|short_?text|single_?line|input|textfield|plain|textinput|title|slug|uid|keyword)$/i, 'text'],
+  [/^(richtext|rich_?text|html|wysiwyg|markdown|textarea|long_?text|multiline|editor|bloks?_?richtext|body|paragraph)$/i, 'richtext'],
+  [/^(number|integer|int|float|decimal|numeric|range|slider|double)$/i, 'number'],
+  [/^(boolean|bool|checkbox|toggle|switch|true_false|yes_?no)$/i, 'boolean'],
+  [/^(select|dropdown|radio|choice|enum|option|options|single_?select|multi_?select|buttons|segmented|multioption)$/i, 'choice'],
+  [/^(image|img|picture|photo|media|asset|file_?image|upload)$/i, 'image'],
+  [/^(file|document|attachment|pdf)$/i, 'file'],
+  [/^(link|cta_?link|button|multilink|reference)$/i, 'link'],
+  [/^(url|href|uri|web|website)$/i, 'url'],
+  [/^(color|colour|colorpicker|color_?picker|hex)$/i, 'color'],
+  [/^(date|day)$/i, 'date'],
+  [/^(datetime|date_?time|timestamp|time)$/i, 'datetime'],
+  [/^(group|object|fieldset|section|block|component|repeater|list|array|blocks|collection|flexible_?content)$/i, 'group'],
+  [/^(font|typography)$/i, 'font'],
+  [/^(alignment|align)$/i, 'alignment'],
+  [/^(textalignment|text_?align)$/i, 'textalignment'],
+  [/^(spacing|padding|margin)$/i, 'spacing'],
+  [/^(border)$/i, 'border'],
+  [/^(backgroundimage|background_?image|bg_?image)$/i, 'backgroundimage'],
+  [/^(gradient)$/i, 'gradient'],
+  [/^(icon)$/i, 'icon'],
+  [/^(cta)$/i, 'cta'],
+  [/^(form)$/i, 'form'],
+  [/^(email)$/i, 'text'],
+  [/^(video|embed|oembed)$/i, 'embed'],
+]
+const HUBSPOT_TYPES = new Set(['text', 'richtext', 'number', 'boolean', 'choice', 'image', 'file', 'link', 'url', 'color', 'date', 'datetime', 'group', 'font', 'alignment', 'textalignment', 'spacing', 'border', 'backgroundimage', 'gradient', 'icon', 'cta', 'form', 'embed', 'videoplayer', 'logo', 'menu', 'simplemenu', 'page', 'blog', 'hubdbtable', 'hubdbrow', 'tag', 'email', 'crmobject', 'crmobjectproperty', 'followupemail'])
+
+function mapType(raw: unknown, def: Obj): string | null {
+  if (typeof raw !== 'string') return null
+  const t = raw.trim()
+  if (HUBSPOT_TYPES.has(t)) return t
+  // Contentful
+  if (t === 'Link') return def.linkType === 'Asset' ? 'image' : 'link'
+  if (t === 'Array') return 'group'
+  if (t === 'Location') return 'text'
+  for (const [re, ht] of TYPE_MAP) if (re.test(t)) return ht
+  return null
+}
+
+// A value's HubSpot type (for values without definitions).
+export function typeOfValue(name: string, v: unknown): string {
+  if (typeof v === 'boolean') return 'boolean'
+  if (typeof v === 'number') return /(date|_at$|deadline|fin|debut|echeance|expir)/i.test(name) && v > 1e11 ? 'datetime' : 'number'
+  if (typeof v === 'string') {
+    if (/<\/?[a-z][\s\S]*>/i.test(v)) return 'richtext'
+    if (/^#[0-9a-f]{3,8}$/i.test(v)) return 'color'
+    if (/^https?:\/\/\S+\.(png|jpe?g|gif|webp|svg)(\?\S*)?$/i.test(v)) return 'file'
+    if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return 'datetime'
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return 'date'
+    return 'text'
+  }
+  if (Array.isArray(v)) return 'group'
+  if (isObj(v)) {
+    if ('src' in v && ('background_position' in v || 'background_size' in v)) return 'backgroundimage'
+    if ('src' in v || 'alt' in v) return 'image'
+    if (isObj(v.url) && 'href' in (v.url as Obj)) return 'link'
+    if ('href' in v) return 'url'
+    if ('color' in v && Object.keys(v).every((k) => ['color', 'opacity'].includes(k))) return 'color'
+    if ('font' in v || 'font_set' in v) return 'font'
+    if ('horizontal_align' in v || 'vertical_align' in v) return 'alignment'
+    if ('text_align' in v) return 'textalignment'
+    if ('padding' in v || 'margin' in v) return 'spacing'
+    if ('name' in v && 'unicode' in v) return 'icon'
+    return 'group'
+  }
+  return 'text'
+}
+
+// A value in the HubSpot shape of its type (a Contentful date string → timestamp…).
+function hubspotValue(type: string, v: unknown): unknown {
+  if (v === undefined) return undefined
+  if ((type === 'date' || type === 'datetime') && typeof v === 'string') {
+    const t = Date.parse(v)
+    return Number.isFinite(t) ? t : undefined
+  }
+  if (type === 'image' && typeof v === 'string') return { src: v, alt: '' }
+  if (type === 'link' && typeof v === 'string') return { url: { type: 'EXTERNAL', href: v, content_id: null }, open_in_new_tab: false, no_follow: false }
+  if (type === 'url' && typeof v === 'string') return { href: v, type: 'EXTERNAL', content_id: null }
+  if (type === 'color' && typeof v === 'string') return { color: v, opacity: 100 }
+  return v
+}
+
+// Options of a choice: [[v, l]], ['a', 'b'], [{ value, label }], Contentful validations [{ in: [...] }].
+function choicesOf(def: Obj): [string, string][] | undefined {
+  for (const k of OPTION_KEYS) {
+    const raw = def[k]
+    if (!Array.isArray(raw) || !raw.length) continue
+    const list: [string, string][] = []
+    for (const o of raw) {
+      if (Array.isArray(o)) list.push([String(o[0]), String(o[1] ?? o[0])])
+      else if (isObj(o) && Array.isArray(o.in)) o.in.forEach((x) => list.push([String(x), String(x)]))
+      else if (isObj(o)) {
+        const v = pick(o, ['value', 'id', 'key', 'name'])
+        if (v !== undefined) list.push([String(v), String(pick(o, ['label', 'title', 'name', 'text']) ?? v)])
+      } else if (typeof o === 'string' || typeof o === 'number') list.push([String(o), String(o)])
+    }
+    if (list.length) return list
+  }
+  return undefined
+}
+
+// One definition of another tool → a fields.json entry (recursively).
+function toHubSpot(def: Obj, nameHint?: string, depth = 0): Obj | null {
+  if (depth > 5) return null
+  // Contentful: `id` is the name, `name` the label.
+  const contentful = typeof def.id === 'string' && typeof def.name === 'string' && typeof def.type === 'string' && /^[A-Z]/.test(def.type)
+  const rawName = contentful ? def.id : (nameHint ?? pick(def, NAME_KEYS))
+  if (typeof rawName !== 'string' && typeof rawName !== 'number') return null
+  const name = fieldName(String(rawName))
+  if (!name) return null
+  let type = mapType(pick(def, TYPE_KEYS), def)
+  // JSON Schema
+  const schemaType = def.type
+  if (schemaType === 'string') type = def.format === 'uri' ? 'url' : def.format === 'date' ? 'date' : def.format === 'date-time' ? 'datetime' : def.format === 'color' ? 'color' : Array.isArray(def.enum) ? 'choice' : /html|rich/i.test(String(def.contentMediaType ?? def.format ?? '')) ? 'richtext' : 'text'
+  if (schemaType === 'array' || schemaType === 'object') type = 'group'
+  const labelRaw = contentful ? def.name : pick(def, LABEL_KEYS.filter((k) => k !== 'name' || nameHint !== undefined || pick(def, NAME_KEYS.filter((n) => n !== 'name')) !== undefined))
+  const label = typeof labelRaw === 'string' && labelRaw.trim() ? labelRaw.trim() : humanize(name)
+  const out: Obj = { name, label }
+
+  // Children: a list, or a map name → definition (JSON Schema properties, Storyblok schema).
+  let kids: Obj[] = []
+  let repeater = false
+  const itemsSchema = isObj(def.items) ? (def.items as Obj) : undefined
+  if (schemaType === 'array' || def.type === 'Array' || /^(repeater|list|array|blocks|collection|flexible_?content)$/i.test(String(pick(def, TYPE_KEYS) ?? ''))) repeater = true
+  const childSource = itemsSchema && (isObj(itemsSchema.properties) || Array.isArray(itemsSchema.fields)) ? itemsSchema : def
+  for (const k of CHILD_KEYS) {
+    const c = childSource[k]
+    if (Array.isArray(c) && c.some(isObj)) {
+      kids = c.filter(isObj).map((x) => toHubSpot(x, undefined, depth + 1)).filter((x): x is Obj => !!x)
+      if (kids.length) break
+    }
+    if (isObj(c) && k !== 'items' && Object.values(c).some((x) => isObj(x) && (pick(x, TYPE_KEYS) !== undefined || 'properties' in x))) {
+      kids = Object.entries(c)
+        .filter(([, x]) => isObj(x))
+        .map(([n, x]) => toHubSpot(x as Obj, n, depth + 1))
+        .filter((x): x is Obj => !!x)
+      if (kids.length) break
+    }
+  }
+  // A repeated simple value (Contentful Array of Symbol, JSON Schema array of strings).
+  if (repeater && !kids.length && itemsSchema) {
+    const inner = toHubSpot({ ...itemsSchema, name }, undefined, depth + 1)
+    type = (inner?.type as string) ?? 'text'
+  } else if (kids.length) type = 'group'
+  if (!type) type = kids.length ? 'group' : 'text'
+  out.type = type
+  if (type === 'group') out.children = kids
+  if (repeater) out.occurrence = { min: 0, max: 20, default: 2 }
+  if (type === 'choice') {
+    const ch = choicesOf(def)
+    if (ch) out.choices = ch
+    else out.type = 'text'
+  }
+  const d = pick(def, DEFAULT_KEYS.filter((k) => k !== 'value' || !Array.isArray(def.value)))
+  const v = hubspotValue(String(out.type), d)
+  if (v !== undefined && !(out.type === 'choice' && isObj(v))) out.default = v
+  return out
+}
+
+// Values (name → value) → definitions typed from the values.
+function specsFromValues(values: Obj, depth = 0): Obj[] {
+  const out: Obj[] = []
+  for (const [k, v] of Object.entries(values)) {
+    const name = fieldName(k)
+    if (!name || depth > 4) continue
+    const type = typeOfValue(name, v)
+    const f: Obj = { name, label: humanize(name), type, default: v }
+    if (type === 'group') {
+      const sample = Array.isArray(v) ? v.find(isObj) : v
+      if (Array.isArray(v)) {
+        f.occurrence = { min: 0, max: 20, default: Math.max(1, v.length) }
+        if (!sample) {
+          // A list of plain values: a repeated simple field.
+          f.type = v.length ? typeOfValue(name, v[0]) : 'text'
+          out.push(f)
+          continue
+        }
+      }
+      f.children = isObj(sample) ? specsFromValues(sample, depth + 1).map(({ default: _d, ...c }) => (void _d, c)) : []
+    }
+    out.push(f)
+  }
+  return out
+}
+
+// A list of field definitions? (objects with a name-like and a type-like key)
+const looksLikeDefs = (list: unknown[]) => list.some((x) => isObj(x) && pick(x, NAME_KEYS) !== undefined && pick(x, TYPE_KEYS) !== undefined)
+const looksLikeDefMap = (o: Obj) => {
+  const vals = Object.values(o)
+  return vals.length > 0 && vals.every((x) => isObj(x)) && vals.some((x) => pick(x as Obj, TYPE_KEYS) !== undefined)
+}
+
+const flatten = (list: Obj[], prefix = ''): FieldSpec[] =>
+  list.flatMap((f) => {
+    const name = prefix ? `${prefix}.${f.name}` : String(f.name)
+    const own: FieldSpec = { name, label: String(f.label ?? f.name), type: String(f.type ?? 'text'), default: f.default, raw: f }
+    return [own, ...(Array.isArray(f.children) ? flatten(f.children as Obj[], name) : [])]
+  })
+
+// Same name in another spelling: logoPartenaire = logo_partenaire = logo-partenaire.
+const loose = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+const isCode = (v: unknown) => typeof v === 'string' && /<[a-z!][\s\S]*>|\{\{|\{%/i.test(v)
+
+// Finds what the JSON carries, wherever it sits (a few levels deep).
+export function parseForeignJson(text: string): ForeignJson | null {
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch {
+    return null
+  }
+  let html: string | undefined
+  let css: string | undefined
+  let defs: Obj[] | null = null
+  let values: Obj | null = null
+  let format = ''
+
+  const visit = (v: unknown, path: string[], depth: number) => {
+    if (depth > 5) return
+    if (Array.isArray(v)) {
+      if (!defs && looksLikeDefs(v)) {
+        defs = v.filter(isObj).map((x) => toHubSpot(x)).filter((x): x is Obj => !!x)
+        format ||= v.some((x) => isObj(x) && typeof x.type === 'string' && /^[A-Z]/.test(x.type) && typeof x.id === 'string') ? 'modèle Contentful' : 'liste de champs'
+      }
+      return
+    }
+    if (!isObj(v)) return
+    // Code carried by the JSON (HubSpot module API: source / css).
+    for (const [k, x] of Object.entries(v)) {
+      if (!html && /^(source|html|module_?html|template|markup|body_?html|content_?html)$/i.test(k) && isCode(x)) html = x as string
+      if (!css && /^(css|styles?|module_?css)$/i.test(k) && typeof x === 'string' && /[{:;]/.test(x)) css = x
+    }
+    if (!defs && v.type === 'object' && isObj(v.properties)) {
+      defs = Object.entries(v.properties as Obj).map(([n, x]) => (isObj(x) ? toHubSpot(x, n) : null)).filter((x): x is Obj => !!x)
+      format ||= 'JSON Schema'
+    }
+    for (const key of ['fields', 'schema', 'children', 'properties', 'module_fields', 'fieldDefinitions', 'field_definitions']) {
+      const x = v[key]
+      if (defs) break
+      if (Array.isArray(x) && looksLikeDefs(x)) visit(x, [...path, key], depth + 1)
+      else if (isObj(x) && looksLikeDefMap(x)) {
+        defs = Object.entries(x).map(([n, d]) => toHubSpot(d as Obj, n)).filter((d): d is Obj => !!d)
+        format ||= 'schéma de composant'
+      }
+    }
+    // Values of a module in a page or e-mail.
+    for (const key of ['widget_data', 'body', 'params', 'values', 'data', 'content', 'module', 'fields_values']) {
+      const x = v[key]
+      if (!values && isObj(x) && !looksLikeDefMap(x) && !('properties' in x) && !Object.values(x).every((y) => isObj(y) && 'body' in (y as Obj))) {
+        values = x
+        format ||= 'valeurs de module'
+      }
+    }
+    // HubSpot widgets: { widgets: { module_1: { body: {...} } } } → the first module's values.
+    if (!values && isObj(v.widgets)) {
+      const first = Object.values(v.widgets as Obj).find((w) => isObj(w) && isObj((w as Obj).body))
+      if (first) {
+        values = (first as Obj).body as Obj
+        format ||= 'valeurs de module (widgets)'
+      }
+    }
+    for (const [k, x] of Object.entries(v)) if (isObj(x) || Array.isArray(x)) visit(x, [...path, k], depth + 1)
+  }
+
+  if (Array.isArray(data) && looksLikeDefs(data)) {
+    defs = data.filter(isObj).map((x) => (typeof x.type === 'string' && HUBSPOT_TYPES.has(x.type) ? x : toHubSpot(x))).filter((x): x is Obj => !!x)
+    format = data.every((x) => isObj(x) && typeof x.type === 'string' && HUBSPOT_TYPES.has(x.type)) ? 'fields.json HubSpot' : 'liste de champs'
+  } else visit(data, [], 0)
+
+  // Plain object of values (nothing else recognised): { titre: "…", image: {…} }.
+  if (!defs && !values && isObj(data) && !html && Object.keys(data).length && !looksLikeDefMap(data)) {
+    values = data
+    format = 'valeurs de module'
+  }
+  if (isObj(data) && Array.isArray(data.fields) && (data.fields as unknown[]).every((x) => isObj(x) && typeof x.type === 'string' && HUBSPOT_TYPES.has(x.type))) format = html ? 'module HubSpot (API)' : 'fields.json HubSpot'
+
+  const list: Obj[] = defs ?? []
+  // Values without definitions say something of the types too (weaker than the code).
+  const valueSpecs = values ? specsFromValues(values).filter((s) => !list.some((d) => d.name === s.name)) : []
+  if (!list.length && !valueSpecs.length && !html) return null
+  return { format: format || 'JSON', specs: flatten(list), guessed: flatten(valueSpecs), values, html, css }
+}
+
+// ---------------------------------------------------------------------------
+// Values → recognised module
+// ---------------------------------------------------------------------------
+
+
+const str = (v: unknown) => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : undefined)
+
+// Shapes a value for a field (only when it fits the field's type).
+function valueFor(f: ExtraField, v: unknown): Json | undefined {
+  if (v === undefined) return undefined
+  if (f.repeater) return Array.isArray(v) ? (v.map((x) => valueFor({ ...f, repeater: false }, x)).filter((x) => x !== undefined) as Json[]) : undefined
+  const hs = f.hsType ?? f.type
+  const shaped = hubspotValue(hs, v)
+  switch (f.type) {
+    case 'text':
+    case 'richtext':
+    case 'file':
+    case 'choice':
+      return typeof shaped === 'string' || (shaped === null && f.hsType) ? (shaped as Json) : typeof shaped === 'number' ? String(shaped) : undefined
+    case 'number':
+      return typeof shaped === 'number' ? shaped : typeof shaped === 'string' && Number.isFinite(Number(shaped)) ? Number(shaped) : undefined
+    case 'boolean':
+      return typeof shaped === 'boolean' ? shaped : undefined
+    case 'date':
+    case 'datetime':
+      return typeof shaped === 'number' ? shaped : undefined
+    case 'group': {
+      if (!isObj(shaped)) return undefined
+      const out: Record<string, Json> = isObj(f.default) ? { ...(f.default as Record<string, Json>) } : {}
+      for (const c of f.children ?? []) {
+        const x = valueFor(c, (shaped as Obj)[c.name])
+        if (x !== undefined) out[c.name] = x
+      }
+      return out
+    }
+    default:
+      return isObj(shaped) || Array.isArray(shaped) ? (JSON.parse(JSON.stringify(shaped)) as Json) : undefined
+  }
+}
+
+// Puts the values of the JSON into the module: field defaults, and the content
+// of the blocks bound to fields. Returns the names that received a value.
+export function applyValues(tree: ModuleTree, values: Obj | null): { tree: ModuleTree; applied: string[] } {
+  if (!values) return { tree, applied: [] }
+  const applied: string[] = []
+  const loosely = new Map(Object.keys(values).map((k) => [loose(k), k]))
+  const get = (name: string) => (name in values ? values[name] : values[loosely.get(loose(name)) ?? ''])
+  const fields = (tree.fields ?? []).map((f) => {
+    const v = valueFor(f, get(f.name))
+    if (v === undefined) return f
+    applied.push(f.name)
+    return { ...f, default: v }
+  })
+  const walk = (b: Block): Block => {
+    if (b.type === 'section') return { ...b, cells: b.cells.map((c) => c.map(walk)) }
+    if (!('field' in b) || !b.field) return b
+    const name = b.field.name
+    switch (b.type) {
+      case 'heading': {
+        const v = str(get(name))
+        if (v === undefined) return b
+        applied.push(name)
+        return { ...b, text: v.replace(/<[^>]*>/g, '') }
+      }
+      case 'text': {
+        const v = str(get(name))
+        if (v === undefined) return b
+        applied.push(name)
+        return { ...b, html: v }
+      }
+      case 'image': {
+        const v = get(name)
+        const src = isObj(v) ? str(v.src) : str(v)
+        if (src === undefined) return b
+        applied.push(name)
+        return { ...b, src, ...(isObj(v) && str(v.alt) !== undefined ? { alt: str(v.alt)! } : {}) }
+      }
+      case 'button': {
+        const tn = b.field.textName ?? `${name}_label`
+        const ln = b.field.linkName ?? `${name}_link`
+        const label = str(get(tn))
+        const lv = get(ln)
+        const href = isObj(lv) ? (isObj(lv.url) ? str((lv.url as Obj).href) : str(lv.href)) : str(lv)
+        if (label !== undefined) applied.push(tn)
+        if (href !== undefined) applied.push(ln)
+        return { ...b, ...(label !== undefined ? { label } : {}), ...(href !== undefined ? { href } : {}) }
+      }
+      default:
+        return b
+    }
+  }
+  return { tree: { ...tree, sections: tree.sections.map((s) => walk(s) as typeof s), ...(fields.length ? { fields } : {}) }, applied }
+}
+
+// Definitions for an import: the fields.json first, then what the JSON states,
+// then the types guessed from its values for names the code doesn't use.
+export function importSpecs(code: string, fieldsJson: FieldSpec[] | null | undefined, foreign: ForeignJson | null | undefined): FieldSpec[] | undefined {
+  const top = (n: string) => n.split('.')[0]
+  const fj = fieldsJson ?? []
+  const used = new Set(extractFieldRefs(code))
+  // Another tool may write logoPartenaire where the code says logo_partenaire.
+  const byKey = new Map([...used].map((n) => [loose(n), n]))
+  const rename = (sp: FieldSpec): FieldSpec => {
+    const t = top(sp.name)
+    const to = used.has(t) ? t : byKey.get(loose(t))
+    if (!to || to === t) return sp
+    const name = to + sp.name.slice(t.length)
+    return { ...sp, name, raw: sp.raw && !sp.name.includes('.') ? { ...sp.raw, name: to } : sp.raw }
+  }
+  const foreignSpecs = (foreign?.specs ?? []).map(rename)
+  const exact = [...fj, ...foreignSpecs.filter((s) => !fj.some((f) => top(f.name) === top(s.name)))]
+  const weak = (foreign?.guessed ?? []).map(rename).filter((s) => !exact.some((e) => top(e.name) === top(s.name)) && !used.has(top(s.name)))
+  const all = [...exact, ...weak]
+  return all.length ? all : undefined
+}
