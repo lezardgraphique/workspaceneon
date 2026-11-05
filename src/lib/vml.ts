@@ -26,6 +26,8 @@ export const buttonBorder = (b: ButtonLook) => (b.borderWidth && b.borderWidth >
 export const buttonBorderColor = (b: ButtonLook) => b.borderColor || b.color || '#ffffff'
 // Total height in px: explicit, or what the padded text makes (42 by default).
 export const buttonHeight = (b: ButtonLook) => b.height ?? Math.round(buttonFontSize(b) * 1.2) + 24 + 2 * buttonBorder(b)
+// Height in Outlook (VML shape, coloured cell): its own setting, else the button's.
+export const outlookHeight = (b: ButtonLook & { vmlHeight?: number }) => b.vmlHeight ?? buttonHeight(b)
 
 export interface VmlButtonParams {
   href: string

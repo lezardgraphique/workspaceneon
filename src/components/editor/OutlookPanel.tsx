@@ -2,7 +2,7 @@ import { Group, RangeField } from './Inspector'
 import { findPath } from '@/lib/tree'
 import { headingLine, sectionPad, spacingOf, textLine } from '@/lib/look'
 import type { Block, ButtonBlock, ModuleTree, OutlookTweaks } from '@/lib/types'
-import { buttonWidth } from '@/lib/vml'
+import { buttonHeight, buttonWidth } from '@/lib/vml'
 
 type Key = keyof OutlookTweaks
 
@@ -117,7 +117,10 @@ function ButtonOutlook({ tree, b, onChange, onTree }: { tree: ModuleTree; b: But
         {tree.vml && ' Le VML est actif : c\u2019est son dessin qu\u2019Outlook affiche, ce réglage sert si tu le désactives.'}
       </p>
       {(cell || tree.vml) && (
-        <OverrideField label="Largeur dans Outlook" value={b.vmlWidth} base={auto} min={80} max={400} onChange={(v) => onChange({ vmlWidth: v } as Partial<Block>)} />
+        <>
+          <OverrideField label="Largeur dans Outlook" value={b.vmlWidth} base={auto} min={80} max={400} onChange={(v) => onChange({ vmlWidth: v } as Partial<Block>)} />
+          <OverrideField label="Hauteur dans Outlook" value={b.vmlHeight} base={buttonHeight(b)} min={24} max={100} onChange={(v) => onChange({ vmlHeight: v } as Partial<Block>)} />
+        </>
       )}
       {total > 1 && others > 0 && (
         <button onClick={() => onTree(patchAllButtons(tree, { msoCell: cell || undefined }))} className="text-xs text-cyan underline hover:text-white">

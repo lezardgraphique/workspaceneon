@@ -15,7 +15,7 @@ import { esc, escKeep } from '@/lib/hubl'
 import { isSafeUrl } from '@/lib/sanitize'
 import { findNode, updateNode } from '@/lib/tree'
 import type { Block, ButtonBlock, ModuleTree, Section } from '@/lib/types'
-import { arcSize, buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight, buttonWidth, msoOnly, vmlShape } from '@/lib/vml'
+import { arcSize, buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonWidth, msoOnly, outlookHeight, vmlShape } from '@/lib/vml'
 
 // Floating window (it doesn't block the editor) showing, live, the VML drawn
 // for Outlook on Windows: which buttons get a shape, its size and its code.
@@ -53,7 +53,7 @@ const hasHubl = (s: string) => /\{[{%]/.test(s)
 function itemFor(b: ButtonBlock, path: string, font: string): Item {
   const auto = buttonWidth(b.label, b)
   const width = b.vmlWidth ?? auto
-  const height = buttonHeight(b)
+  const height = outlookHeight(b)
   const code = msoOnly(
     vmlShape({
       href: isSafeUrl(b.href) ? escKeep(b.href) : '#',
@@ -627,7 +627,7 @@ function ButtonEditor({ item, font, vml, onChange }: { item: Item; font: string;
   const b = item.block
   const bg = cssColor(b.bg, '#888888')
   const color = cssColor(b.color, '#ffffff')
-  const bh = buttonHeight(b)
+  const bh = outlookHeight(b)
   const bw = buttonBorder(b)
   const radiusVml = Math.round((item.arc / 100) * Math.min(item.width, bh))
   const borderCss = bw ? `${bw}px solid ${cssColor(buttonBorderColor(b), color)}` : undefined

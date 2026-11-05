@@ -90,6 +90,8 @@ export interface ButtonBlock extends Spacing {
   radius: number
   /** Width (px) of the VML shape for Outlook; estimated from the label when absent. */
   vmlWidth?: number
+  /** Height (px) in Outlook only (VML shape and coloured cell); the button's height when absent. */
+  vmlHeight?: number
   /** Optional look; the defaults reproduce the historical button (15px bold, 12/26px padding). */
   height?: number
   fontSize?: number

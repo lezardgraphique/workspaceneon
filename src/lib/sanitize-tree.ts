@@ -149,6 +149,7 @@ function blockInner(raw: unknown, depth: number, count: { n: number }): Block | 
         align: align(raw.align, 'left'),
         radius: num(raw.radius, 8, 0, 60),
         ...(typeof raw.vmlWidth === 'number' && raw.vmlWidth >= 80 ? { vmlWidth: num(raw.vmlWidth, 160, 80, 600) } : {}),
+        ...(typeof raw.vmlHeight === 'number' && raw.vmlHeight >= 20 ? { vmlHeight: num(raw.vmlHeight, 44, 20, 120) } : {}),
         ...(typeof raw.height === 'number' && raw.height > 0 ? { height: num(raw.height, 42, 24, 100) } : {}),
         ...(typeof raw.fontSize === 'number' && raw.fontSize > 0 ? { fontSize: num(raw.fontSize, 15, 10, 36) } : {}),
         ...(raw.bold === false ? { bold: false } : {}),

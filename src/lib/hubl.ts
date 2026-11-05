@@ -11,7 +11,7 @@ import { olAttr, olParse, olStyle } from './outlook'
 import { protectHubl, restoreDom, restoreTree } from './hubl-protect'
 import { normalizeHubl, withLegacySpecs } from './hubl-legacy'
 import { classAttr, columnWidths, dividerLine, headingLine, headingWeight, hideClass, hideStyle, marginCss, responsiveCss, safeBgImage, sectionPad, spacingAttrs, spacingOf, spacingParse, textLine } from './look'
-import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight, buttonWidth, msoCell, msoOnly, notMso, vmlShape } from './vml'
+import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonWidth, msoCell, msoOnly, notMso, outlookHeight, vmlShape } from './vml'
 import { uid } from './types'
 import type { Align, Behavior, Block, Columns, ExtraField, FieldDef, ModuleTree, RawBlock, Section } from './types'
 
@@ -133,16 +133,16 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
       // With VML on, Outlook for Windows gets a drawn shape (rounded, padded,
       // clickable); every other client keeps the plain link.
       const inner = ctx.vml
-        ? `${indent(msoOnly(vmlShape({ href, label, bg: escKeep(b.bg), color: escKeep(b.color), radius: b.radius, font: esc(font), width: b.fullWidth ? Math.round(avail) : (b.vmlWidth ?? buttonWidth(b.label, b)), height: buttonHeight(b), fontSize: buttonFontSize(b), bold: buttonBold(b), borderWidth: bw, borderColor: escKeep(buttonBorderColor(b)) })), p + '  ')}
+        ? `${indent(msoOnly(vmlShape({ href, label, bg: escKeep(b.bg), color: escKeep(b.color), radius: b.radius, font: esc(font), width: b.fullWidth ? Math.round(avail) : (b.vmlWidth ?? buttonWidth(b.label, b)), height: outlookHeight(b), fontSize: buttonFontSize(b), bold: buttonBold(b), borderWidth: bw, borderColor: escKeep(buttonBorderColor(b)) })), p + '  ')}
 ${indent(notMso(`  ${link}`), p + '  ')}`
         : b.msoCell
           ? (() => {
               // Outlook without VML: a coloured cell around the link (see msoCell).
-              const [open, close] = msoCell({ bg: escKeep(b.bg), align: b.align, look: b, width: b.fullWidth ? Math.round(avail) : b.vmlWidth, border })
+              const [open, close] = msoCell({ bg: escKeep(b.bg), align: b.align, look: b.vmlHeight ? { ...b, height: b.vmlHeight } : b, width: b.fullWidth ? Math.round(avail) : b.vmlWidth, border })
               return `${p}  ${open}\n${p}  ${link}\n${p}  ${close}`
             })()
           : `${p}  ${link}`
-      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}), ...(b.height ? { height: b.height } : {}), ...(b.fontSize ? { 'font-size': b.fontSize } : {}), ...(b.bold === false ? { bold: 0 } : {}), ...(bw ? { 'border-width': bw, 'border-color': b.borderColor || b.color } : {}), ...(b.msoCell ? { 'mso-cell': 1 } : {}), ...(b.fullWidth ? { full: 1 } : {}), ...(b.padX != null ? { 'pad-x': b.padX } : {}), ...(b.fixed ? { fixed: 1 } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}text-align:${b.align};${olStyle(b.outlook)}">
+      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}), ...(b.vmlHeight ? { 'vml-height': b.vmlHeight } : {}), ...(b.height ? { height: b.height } : {}), ...(b.fontSize ? { 'font-size': b.fontSize } : {}), ...(b.bold === false ? { bold: 0 } : {}), ...(bw ? { 'border-width': bw, 'border-color': b.borderColor || b.color } : {}), ...(b.msoCell ? { 'mso-cell': 1 } : {}), ...(b.fullWidth ? { full: 1 } : {}), ...(b.padX != null ? { 'pad-x': b.padX } : {}), ...(b.fixed ? { fixed: 1 } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b)}text-align:${b.align};${olStyle(b.outlook)}">
 ${inner}
 ${p}</div>`
     }
@@ -458,6 +458,7 @@ function parseBlockInner(el: Element): Block | null {
         color: asColor(g('color'), '#ffffff'),
         radius: asNum(g('radius'), 8, 0, 60),
         ...(g('vml-width') ? { vmlWidth: asNum(g('vml-width'), 160, 80, 600) } : {}),
+        ...(g('vml-height') ? { vmlHeight: asNum(g('vml-height'), 44, 20, 120) } : {}),
         ...(g('height') ? { height: asNum(g('height'), 42, 24, 100) } : {}),
         ...(g('font-size') ? { fontSize: asNum(g('font-size'), 15, 10, 36) } : {}),
         ...(g('bold') === '0' ? { bold: false } : {}),
