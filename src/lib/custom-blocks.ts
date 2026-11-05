@@ -49,6 +49,20 @@ export function signature(b: Block | Section): string {
   return `${(h1 >>> 0).toString(16)}${(h2 >>> 0).toString(16)}${json.length.toString(16)}`
 }
 
+// The library stores sections. A single element (title, button, image…) is kept
+// in a transparent wrapper with no padding, unwrapped again when inserted.
+export function wrapForLibrary(b: Block): Section {
+  if (b.type === 'section') return b
+  return { id: uid(), type: 'section', columns: 1, behavior: 'stack', bg: 'transparent', padding: 0, radius: 0, cells: [[b]] }
+}
+
+const isWrapper = (s: Section) => s.columns === 1 && s.bg === 'transparent' && s.padding === 0 && !s.radius && !s.borderWidth && !s.bgImage
+
+// What to insert for a library block: its elements, or the card itself.
+export function fromLibrary(s: Section): Block[] {
+  return isWrapper(s) ? s.cells[0].map((b) => withNewIds(b)) : [withNewIds(s)]
+}
+
 // A copy with fresh ids, ready to be inserted without clashing with the module.
 export function withNewIds<T extends Block>(b: T): T {
   if (b.type === 'section') return { ...b, id: uid(), cells: b.cells.map((c) => c.map((x) => withNewIds(x))) } as T

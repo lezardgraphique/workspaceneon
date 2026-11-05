@@ -1,15 +1,18 @@
 import { useState } from 'react'
 import { guardedFetch } from '@/lib/session-guard'
-import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, Copy, Loader2, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, BookmarkPlus, Check, Copy, Loader2, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { EstimatePanel } from './EstimatePanel'
 import { ImageUpload } from './ImageUpload'
 import { ExtraFieldCard } from './FieldsPanel'
+import { refreshCustomBlocks } from './useCustomBlocks'
+import { wrapForLibrary } from '@/lib/custom-blocks'
+import { saveBlock } from '@/lib/data'
 import { BLOCK_ICONS } from './Structure'
 import { htmlToBlocks, sanitizeHtml } from '@/lib/hubl'
 import { BLOCK_LABELS } from '@/lib/types'
-import type { Align, Block, ButtonBlock, Columns, ModuleTree, Spacing } from '@/lib/types'
+import type { Align, Block, ButtonBlock, Columns, ModuleTree, Section, Spacing } from '@/lib/types'
 import { headingLine, headingWeight, spacingOf, textLine } from '@/lib/look'
 import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight } from '@/lib/vml'
 import {
@@ -276,6 +279,75 @@ function MailyRewrite({ text, html, onResult }: { text: string; html: boolean; o
   )
 }
 
+// "Mes blocs": saves the element (or a whole card / section) to reuse it in any
+// module (Structure > Ajouter > Mes blocs). Works offline: sent when back online.
+const suggestName = (b: Block): string =>
+  (b.type === 'heading'
+    ? b.text
+    : b.type === 'button'
+      ? `Bouton ${b.label}`
+      : b.type === 'image'
+        ? b.alt || 'Image'
+        : b.type === 'text'
+          ? b.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(0, 5).join(' ')
+          : BLOCK_LABELS[b.type]
+  ).slice(0, 60) || BLOCK_LABELS[b.type]
+
+const SAVED: Record<string, string> = {
+  created: 'Enregistré dans Mes blocs (Structure › Ajouter › Mes blocs).',
+  updated: 'Mis à jour : un bloc portait déjà ce nom.',
+  exists: 'Déjà dans Mes blocs (contenu identique) : rien n’a été doublé.',
+  local: 'Enregistré sur cet appareil : il sera envoyé dès le retour de la connexion.',
+}
+
+function SaveToLibrary({ items, defaultName, onDone }: { items: { name: string; section: Section }[] | ((name: string) => { name: string; section: Section }[]); defaultName: string; onDone?: () => void }) {
+  const [name, setName] = useState(defaultName)
+  const [description, setDescription] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const run = async () => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const list = typeof items === 'function' ? items(name.trim() || defaultName) : items.map((x) => ({ ...x, name: name.trim() || x.name }))
+      const res = []
+      for (const it of list) res.push(await saveBlock(it.name.slice(0, 80), description.trim().slice(0, 300), it.section))
+      refreshCustomBlocks()
+      const st = res.length === 1 ? res[0].status : res.every((r) => r.status === 'local') ? 'local' : 'created'
+      const dup = res.filter((r) => r.status === 'exists').length
+      const multi = `${res.length - dup} section${res.length - dup > 1 ? 's' : ''} enregistrée${res.length - dup > 1 ? 's' : ''} dans Mes blocs${dup ? ` (${dup} déjà présente${dup > 1 ? 's' : ''}, non doublée${dup > 1 ? 's' : ''})` : ''}.${st === 'local' ? ' Envoi au retour de la connexion.' : ''}`
+      setMsg({ ok: true, text: res.length > 1 ? multi : SAVED[st] })
+      onDone?.()
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : 'Enregistrement impossible' })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="space-y-2 rounded-lg border border-violet/40 bg-violet/5 p-3">
+      <Field label="Nom dans Mes blocs">
+        <input className={input} value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+      </Field>
+      <Field label="Description (facultatif)">
+        <input className={input} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} placeholder="À quoi sert ce bloc" />
+      </Field>
+      <button
+        onClick={() => void run()}
+        disabled={busy || !name.trim()}
+        className="flex w-full items-center justify-center gap-2 rounded-md bg-violet px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+      >
+        {busy ? <Loader2 className="size-4 animate-spin" /> : <BookmarkPlus className="size-4" />} Enregistrer
+      </button>
+      {msg && (
+        <p role="status" className={`flex items-start gap-1.5 text-xs ${msg.ok ? 'text-cyan' : 'text-pink'}`}>
+          {msg.ok && <Check className="mt-0.5 size-3.5 shrink-0" />} {msg.text}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // The module fields a code block uses (countdown, dynamic image…), editable right here.
 function RawFields({ html, p }: { html: string; p: Props }) {
   const names = new Set([...html.matchAll(/module\.(\w+)/g)].map((m) => m[1]))
@@ -527,6 +599,7 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
 
 export function Inspector(p: Props) {
   const node = p.selectedId ? findNode(p.tree, p.selectedId) : null
+  const [saving, setSaving] = useState<string | null>(null)
 
   if (!node) {
     const t = p.tree
@@ -564,6 +637,24 @@ export function Inspector(p: Props) {
             </button>
           </div>
         )}
+        {t.sections.length > 0 && (
+          <div className="space-y-2">
+            <button
+              onClick={() => setSaving((v) => (v === 'module' ? null : 'module'))}
+              aria-expanded={saving === 'module'}
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-violet/50 px-3 py-2 text-sm text-[#e3a6ff] hover:bg-violet/10"
+            >
+              <BookmarkPlus className="size-4" /> Enregistrer {t.sections.length > 1 ? `les ${t.sections.length} sections` : 'la section'} dans Mes blocs
+            </button>
+            {saving === 'module' && (
+              <SaveToLibrary
+                defaultName="Mon module"
+                items={(base) => t.sections.map((sec, i) => ({ name: t.sections.length > 1 ? `${base} · section ${i + 1}` : base, section: sec }))}
+              />
+            )}
+            <p className="text-xs text-mute">Chaque élément se sauvegarde aussi seul : sélectionne-le puis l'icône « Enregistrer dans Mes blocs ».</p>
+          </div>
+        )}
         <EstimatePanel tree={t} node={null} />
       </div>
     )
@@ -595,6 +686,7 @@ export function Inspector(p: Props) {
             { icon: ArrowDown, label: 'Descendre', fn: () => p.commit(moveNode(p.tree, node.id, 1)) },
             { icon: Copy, label: 'Dupliquer', fn: () => p.commit(duplicateNode(p.tree, node.id)) },
             { icon: Trash2, label: 'Supprimer', fn: () => p.commit(removeNode(p.tree, node.id), null) },
+            { icon: BookmarkPlus, label: 'Enregistrer dans Mes blocs', fn: () => setSaving((v) => (v === node.id ? null : node.id)) },
           ].map((a) => (
             <button key={a.label} title={a.label} aria-label={a.label} onClick={a.fn} className="rounded p-2 text-mute hover:bg-white/10 hover:text-white lg:p-1.5">
               <a.icon className="size-4 lg:size-3.5" />
@@ -602,6 +694,7 @@ export function Inspector(p: Props) {
           ))}
         </div>
       </div>
+      {saving === node.id && <SaveToLibrary key={`save-${node.id}`} items={[{ name: suggestName(node), section: wrapForLibrary(node) }]} defaultName={suggestName(node)} />}
       <BlockFields key={node.id} b={node} set={set} p={p} />
       {(node.type === 'heading' || node.type === 'text' || node.type === 'button' || node.type === 'image') && (
         <Segmented

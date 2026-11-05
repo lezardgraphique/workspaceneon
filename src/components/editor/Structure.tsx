@@ -16,9 +16,10 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
-import { withNewIds } from '@/lib/custom-blocks'
+import { fromLibrary } from '@/lib/custom-blocks'
+import { removeBlock } from '@/lib/data'
 import { isLogicBlock } from '@/lib/hubl-render'
-import { useCustomBlocks } from './useCustomBlocks'
+import { refreshCustomBlocks, useCustomBlocks } from './useCustomBlocks'
 import { BLOCK_LABELS, createBlock, createSection } from '@/lib/types'
 import { PRESETS } from '@/lib/presets'
 import type { Block, BlockType, Columns, ModuleTree, Section } from '@/lib/types'
@@ -152,18 +153,41 @@ function AddMenu({ section, cell, depth, p }: { section: Section; cell: number; 
             <>
               <p className="col-span-2 px-2 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-mute/70">Mes blocs</p>
               {custom.map((c) => (
-                <button
-                  key={c.id}
-                  title={c.description || c.name}
-                  onClick={() => {
-                    const block = withNewIds(c.section)
-                    p.commit(insertInCell(p.tree, section.id, cell, block), block.id)
-                    setOpen(false)
-                  }}
-                  className="flex items-center gap-1.5 rounded px-2 py-2.5 text-left text-sm text-[#c9c9de] hover:bg-pink/15 hover:text-white lg:py-1 lg:text-xs"
-                >
-                  <Layers className="size-3 shrink-0 text-pink" /> <span className="truncate">{c.name}</span>
-                </button>
+                <div key={c.id} className="col-span-2 flex items-center gap-1">
+                  <button
+                    title={c.description || c.name}
+                    onClick={() => {
+                      // A saved element comes back as itself; a saved card or section as a card.
+                      const blocks = fromLibrary(c.section)
+                      const next = blocks.reduce((t, b) => insertInCell(t, section.id, cell, b), p.tree)
+                      p.commit(next, blocks[0]?.id ?? null)
+                      setOpen(false)
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-2.5 text-left text-sm text-[#c9c9de] hover:bg-pink/15 hover:text-white lg:py-1 lg:text-xs"
+                  >
+                    <Layers className="size-3 shrink-0 text-pink" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{c.name}</span>
+                      {c.description && <span className="block truncate text-[10px] text-mute">{c.description}</span>}
+                    </span>
+                  </button>
+                  <button
+                    aria-label={`Supprimer « ${c.name} » de Mes blocs`}
+                    title="Supprimer de Mes blocs"
+                    onClick={async () => {
+                      if (!confirm(`Supprimer « ${c.name} » de Mes blocs ? Les modules qui l'utilisent ne changent pas.`)) return
+                      try {
+                        await removeBlock(c.id)
+                        refreshCustomBlocks()
+                      } catch (e) {
+                        alert(e instanceof Error ? e.message : 'Suppression impossible')
+                      }
+                    }}
+                    className="shrink-0 rounded p-1.5 text-mute hover:bg-white/10 hover:text-pink"
+                  >
+                    <Trash2 className="size-3" />
+                  </button>
+                </div>
               ))}
             </>
           )}

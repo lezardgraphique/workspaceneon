@@ -3,7 +3,8 @@ import { useSyncExternalStore } from 'react'
 import type { CustomBlock } from '@/lib/custom-blocks'
 import * as L from '@/lib/local-store'
 import type { ModuleRecord, ModuleTree, Section } from '@/lib/types'
-import { listCustomBlocks, saveCustomBlock } from '@/server/custom-blocks.functions'
+import { deleteCustomBlock, listCustomBlocks, saveCustomBlock } from '@/server/custom-blocks.functions'
+import type { SaveStatus } from '@/server/custom-blocks.functions'
 import { createModule, deleteModule, getModule, listModules, saveModule, syncModule } from '@/server/modules.functions'
 
 // Data layer used by the screens. Online it talks to the server and mirrors
@@ -252,6 +253,35 @@ export async function loadBlocks(): Promise<CustomBlock[]> {
 export async function queueBlock(name: string, description: string, section: Section): Promise<void> {
   await ready()
   await L.putBlock({ id: crypto.randomUUID(), name, description, section, createdAt: now(), pending: true })
+  void refreshPending()
+}
+
+// Saves an element in the library: online right away (no duplicate: same content
+// is reused, same name is updated), otherwise on this device and sent later.
+export async function saveBlock(name: string, description: string, section: Section): Promise<{ status: SaveStatus | 'local'; block?: CustomBlock }> {
+  if (browser() && !isOffline()) {
+    try {
+      const r = await withTimeout(saveCustomBlock({ data: { name, description, section: section as never } }))
+      await ready()
+      await L.putBlock(r.block).catch(() => {})
+      return r
+    } catch (e) {
+      if (!isNetworkError(e)) throw e
+    }
+  }
+  await queueBlock(name, description, section)
+  return { status: 'local' }
+}
+
+// Removes a block from the library (a block not sent yet only exists here).
+export async function removeBlock(id: string): Promise<void> {
+  await ready()
+  const local = (await L.allBlocks().catch(() => [] as L.LocalBlock[])).find((b) => b.id === id)
+  if (!local?.pending) {
+    if (isOffline()) throw new Error('Connexion requise pour supprimer un bloc déjà enregistré.')
+    await deleteCustomBlock({ data: { id } })
+  }
+  await L.dropBlock(id).catch(() => {})
   void refreshPending()
 }
 
