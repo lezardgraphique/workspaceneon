@@ -184,7 +184,7 @@ function blockInner(raw: unknown, depth: number, count: { n: number }): Block | 
     case 'spacer':
       return { ...base, type: 'spacer', height: num(raw.height, 24, 0, 400), ...opt(raw.mobileHeight, 'mobileHeight', 0, 400) }
     case 'raw':
-      return { ...base, type: 'raw', html: sanitizeHtml(str(raw.html, 50_000)) }
+      return { ...base, type: 'raw', html: sanitizeHtml(str(raw.html, 50_000)), ...(raw.cols === 2 || raw.cols === 3 ? { cols: raw.cols } : {}) }
     case 'section':
       return depth < MAX_DEPTH ? section(raw, depth + 1, count) : null
     default:

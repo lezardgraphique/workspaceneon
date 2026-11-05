@@ -1,7 +1,7 @@
 import { collectFields } from './fields'
 import { scopeValue } from './extra-fields'
 import { stripTags } from './sanitize'
-import type { Block, ModuleTree } from './types'
+import type { Block, ModuleTree, Section } from './types'
 
 // HuBL interpreter for previews: evaluates {{ … }}, {% if/elif/else/unless %},
 // {% for %}, {% set %} and the usual filters against sample data, the way the
@@ -35,6 +35,22 @@ const toStr = (v: unknown): string => {
 
 const num = (v: unknown) => (typeof v === 'number' ? v : Number.parseFloat(toStr(v)) || 0)
 
+// Keyword arguments (attribute='x', reverse=true) reach a filter as one trailing object.
+type Kw = { __kw: true } & Record<string, unknown>
+const isKw = (v: unknown): v is Kw => !!v && typeof v === 'object' && (v as Kw).__kw === true
+const splitArgs = (a: unknown[]): [unknown[], Kw] => {
+  const kw = (a.find(isKw) ?? { __kw: true }) as Kw
+  return [a.filter((x) => !isKw(x)), kw]
+}
+// item.a.b (HubSpot attribute paths)
+const attrOf = (o: unknown, path: unknown) => toStr(path).split('.').reduce<unknown>((x, k) => (x && typeof x === 'object' ? (x as Record<string, unknown>)[k] : undefined), o)
+const asList = (v: unknown): unknown[] => (Array.isArray(v) ? v : v && typeof v === 'object' ? Object.values(v as object) : typeof v === 'string' ? v.split('') : [])
+const cmpValues = (x: unknown, y: unknown) => (typeof x === 'number' && typeof y === 'number' ? x - y : toStr(x).localeCompare(toStr(y), 'fr', { sensitivity: 'base' }))
+const runTest = (v: unknown, name: unknown, arg: unknown) => {
+  const t = TESTS[toStr(name) || 'truthy']
+  return t ? t(v, arg) : truthy(v)
+}
+
 const FILTERS: Record<string, (v: unknown, ...a: unknown[]) => unknown> = {
   default: (v, d = '') => (truthy(v) ? v : d),
   d: (v, d = '') => (truthy(v) ? v : d),
@@ -61,7 +77,122 @@ const FILTERS: Record<string, (v: unknown, ...a: unknown[]) => unknown> = {
   first: (v) => (Array.isArray(v) ? v[0] : toStr(v)[0]),
   last: (v) => (Array.isArray(v) ? v.at(-1) : toStr(v).at(-1)),
   reverse: (v) => (Array.isArray(v) ? [...v].reverse() : toStr(v).split('').reverse().join('')),
-  sort: (v) => (Array.isArray(v) ? [...v].sort() : v),
+  // sort(reverse, case_sensitive, attribute) — positional or keywords.
+  sort: (v, ...a) => {
+    if (!Array.isArray(v)) return v
+    const [pos, kw] = splitArgs(a)
+    const reverse = truthy(kw.reverse ?? pos[0])
+    const attr = kw.attribute ?? pos[2]
+    const out = [...v].sort((x, y) => cmpValues(attr ? attrOf(x, attr) : x, attr ? attrOf(y, attr) : y))
+    return reverse ? out.reverse() : out
+  },
+  // [a,b,c,d,e]|batch(2) → [[a,b],[c,d],[e]]
+  batch: (v, n = 1, fill?: unknown) => {
+    const list = asList(v)
+    const size = Math.max(1, Math.trunc(num(n)) || 1)
+    const out: unknown[][] = []
+    for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size))
+    if (fill !== undefined && !isKw(fill) && out.length && out.at(-1)!.length < size) while (out.at(-1)!.length < size) out.at(-1)!.push(fill)
+    return out
+  },
+  // n columns: [a..e]|slice(2) → [[a,b,c],[d,e]]
+  slice: (v, n = 1) => {
+    const list = asList(v)
+    const k = Math.max(1, Math.trunc(num(n)) || 1)
+    const per = Math.floor(list.length / k)
+    const extra = list.length % k
+    const out: unknown[][] = []
+    let at = 0
+    for (let i = 0; i < k; i++) {
+      const len = per + (i < extra ? 1 : 0)
+      out.push(list.slice(at, at + len))
+      at += len
+    }
+    return out
+  },
+  map: (v, ...a) => {
+    const [pos, kw] = splitArgs(a)
+    const list = asList(v)
+    if (kw.attribute !== undefined) return list.map((x) => attrOf(x, kw.attribute) ?? kw.default)
+    const f = FILTERS[toStr(pos[0])]
+    return f ? list.map((x) => f(x, ...pos.slice(1))) : list
+  },
+  selectattr: (v, attr, test?: unknown, arg?: unknown) => asList(v).filter((x) => runTest(attrOf(x, attr), test, arg)),
+  rejectattr: (v, attr, test?: unknown, arg?: unknown) => asList(v).filter((x) => !runTest(attrOf(x, attr), test, arg)),
+  select: (v, test?: unknown, arg?: unknown) => asList(v).filter((x) => runTest(x, test, arg)),
+  reject: (v, test?: unknown, arg?: unknown) => asList(v).filter((x) => !runTest(x, test, arg)),
+  sum: (v, ...a) => {
+    const [pos, kw] = splitArgs(a)
+    const attr = kw.attribute ?? pos[1]
+    return asList(v).reduce<number>((t, x) => t + num(attr ? attrOf(x, attr) : x), num(kw.start ?? pos[0] ?? 0))
+  },
+  min: (v) => asList(v).reduce<unknown>((m, x) => (m === undefined || cmpValues(x, m) < 0 ? x : m), undefined),
+  max: (v) => asList(v).reduce<unknown>((m, x) => (m === undefined || cmpValues(x, m) > 0 ? x : m), undefined),
+  unique: (v, ...a) => {
+    const [pos, kw] = splitArgs(a)
+    const attr = kw.attr ?? kw.attribute ?? pos[0]
+    const seen = new Set<string>()
+    return asList(v).filter((x) => {
+      const k = JSON.stringify(attr ? attrOf(x, attr) : x)
+      return seen.has(k) ? false : (seen.add(k), true)
+    })
+  },
+  attr: (v, name) => attrOf(v, name),
+  dictsort: (v) => Object.entries((v && typeof v === 'object' ? v : {}) as object).sort(([a], [b]) => a.localeCompare(b)),
+  items: (v) => Object.entries((v && typeof v === 'object' ? v : {}) as object),
+  shuffle: (v) => v,
+  random: (v) => (Array.isArray(v) ? v[0] : v),
+  add: (v, x = 0) => num(v) + num(x),
+  minus: (v, x = 0) => num(v) - num(x),
+  multiply: (v, x = 1) => num(v) * num(x),
+  divide: (v, x = 1) => (num(x) ? num(v) / num(x) : 0),
+  divisible: (v, x = 1) => num(x) !== 0 && num(v) % num(x) === 0,
+  log: (v, base = Math.E) => Math.log(num(v)) / Math.log(num(base) || Math.E),
+  root: (v, n = 2) => Math.pow(num(v), 1 / (num(n) || 2)),
+  ceil: (v) => Math.ceil(num(v)),
+  floor: (v) => Math.floor(num(v)),
+  bool: (v) => truthy(v) && !/^(false|0|no|non)$/i.test(toStr(v)),
+  wordcount: (v) => stripTags(toStr(v)).split(/\s+/).filter(Boolean).length,
+  cut: (v, s = '') => toStr(v).split(toStr(s)).join(''),
+  center: (v) => toStr(v),
+  indent: (v) => toStr(v),
+  wordwrap: (v) => v,
+  forceescape: (v) => FILTERS.escape(v),
+  escape_html: (v) => FILTERS.escape(v),
+  escape_attr: (v) => FILTERS.escape(v),
+  escape_url: (v) => encodeURI(toStr(v)),
+  escape_jinjava: (v) => toStr(v).replace(/[{}]/g, ''),
+  escapejs: (v) => toStr(v).replace(/[\\'"\n]/g, (c) => '\\' + (c === '\n' ? 'n' : c)),
+  url_encode: (v) => encodeURIComponent(toStr(v)),
+  tojson: (v) => JSON.stringify(v ?? null),
+  fromjson: (v) => {
+    try {
+      return JSON.parse(toStr(v))
+    } catch {
+      return undefined
+    }
+  },
+  regex_replace: (v, re = '', to = '') => {
+    try {
+      return toStr(v).replace(new RegExp(toStr(re), 'g'), toStr(to))
+    } catch {
+      return toStr(v)
+    }
+  },
+  truncatehtml: (v, n = 255, end = '...') => FILTERS.truncate(stripTags(toStr(v)), n, end),
+  sanitize_html: (v) => v,
+  format_currency_value: (v, locale = 'fr-FR', currency = 'EUR') => {
+    try {
+      return new Intl.NumberFormat(toStr(locale).replace('_', '-') || 'fr-FR', { style: 'currency', currency: toStr(currency) || 'EUR' }).format(num(v))
+    } catch {
+      return num(v).toLocaleString('fr-FR')
+    }
+  },
+  filesizeformat: (v) => {
+    const n = num(v)
+    return n < 1024 ? `${n} octets` : n < 1048576 ? `${(n / 1024).toFixed(1)} Ko` : `${(n / 1048576).toFixed(1)} Mo`
+  },
+  pprint: (v) => (typeof v === 'object' ? JSON.stringify(v) : toStr(v)),
   list: (v) => (Array.isArray(v) ? v : toStr(v).split('')),
   split: (v, sep = ' ') => toStr(v).split(toStr(sep)),
   int: (v) => Math.trunc(num(v)),
@@ -121,6 +252,21 @@ const TESTS: Record<string, (v: unknown, ...a: unknown[]) => boolean> = {
   even: (v) => num(v) % 2 === 0,
   odd: (v) => num(v) % 2 === 1,
   equalto: (v, o) => v === o,
+  sameas: (v, o) => v === o,
+  ne: (v, o) => v !== o,
+  lt: (v, o) => num(v) < num(o),
+  lessthan: (v, o) => num(v) < num(o),
+  le: (v, o) => num(v) <= num(o),
+  gt: (v, o) => num(v) > num(o),
+  greaterthan: (v, o) => num(v) > num(o),
+  ge: (v, o) => num(v) >= num(o),
+  divisibleby: (v, o) => num(o) !== 0 && num(v) % num(o) === 0,
+  within: (v, o) => (Array.isArray(o) ? o.includes(v) : false),
+  lower: (v) => typeof v === 'string' && v === v.toLowerCase(),
+  upper: (v) => typeof v === 'string' && v === v.toUpperCase(),
+  integer: (v) => Number.isInteger(v),
+  float: (v) => typeof v === 'number' && !Number.isInteger(v),
+  boolean: (v) => typeof v === 'boolean',
   eq: (v, o) => v === o,
   string_containing: (v, o) => toStr(v).includes(toStr(o)),
   string_startingwith: (v, o) => toStr(v).startsWith(toStr(o)),
@@ -328,10 +474,17 @@ export function compileExpr(src: string): Fn {
   }
   const list = (close: string): Fn[] => {
     const items: Fn[] = []
+    const kws: [string, Fn][] = []
     while (i < toks.length && !isOp(close)) {
-      items.push(ternary())
+      // name=value (a keyword argument; == stays a comparison)
+      if (toks[i]?.t === 'id' && toks[i + 1]?.t === 'op' && toks[i + 1].v === '=') {
+        const k = toks[i].v
+        i += 2
+        kws.push([k, ternary()])
+      } else items.push(ternary())
       if (!eatOp(',')) break
     }
+    if (kws.length) items.push((s) => Object.fromEntries([['__kw', true], ...kws.map(([k, f]) => [k, f(s)])]))
     eatOp(close)
     return items
   }
@@ -752,14 +905,24 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
               const items: unknown[] = found ?? [{}]
               const names = (f?.[1] ?? 'item').split(',').map((n) => n.trim())
               if (!items.length) out.push(...list(other, sc))
+              const cols = b.type === 'raw' ? b.cols : undefined
+              const grid: Block[][] = []
               items.slice(0, 20).forEach((item, k, arr) => {
                 const child: Scope = Object.create(sc)
                 const vals = names.length > 1 && Array.isArray(item) ? item : [item]
                 names.forEach((n, j) => (child[n] = vals[j] ?? {}))
                 child.loop = { index: k + 1, index0: k, first: k === 0, last: k === arr.length - 1, length: arr.length }
                 const res = list(body, child)
-                out.push(...(k === 0 ? res : res.map((x) => suffixIds(x, `${b.id}.${k}`))))
+                const placed = k === 0 ? res : res.map((x) => suffixIds(x, `${b.id}.${k}`))
+                if (cols) grid.push(placed)
+                else out.push(...placed)
               })
+              // Items laid out side by side: rows of `cols` columns.
+              for (let r = 0; r < grid.length; r += cols ?? 1) {
+                const row = grid.slice(r, r + cols!)
+                while (row.length < cols!) row.push([])
+                out.push({ id: `${b.id}~row${r}`, type: 'section', columns: cols!, behavior: 'stack', bg: 'transparent', padding: 0, padX: 12, radius: 0, mt: 0, mb: 0, cells: row })
+              }
             }
             i = end
             break
@@ -802,5 +965,11 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
     }
   }
 
-  return { ...tree, sections: tree.sections.map((s) => ({ ...s, bg: text(s.bg, scope), ...(s.css ? { css: text(s.css, scope) } : {}), cells: s.cells.map((c) => list(c, scope)) })) }
+  // A section holding only logic ({% set %} lines…) shows nothing: it is left out
+  // of the preview instead of leaving an empty band.
+  const onlyLogic = (s: Section) => s.cells.every((c) => c.length > 0 && c.every((b) => isLogicBlock(b)))
+  return {
+    ...tree,
+    sections: tree.sections.map((s) => ({ ...s, bg: text(s.bg, scope), ...(s.css ? { css: text(s.css, scope) } : {}), cells: s.cells.map((c) => list(c, scope)) })).filter((_s, i) => !onlyLogic(tree.sections[i]) || tree.sections[i].id === keepId),
+  }
 }

@@ -146,6 +146,8 @@ export interface RawBlock {
   id: string
   type: 'raw'
   html: string
+  /** On a `{% for %}` line: the repeated content is laid out side by side in that many columns (stacked on phones). */
+  cols?: 2 | 3
 }
 
 export type Columns = 1 | 2 | 3

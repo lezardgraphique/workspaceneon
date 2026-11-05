@@ -299,7 +299,8 @@ function SectionView({ s, font, nested, ...p }: { s: Section; font: string; nest
                 padding: `${stacked && i > 0 ? 0 : padY}px ${right}px ${padY}px ${left}px`,
               }}
             >
-              {cell.length === 0 && (
+              {/* A loop grid's last row may end early: its spare cells stay blank. */}
+              {cell.length === 0 && !s.id.includes('~row') && (
                 <div className="rounded border border-dashed border-[#c8c8dc] p-3 text-center text-xs text-[#8a8aa8]">
                   Colonne vide
                 </div>

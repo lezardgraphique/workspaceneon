@@ -13,7 +13,7 @@ import { normalizeHubl, withLegacySpecs } from './hubl-legacy'
 import { classAttr, columnWidths, dividerLine, headingLine, headingWeight, hideClass, hideStyle, marginCss, responsiveCss, safeBgImage, sectionPad, spacingAttrs, spacingOf, spacingParse, textLine } from './look'
 import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight, buttonWidth, msoCell, msoOnly, notMso, vmlShape } from './vml'
 import { uid } from './types'
-import type { Align, Behavior, Block, Columns, ExtraField, FieldDef, ModuleTree, Section } from './types'
+import type { Align, Behavior, Block, Columns, ExtraField, FieldDef, ModuleTree, RawBlock, Section } from './types'
 
 // ---------------------------------------------------------------------------
 // Bidirectional sync format
@@ -76,6 +76,8 @@ class Ctx {
       field: b.field.name,
       label: b.field.label,
       ...(b.field.textName ? { 'field-text': b.field.textName } : {}),
+      // The exact imported definition (fields.json) survives code edits.
+      ...(b.field.specs && Object.keys(b.field.specs).length ? { 'field-specs': JSON.stringify(b.field.specs) } : {}),
       ...(b.field.linkName ? { 'field-link': b.field.linkName } : {}),
     }
   }
@@ -168,10 +170,36 @@ ${p}</div>`
     case 'spacer':
       return `${p}<div${ctx.attrs({ neon: 'spacer', height: b.height, ...(b.mobileHeight != null ? { 'mobile-height': b.mobileHeight } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide), b.mobileHeight != null ? `neon-mh-${b.mobileHeight}` : '')} style="${hideStyle(b.hide)}${b.mt != null || b.mb != null ? marginCss(sp.t, sp.b) : ''}height:${b.height}px;line-height:${b.height}px;font-size:0;${b.outlook?.h != null ? `mso-line-height-alt:${b.outlook.h}px;mso-line-height-rule:exactly;` : ''}${olStyle(b.outlook)}">&nbsp;</div>`
     case 'raw':
-      return ctx.mode === 'hubspot' ? `${p}${b.html}` : `${p}<div data-neon="raw">${b.html}</div>`
+      return ctx.mode === 'hubspot' ? `${p}${b.html}` : `${p}<div data-neon="raw"${b.cols ? ` data-cols="${b.cols}"` : ''}>${b.html}</div>`
     case 'section':
       return renderSection(b, ctx, d, font, true, avail)
   }
+}
+
+// A column's blocks. In the exported module, a `{% for %}` set to N columns opens a
+// table row whose cells the loop writes (side by side, stacked on phones).
+function renderCell(cell: Block[], ctx: Ctx, d: number, font: string, avail: number): string {
+  const p = pad(d)
+  const open: (number | null)[] = []
+  let width = avail
+  return cell
+    .map((b) => {
+      const st = b.type === 'raw' ? /^\s*\{%-?\s*(for|endfor)\b/.exec(b.html)?.[1] : undefined
+      if (st === 'for') open.push(b.type === 'raw' && b.cols && ctx.mode === 'hubspot' ? b.cols : null)
+      if (b.type === 'raw' && st === 'for' && b.cols && ctx.mode === 'hubspot') {
+        width = Math.max(40, avail / b.cols - 12)
+        return `${p}<table role="presentation" class="neon-stack" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${b.html}<td class="neon-col" width="${Math.floor(100 / b.cols)}%" valign="top" style="padding:0 6px;">`
+      }
+      if (st === 'endfor') {
+        const cols = open.pop()
+        if (cols) {
+          width = avail
+          return `${p}</td>${(b as { html: string }).html}</tr></table>`
+        }
+      }
+      return renderBlock(b, ctx, d, font, width)
+    })
+    .join('\n')
 }
 
 function renderSection(s: Section, ctx: Ctx, d: number, font: string, nested: boolean, avail: number): string {
@@ -185,7 +213,7 @@ function renderSection(s: Section, ctx: Ctx, d: number, font: string, nested: bo
       const right = i === s.cells.length - 1 ? padX : padX / 2
       // Equal columns keep the historical computation (same pixel widths as before).
       const inner = s.columns === 2 && s.ratio && s.ratio !== 50 ? Math.max(40, (avail * widths[i]) / 100 - left - right) : Math.max(40, (avail - padX * (s.columns + 1)) / s.columns)
-      const blocks = cell.map((b) => renderBlock(b, ctx, d + 3, font, inner)).join('\n')
+      const blocks = renderCell(cell, ctx, d + 3, font, inner)
       const op = s.outlook?.pad
       const msoPad = op != null ? `mso-padding-alt:${op}px ${i === s.cells.length - 1 ? op : op / 2}px ${op}px ${i === 0 ? op : op / 2}px;` : ''
       return `${p}    <td${ctx.attrs({ neon: 'column' })} class="neon-col" width="${widths[i]}%" valign="${s.valign ?? 'top'}" style="padding:${padY}px ${right}px ${padY}px ${left}px;${msoPad}">
@@ -335,7 +363,8 @@ const optNum = (v: string | null, key: string, min: number, max: number, round =
   const n = Math.min(max, Math.max(min, Number(v)))
   return { [key]: round ? Math.round(n) : Math.round(n * 100) / 100 }
 }
-const asColor = (v: string | null, def: string) => (v && /^#[0-9a-f]{3,8}$|^[a-z]+$|^rgba?\(/i.test(v.trim()) ? v.trim() : def)
+// A colour may be a module variable ({{ module.style.fond.color }}): kept, interpreted by the preview.
+const asColor = (v: string | null, def: string) => (v && (/^#[0-9a-f]{3,8}$|^[a-z]+$|^rgba?\(/i.test(v.trim()) || /^\{\{[^"'<>;{}]*\}\}$/.test(v.trim())) ? v.trim() : def)
 
 // Strip anything executable before content reaches the live preview.
 function sanitize(root: ParentNode) {
@@ -356,6 +385,19 @@ function parseBlock(el: Element): Block | null {
   return { ...b, ...fixed, ...spacingParse((k) => el.getAttribute(`data-${k}`)), ...olParse(el.getAttribute('data-ol')) }
 }
 
+// data-field-specs: { name: { type, label, … } } (validated again by sanitizeTree on save).
+function fieldSpecs(raw: string | null): Pick<FieldDef, 'specs'> {
+  if (!raw) return {}
+  try {
+    const v = JSON.parse(raw)
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
+    const specs = Object.fromEntries(Object.entries(v).filter(([k, x]) => /^[A-Za-z_]\w{0,59}$/.test(k) && x && typeof x === 'object' && !Array.isArray(x)).slice(0, 4))
+    return Object.keys(specs).length ? { specs: specs as FieldDef['specs'] } : {}
+  } catch {
+    return {}
+  }
+}
+
 function parseBlockInner(el: Element): Block | null {
   const kind = el.getAttribute('data-neon')
   const g = (k: string) => el.getAttribute(`data-${k}`)
@@ -370,6 +412,7 @@ function parseBlockInner(el: Element): Block | null {
           label: g('label')?.trim() ?? '',
           ...(textName ? { textName } : {}),
           ...(linkName ? { linkName } : {}),
+          ...fieldSpecs(g('field-specs')),
         },
       }
     : {}
@@ -449,8 +492,10 @@ function parseBlockInner(el: Element): Block | null {
       }
     case 'spacer':
       return { id, type: 'spacer', height: asNum(g('height'), 24, 0, 400), ...optNum(g('mobile-height'), 'mobileHeight', 0, 400) }
-    case 'raw':
-      return { id, type: 'raw', html: strictHtml(el.innerHTML.trim()) }
+    case 'raw': {
+      const cols = Number(el.getAttribute('data-cols'))
+      return { id, type: 'raw', html: strictHtml(el.innerHTML.trim()), ...(cols === 2 || cols === 3 ? { cols: cols as 2 | 3 } : {}) }
+    }
     case 'section':
       return parseSection(el)
     default:
@@ -647,6 +692,37 @@ const isButtonLink = (el: Element) =>
 const hasBlockChild = (el: Element): boolean =>
   Array.from(el.children).some((c) => !INLINE.has(c.tagName) || isButtonLink(c) || hasBlockChild(c))
 
+// Only inline content (small pictos count as inline, like the CPF logo before a price).
+const smallImg = (el: Element) => el.tagName === 'IMG' && (px(el.getAttribute('width')) ?? px(css(el)?.width) ?? 999) <= 80
+const inlineOnly = (el: Element): boolean => Array.from(el.children).every((c) => (INLINE.has(c.tagName) && !isButtonLink(c) && inlineOnly(c)) || smallImg(c))
+// HuBL logic written inside a paragraph ({% for i in range(5) %}★{% endfor %},
+// {% if x %}<img>{% endif %}), opened and closed there: the paragraph stays one
+// text block with its logic instead of being cut into pieces.
+function inlineLogic(el: Element): boolean {
+  const st = (el.innerHTML.match(/\{%-?\s*(\w+)/g) ?? []).map((m) => m.replace(/^\{%-?\s*/, ''))
+  if (!st.length) return false
+  let depth = 0
+  for (const s of st) {
+    if (/^(if|for|unless)$/.test(s)) depth++
+    else if (/^(endif|endfor|endunless)$/.test(s)) depth--
+    if (depth < 0) return false
+  }
+  return depth === 0 && st.some((s) => /^(if|for|unless)$/.test(s))
+}
+
+// Background of the cell a link sits in (bulletproof buttons colour the cell, not the link).
+function cellBg(a: Element): string | undefined {
+  let p = a.parentElement
+  for (let i = 0; p && i < 3; i++, p = p.parentElement) {
+    const attr = p.getAttribute('bgcolor')
+    if (attr) return toHex(attr) ?? (/^\s*\{\{[^}]+\}\}\s*$/.test(attr) ? attr.trim() : undefined)
+    const bg = bgOf(p)
+    if (bg) return bg
+    if (p.tagName === 'TABLE') break
+  }
+  return undefined
+}
+
 const rawBlock = (html: string): Block => ({ id: uid(), type: 'raw', html: strictHtml(html.trim()) })
 
 const textBlock = (html: string, s: Inherit): Block => ({
@@ -662,7 +738,12 @@ function makeSection(cells: Block[][], bg: string, padding: number, radius = 0, 
   const kept = cells.slice(0, 3)
   if (cells.length > 3) kept[2] = [...kept[2], ...cells.slice(3).flat()]
   const extra = from ? hublStyle(from) : ''
-  return { id: uid(), type: 'section', columns: kept.length as Columns, behavior: 'stack', bg, padding, radius, ...(extra ? { css: extra } : {}), cells: kept }
+  // A plain border of the box (border:1px solid #e0e0e0) is the card's.
+  const st = from ? css(from) : undefined
+  const bw = px(st?.borderTopWidth) ?? px(st?.borderWidth)
+  const bc = toHex(st?.borderTopColor) ?? toHex(st?.borderColor)
+  const border = bw && bw > 0 && bw <= 10 && (st?.borderTopStyle || st?.borderStyle || 'solid') !== 'none' ? { borderWidth: bw, ...(bc ? { borderColor: bc } : {}) } : {}
+  return { id: uid(), type: 'section', columns: kept.length as Columns, behavior: 'stack', bg, padding, radius, ...border, ...(extra ? { css: extra } : {}), cells: kept }
 }
 
 // Style declarations driven by the module's fields ({{ module.spacing.css }},
@@ -692,7 +773,7 @@ function imageBlock(img: Element, s: Inherit): Block {
 }
 
 function buttonBlock(a: Element, s: Inherit): Block {
-  const bg = toHex(css(a)?.backgroundColor)
+  const bg = toHex(css(a)?.backgroundColor) ?? tokenStyle(a, ['background-color', 'background']) ?? cellBg(a)
   return {
     id: uid(),
     type: 'button',
@@ -757,6 +838,14 @@ function convertTable(table: Element, inh: Inherit): Block[] {
   if (rows.some((tr) => tr.querySelector(':scope > th'))) return [rawBlock(table.outerHTML)]
   const ts = styleOf(table, inh)
   const out: Block[] = []
+  const tableBg = bgOf(table)
+  // A card without padding of its own (image flush to the edges, text in a padded cell).
+  const flushCard = !!tableBg && !px(css(table)?.paddingTop) && !px(css(table)?.padding)
+  // A shrink-wrapped table (a bulletproof button): its cell's align centres the
+  // label inside the box, not the box in the column.
+  const tableW = table.getAttribute('width') ?? css(table)?.width ?? ''
+  const shrink = !/^\s*100%|^\s*[3-9]\d\dpx?$|^\s*[3-9]\d\d$/.test(tableW)
+  const shrinkStyle = (td: Element): Inherit => ({ ...styleOf(td, ts), align: (ALIGNS.includes(table.getAttribute('align') as Align) ? (table.getAttribute('align') as Align) : inh.align) })
   // Rows in order, with the HuBL written between them ({% for %} around a row,
   // {% if %} around a few rows…), which becomes logic blocks at the same place.
   const items: (Element | Text)[] = []
@@ -772,22 +861,47 @@ function convertTable(table: Element, inh: Inherit): Block[] {
     if (item.nodeType !== Node.ELEMENT_NODE || (item as Element).tagName !== 'TR') continue
     const tr = item as Element
     const rs = styleOf(tr, ts)
+    // Cells written by a loop ({% for c in row %}<td>…</td>{% endfor %}) or wrapped
+    // in a condition: the logic stays around the cell's content, in order.
+    if (Array.from(tr.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && /\{%/.test(n.textContent ?? ''))) {
+      // {% for %}<td>…</td>{% endfor %}: the items sit side by side, as many as the cell width allows.
+      const tds = Array.from(tr.children).filter((c) => c.tagName === 'TD')
+      const width = tds.length === 1 ? Number.parseFloat(tds[0].getAttribute('width') ?? css(tds[0])?.width ?? '') : NaN
+      const loopCols: 2 | 3 | undefined = tds.length === 1 && /%/.test(tds[0].getAttribute('width') ?? css(tds[0])?.width ?? '') && width <= 50 ? (width <= 34 ? 3 : 2) : undefined
+      for (const n of Array.from(tr.childNodes)) {
+        if (n.nodeType === Node.TEXT_NODE) {
+          for (const st of (n.textContent ?? '').match(/\{%[\s\S]*?%\}/g) ?? []) {
+            const b = rawBlock(st) as RawBlock
+            out.push(loopCols && /^\{%-?\s*for\b/.test(st) ? { ...b, cols: loopCols } : b)
+          }
+          continue
+        }
+        const td = n as Element
+        if (n.nodeType !== Node.ELEMENT_NODE || td.tagName !== 'TD') continue
+        const blocks = convertNodes(td.childNodes, td.querySelector(':scope > table') ? rs : styleOf(td, rs))
+        if (!blocks.length) continue
+        const bg = bgOf(td)
+        out.push(...(bg || hublStyle(td) ? [makeSection([blocks], bg ?? 'transparent', px(css(td)?.paddingTop) ?? 16, 0, td)] : blocks))
+      }
+      continue
+    }
     const cells = Array.from(tr.children)
       .filter((td) => td.tagName === 'TD')
       // A cell's align="center" around a nested table centres the table, not its text.
-      .map((td) => ({ td, blocks: convertNodes(td.childNodes, td.querySelector(':scope > table') ? rs : styleOf(td, rs)) }))
+      .map((td) => ({ td, blocks: convertNodes(td.childNodes, td.querySelector(':scope > table') ? rs : shrink && tr.children.length === 1 ? shrinkStyle(td) : styleOf(td, rs)) }))
       .filter((c) => c.blocks.length) // drop empty gutter cells
     if (cells.length === 1) {
       const { td, blocks } = cells[0]
       const bg = bgOf(td)
-      out.push(...(bg || hublStyle(td) ? [makeSection([blocks], bg ?? 'transparent', px(css(td)?.paddingTop) ?? 16, 0, td)] : blocks))
+      const tdPad = px(css(td)?.paddingTop) ?? px(css(td)?.padding)
+      out.push(...(bg || hublStyle(td) ? [makeSection([blocks], bg ?? 'transparent', tdPad ?? 16, 0, td)] : flushCard && tdPad ? [makeSection([blocks], 'transparent', tdPad, 0)] : blocks))
     } else if (cells.length > 1) {
       const bg = bgOf(tr) ?? bgOf(cells[0].td) ?? 'transparent'
       out.push(makeSection(cells.map((c) => c.blocks), bg, px(css(cells[0].td)?.paddingTop) ?? 8))
     }
   }
-  const bg = bgOf(table)
-  if ((bg || hublStyle(table)) && out.length) return [makeSection([out], bg ?? 'transparent', 16, px(css(table)?.borderRadius) ?? 0, table)]
+  const bg = tableBg
+  if ((bg || hublStyle(table)) && out.length) return [makeSection([out], bg ?? 'transparent', flushCard ? 0 : 16, px(css(table)?.borderRadius) ?? 0, table)]
   return out
 }
 
@@ -832,7 +946,15 @@ function convertElement(el: Element, inh: Inherit): Block[] {
       const h = px(css(el)?.height) ?? px(el.getAttribute('height'))
       return h ? [{ id: uid(), type: 'spacer', height: Math.min(400, h) }] : []
     }
-    const blocks = convertNodes(el.childNodes, s)
+    // A paragraph in capitals (text-transform) keeps them.
+    const tt = css(el)?.textTransform
+    const inner = (h: string) => (tt === 'uppercase' || tt === 'lowercase' || tt === 'capitalize' ? `<span style="text-transform:${tt}">${h}</span>` : h)
+    const blocks =
+      inlineOnly(el) && inlineLogic(el)
+        ? [textBlock(inner(el.innerHTML), s)]
+        : tt && /^(uppercase|lowercase|capitalize)$/.test(tt) && inlineOnly(el)
+          ? [textBlock(inner(el.innerHTML), s)]
+          : convertNodes(el.childNodes, s)
     // A box with its own background becomes a card.
     const bg = tag !== 'BODY' ? bgOf(el) : undefined
     return bg && blocks.length
