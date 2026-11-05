@@ -33,6 +33,7 @@ export function AccountMenu() {
       rememberUser(null)
       await wipeLocal()
       navigator.serviceWorker?.controller?.postMessage('clear')
+      navigator.serviceWorker?.controller?.postMessage('widgets')
       // Full navigation: the server must see the cleared cookie.
       window.location.replace('/connexion')
     }

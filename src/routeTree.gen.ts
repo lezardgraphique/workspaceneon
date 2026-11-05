@@ -19,6 +19,7 @@ import { Route as ApiFilesRouteImport } from './routes/api.files'
 import { Route as ApiGenerateRouteImport } from './routes/api.generate'
 import { Route as ApiImagesRouteImport } from './routes/api.images'
 import { Route as ApiMailyRouteImport } from './routes/api.maily'
+import { Route as ApiWidgetRouteImport } from './routes/api.widget'
 import { Route as EditorModuleIdRouteImport } from './routes/editor.$moduleId'
 import { Route as ApiFilesKeyRouteImport } from './routes/api.files_.$key'
 import { Route as ApiImagesKeyRouteImport } from './routes/api.images_.$key'
@@ -73,6 +74,11 @@ const ApiMailyRoute = ApiMailyRouteImport.update({
   path: '/api/maily',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWidgetRoute = ApiWidgetRouteImport.update({
+  id: '/api/widget',
+  path: '/api/widget',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EditorModuleIdRoute = EditorModuleIdRouteImport.update({
   id: '/editor/$moduleId',
   path: '/editor/$moduleId',
@@ -100,6 +106,7 @@ export interface FileRoutesByFullPath {
   '/api/generate': typeof ApiGenerateRoute
   '/api/images': typeof ApiImagesRoute
   '/api/maily': typeof ApiMailyRoute
+  '/api/widget': typeof ApiWidgetRoute
   '/editor/$moduleId': typeof EditorModuleIdRoute
   '/api/files/$key': typeof ApiFilesKeyRoute
   '/api/images/$key': typeof ApiImagesKeyRoute
@@ -115,6 +122,7 @@ export interface FileRoutesByTo {
   '/api/generate': typeof ApiGenerateRoute
   '/api/images': typeof ApiImagesRoute
   '/api/maily': typeof ApiMailyRoute
+  '/api/widget': typeof ApiWidgetRoute
   '/editor/$moduleId': typeof EditorModuleIdRoute
   '/api/files/$key': typeof ApiFilesKeyRoute
   '/api/images/$key': typeof ApiImagesKeyRoute
@@ -131,6 +139,7 @@ export interface FileRoutesById {
   '/api/generate': typeof ApiGenerateRoute
   '/api/images': typeof ApiImagesRoute
   '/api/maily': typeof ApiMailyRoute
+  '/api/widget': typeof ApiWidgetRoute
   '/editor/$moduleId': typeof EditorModuleIdRoute
   '/api/files_/$key': typeof ApiFilesKeyRoute
   '/api/images_/$key': typeof ApiImagesKeyRoute
@@ -148,6 +157,7 @@ export interface FileRouteTypes {
     | '/api/generate'
     | '/api/images'
     | '/api/maily'
+    | '/api/widget'
     | '/editor/$moduleId'
     | '/api/files/$key'
     | '/api/images/$key'
@@ -163,6 +173,7 @@ export interface FileRouteTypes {
     | '/api/generate'
     | '/api/images'
     | '/api/maily'
+    | '/api/widget'
     | '/editor/$moduleId'
     | '/api/files/$key'
     | '/api/images/$key'
@@ -178,6 +189,7 @@ export interface FileRouteTypes {
     | '/api/generate'
     | '/api/images'
     | '/api/maily'
+    | '/api/widget'
     | '/editor/$moduleId'
     | '/api/files_/$key'
     | '/api/images_/$key'
@@ -194,6 +206,7 @@ export interface RootRouteChildren {
   ApiGenerateRoute: typeof ApiGenerateRoute
   ApiImagesRoute: typeof ApiImagesRoute
   ApiMailyRoute: typeof ApiMailyRoute
+  ApiWidgetRoute: typeof ApiWidgetRoute
   EditorModuleIdRoute: typeof EditorModuleIdRoute
   ApiFilesKeyRoute: typeof ApiFilesKeyRoute
   ApiImagesKeyRoute: typeof ApiImagesKeyRoute
@@ -271,6 +284,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMailyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/widget': {
+      id: '/api/widget'
+      path: '/api/widget'
+      fullPath: '/api/widget'
+      preLoaderRoute: typeof ApiWidgetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/editor/$moduleId': {
       id: '/editor/$moduleId'
       path: '/editor/$moduleId'
@@ -306,6 +326,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGenerateRoute: ApiGenerateRoute,
   ApiImagesRoute: ApiImagesRoute,
   ApiMailyRoute: ApiMailyRoute,
+  ApiWidgetRoute: ApiWidgetRoute,
   EditorModuleIdRoute: EditorModuleIdRoute,
   ApiFilesKeyRoute: ApiFilesKeyRoute,
   ApiImagesKeyRoute: ApiImagesKeyRoute,

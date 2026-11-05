@@ -61,6 +61,53 @@ self.addEventListener('message', (event) => {
   }
 })
 
+// Home-screen widget (Windows 11 widgets board, declared in the manifest): an
+// Adaptive Card filled with /api/widget (last modules), refreshed in the background.
+async function renderWidget(widget) {
+  try {
+    const def = widget.definition
+    const [template, data] = await Promise.all([
+      fetch(def.msAcTemplate).then((r) => r.text()),
+      fetch(def.data, { credentials: 'same-origin', cache: 'no-store' }).then((r) => r.text()),
+    ])
+    await self.widgets.updateByTag(def.tag, { template, data })
+  } catch (e) {
+    /* offline: the widget keeps its last content */
+  }
+}
+
+async function refreshWidgets(tag) {
+  if (!self.widgets) return
+  const list = tag ? [await self.widgets.getByTag(tag)] : await self.widgets.matchAll({ installable: true })
+  await Promise.all(list.filter((w) => w && w.instances && w.instances.length).map(renderWidget))
+}
+
+self.addEventListener('widgetinstall', (event) => {
+  event.waitUntil(
+    (async () => {
+      await renderWidget(event.widget)
+      const tag = event.widget.definition.tag
+      if (self.registration.periodicSync) {
+        const tags = await self.registration.periodicSync.getTags()
+        if (!tags.includes(tag)) await self.registration.periodicSync.register(tag, { minInterval: (event.widget.definition.update || 1800) * 1000 }).catch(() => {})
+      }
+    })(),
+  )
+})
+self.addEventListener('widgetresume', (event) => event.waitUntil(renderWidget(event.widget)))
+self.addEventListener('widgetuninstall', (event) => {
+  event.waitUntil(
+    (async () => {
+      if (event.widget.instances.length <= 1 && self.registration.periodicSync) await self.registration.periodicSync.unregister(event.widget.definition.tag).catch(() => {})
+    })(),
+  )
+})
+self.addEventListener('periodicsync', (event) => event.waitUntil(refreshWidgets(event.tag)))
+// The app tells the worker when the modules change (saved, created, deleted) or the account changes.
+self.addEventListener('message', (event) => {
+  if (event.data === 'widgets') event.waitUntil(refreshWidgets())
+})
+
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com']
 
 self.addEventListener('fetch', (event) => {

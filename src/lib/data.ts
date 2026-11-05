@@ -166,6 +166,19 @@ export async function loadModule(id: string): Promise<ModuleRecord | null> {
 }
 
 // Instant local write first, then a push when the connection allows it.
+// The home-screen widget (service worker) reloads the module list: at once after
+// a creation or a deletion, at most every 30 s while a module is being saved.
+let lastPing = 0
+export function pingWidgets(force = false) {
+  if (!browser() || (!force && Date.now() - lastPing < 30_000)) return
+  lastPing = Date.now()
+  try {
+    navigator.serviceWorker?.controller?.postMessage('widgets')
+  } catch {
+    /* no worker (development, private window): nothing to refresh */
+  }
+}
+
 export async function persistModule(id: string, name: string, tree: ModuleTree): Promise<{ state: 'saved' | 'local' | 'conflict'; copyId?: string }> {
   if (!browser()) {
     await saveModule({ data: { id, name, tree } })
@@ -184,6 +197,7 @@ export async function persistModule(id: string, name: string, tree: ModuleTree):
   void refreshPending()
   if (isOffline()) return { state: 'local' }
   const res = await syncAll()
+  pingWidgets()
   const copy = res.conflicts.find((c) => c.id === id)
   if (copy) return { state: 'conflict', copyId: copy.copyId }
   const after = await L.getLocalModule(id).catch(() => undefined)
@@ -197,6 +211,7 @@ export async function createLocalFirst(name: string, tree: ModuleTree): Promise<
     try {
       const rec = await withTimeout(createModule({ data: { name, tree } }))
       await L.putModule({ ...rec, base: rec.updatedAt, dirty: false }).catch(() => {})
+      pingWidgets(true)
       return rec
     } catch (e) {
       if (!isNetworkError(e)) throw e
@@ -220,6 +235,7 @@ export async function removeModule(id: string): Promise<void> {
     try {
       await withTimeout(deleteModule({ data: { id } }))
       await L.dropModule(id).catch(() => {})
+      pingWidgets(true)
       return
     } catch (e) {
       if (!isNetworkError(e)) throw e

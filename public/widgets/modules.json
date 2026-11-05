@@ -1,0 +1,37 @@
+{
+  "type": "AdaptiveCard",
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.5",
+  "body": [
+    {
+      "type": "ColumnSet",
+      "columns": [
+        { "type": "Column", "width": "stretch", "items": [
+          { "type": "TextBlock", "text": "Neon Sandbox Pro", "weight": "Bolder", "size": "Medium", "wrap": true },
+          { "type": "TextBlock", "text": "${if(signedIn, countLabel, 'Connecte-toi pour voir tes modules')}", "isSubtle": true, "spacing": "None", "wrap": true }
+        ] }
+      ]
+    },
+    {
+      "type": "Container",
+      "spacing": "Medium",
+      "$when": "${signedIn}",
+      "items": [
+        {
+          "type": "Container",
+          "$data": "${modules}",
+          "selectAction": { "type": "Action.OpenUrl", "url": "${url}" },
+          "spacing": "Small",
+          "items": [
+            { "type": "TextBlock", "text": "${name}", "weight": "Bolder", "wrap": false },
+            { "type": "TextBlock", "text": "${updated}", "isSubtle": true, "size": "Small", "spacing": "None" }
+          ]
+        }
+      ]
+    }
+  ],
+  "actions": [
+    { "type": "Action.OpenUrl", "title": "Nouveau module", "url": "${newUrl}" },
+    { "type": "Action.OpenUrl", "title": "${if(signedIn, 'Mes modules', 'Se connecter')}", "url": "${homeUrl}" }
+  ]
+}

@@ -53,6 +53,14 @@ function Library() {
     }
   }
 
+  // « Nouveau module » from the home-screen widget or the app icon's shortcut menu.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    if (q.get('action') !== 'nouveau') return
+    window.history.replaceState(null, '', '/')
+    void start('blank')
+  }, [])
+
   const remove = async (id: string, name: string) => {
     if (!confirm(`Supprimer « ${name} » ? Cette action est définitive.`)) return
     setBusy(id)
