@@ -271,6 +271,7 @@ function extraField(raw: unknown, depth = 0): ExtraField | null {
   if (typeof raw.hsType === 'string' && /^[a-z_]{2,30}$/.test(raw.hsType)) out.hsType = raw.hsType
   if (raw.repeater === true) out.repeater = true
   if (raw.keep === true) out.keep = true
+  if (raw.noDefault === true) out.noDefault = true
   const spec = specObj(raw.spec)
   if (spec) out.spec = spec
   // Simple values are checked by type; groups, lists and HubSpot-only types as bounded JSON.

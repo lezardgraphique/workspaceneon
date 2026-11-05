@@ -664,7 +664,8 @@ function tokenStyle(el: Element, props: string[]): string | undefined {
     if (v && COLOR_TOKEN.test(v)) return v
   }
 }
-const bgOf = (el: Element) => toHex(css(el)?.backgroundColor) ?? toHex(el.getAttribute('bgcolor')) ?? tokenStyle(el, ['background-color', 'background'])
+const bgOf = (el: Element) =>
+  toHex(css(el)?.backgroundColor) ?? toHex(el.getAttribute('bgcolor')) ?? tokenStyle(el, ['background-color', 'background']) ?? (COLOR_TOKEN.test(el.getAttribute('bgcolor')?.trim() ?? '') ? el.getAttribute('bgcolor')!.trim() : undefined)
 const isBlank = (html: string) => {
   let text = ''
   const parser = new Parser({ ontext: (value) => (text += value) }, { decodeEntities: true })
@@ -751,12 +752,13 @@ function makeSection(cells: Block[][], bg: string, padding: number, radius = 0, 
 // uses them. The background colour is already the section's.
 function hublStyle(el: Element): string {
   const style = el.getAttribute('style') ?? ''
-  if (!/\{[{%]/.test(style)) return ''
-  return style
-    .split(/;(?![^{]*\}\})/)
+  const decls = style
+    .split(/;(?![^{]*\}\})(?![^(]*\))/)
     .map((d) => d.trim())
-    .filter((d) => /\{[{%]/.test(d) && !/^background(-color)?\s*:/i.test(d))
-    .join(';')
+  // A card's shadow has no setting of its own: kept as is.
+  const shadow = decls.filter((d) => /^box-shadow\s*:/i.test(d) && !/[<>{}]/.test(d))
+  if (!/\{[{%]/.test(style)) return shadow.join(';')
+  return [...decls.filter((d) => /\{[{%]/.test(d) && !/^background(-color)?\s*:/i.test(d)), ...shadow].join(';')
 }
 
 function imageBlock(img: Element, s: Inherit): Block {
@@ -792,7 +794,7 @@ function splitHubl(text: string, push: (b: Block) => void, addInline: (html: str
     if (/^\{%/.test(part)) {
       flush()
       push(rawBlock(part))
-    } else addInline(esc(part.replace(/\s+/g, ' ')))
+    } else addInline(escKeep(part.replace(/\s+/g, ' ')))
   }
 }
 
@@ -845,6 +847,18 @@ function convertTable(table: Element, inh: Inherit): Block[] {
   // label inside the box, not the box in the column.
   const tableW = table.getAttribute('width') ?? css(table)?.width ?? ''
   const shrink = !/^\s*100%|^\s*[3-9]\d\dpx?$|^\s*[3-9]\d\d$/.test(tableW)
+  // A small shrink-wrapped row (stars image + "5/5") reads as one line of text.
+  if (shrink && rows.length === 1 && !table.querySelector('table')) {
+    const tds = Array.from(rows[0].children).filter((c) => c.tagName === 'TD')
+    if (tds.length > 1 && tds.every((td) => inlineOnly(td) && !td.querySelector('a[style*="background"]'))) {
+      const parts = tds.map((td) => {
+        const st = (td.getAttribute('style') ?? '').replace(/padding[^;]*;?/gi, '').trim()
+        const html = td.innerHTML.replace(/(<img\b[^>]*style=")([^"]*)"/gi, (_m, a: string, s: string) => `${a}${s.replace(/display\s*:\s*block;?/i, '')};vertical-align:middle"`)
+        return st ? `<span style="${st}">${html}</span>` : html
+      })
+      return [textBlock(parts.join(' '), styleOf(tds[0], ts))]
+    }
+  }
   const shrinkStyle = (td: Element): Inherit => ({ ...styleOf(td, ts), align: (ALIGNS.includes(table.getAttribute('align') as Align) ? (table.getAttribute('align') as Align) : inh.align) })
   // Rows in order, with the HuBL written between them ({% for %} around a row,
   // {% if %} around a few rows…), which becomes logic blocks at the same place.
@@ -943,18 +957,43 @@ function convertElement(el: Element, inh: Inherit): Block[] {
   }
   if (CONTAINERS.has(tag) || INLINE.has(tag)) {
     if (isBlank(el.innerHTML) && !el.querySelector('img')) {
+      // An empty box drawing a line (border-bottom:1px dotted …) is a separator.
+      const line = /border(?:-(?:bottom|top))?\s*:\s*(\d+)px\s+(solid|dotted|dashed)\s+([^;]+)/i.exec(el.getAttribute('style') ?? '')
+      if (line) {
+        const col = line[3].trim()
+        const m = /margin\s*:\s*(\d+)px(?:\s+\S+)?(?:\s+(\d+)px)?/i.exec(el.getAttribute('style') ?? '')
+        const mt = m ? Number(m[1]) : undefined
+        const mb = m ? Number(m[2] ?? m[1]) : undefined
+        return [
+          {
+            id: uid(),
+            type: 'divider',
+            color: toHex(col) ?? (COLOR_TOKEN.test(col) ? col : '#e3e3ee'),
+            ...(Number(line[1]) !== 1 ? { thickness: Math.min(10, Number(line[1])) } : {}),
+            ...(line[2].toLowerCase() !== 'solid' ? { lineStyle: line[2].toLowerCase() as 'dotted' | 'dashed' } : {}),
+            ...(mt != null ? { mt } : {}),
+            ...(mb != null ? { mb } : {}),
+          } as Block,
+        ]
+      }
       const h = px(css(el)?.height) ?? px(el.getAttribute('height'))
       return h ? [{ id: uid(), type: 'spacer', height: Math.min(400, h) }] : []
     }
-    // A paragraph in capitals (text-transform) keeps them.
+    // A paragraph in capitals or in bold (text-transform, font-weight, font:700 …) keeps them.
     const tt = css(el)?.textTransform
-    const inner = (h: string) => (tt === 'uppercase' || tt === 'lowercase' || tt === 'capitalize' ? `<span style="text-transform:${tt}">${h}</span>` : h)
-    const blocks =
-      inlineOnly(el) && inlineLogic(el)
-        ? [textBlock(inner(el.innerHTML), s)]
-        : tt && /^(uppercase|lowercase|capitalize)$/.test(tt) && inlineOnly(el)
-          ? [textBlock(inner(el.innerHTML), s)]
-          : convertNodes(el.childNodes, s)
+    const fw = css(el)?.fontWeight
+    const looks = [
+      tt && /^(uppercase|lowercase|capitalize)$/.test(tt) ? `text-transform:${tt}` : '',
+      fw && (fw === 'bold' || Number(fw) >= 600) ? 'font-weight:700' : '',
+    ].filter(Boolean)
+    const inner = (h: string) => (looks.length ? `<span style="${looks.join(';')}">${h}</span>` : h)
+    let blocks = (inlineLogic(el) || looks.length) && inlineOnly(el) ? [textBlock(inner(el.innerHTML), s)] : convertNodes(el.childNodes, s)
+    // Its own margins (margin:6px 0) replace the default spacing of the block it becomes.
+    if (blocks.length === 1 && blocks[0].type !== 'section' && blocks[0].type !== 'raw' && /margin/i.test(el.getAttribute('style') ?? '')) {
+      const mt = px(css(el)?.marginTop) ?? 0
+      const mb = px(css(el)?.marginBottom) ?? 0
+      blocks = [{ ...blocks[0], mt, mb } as Block]
+    }
     // A box with its own background becomes a card.
     const bg = tag !== 'BODY' ? bgOf(el) : undefined
     return bg && blocks.length
@@ -997,9 +1036,29 @@ function inlineStylesheets(doc: Document) {
 // Tokens of the last parsed fragment: in-tag statements are put back into the
 // blocks' strings once converted (see hubl-protect.ts).
 let fragmentTokens: string[] = []
+// {% macro %} definitions of the last parsed fragment, kept whole (one logic block each).
+let fragmentMacros: string[] = []
+const MACRO_DEF = /\{%-?\s*macro\b[\s\S]*?\{%-?\s*endmacro\s*-?%\}/g
+const MACRO_MARK = /^\{% nsp_macro (\d+) %\}$/
+
+// Puts the macro definitions back in place of their marks.
+function restoreMacros(blocks: Block[]): Block[] {
+  if (!fragmentMacros.length) return blocks
+  return blocks.map((b) => {
+    if (b.type === 'section') return { ...b, cells: b.cells.map(restoreMacros) }
+    if (b.type === 'raw') {
+      const m = MACRO_MARK.exec(b.html.trim())
+      if (m) return { ...b, html: fragmentMacros[Number(m[1])] ?? '' }
+    }
+    return b
+  })
+}
 
 function parseFragment(html: string) {
-  const prot = protectHubl(html.replace(/\{#[\s\S]*?#\}/g, ''))
+  fragmentMacros = []
+  // A macro's body is a template, not content: it stays one block.
+  const src = html.replace(MACRO_DEF, (m) => `{% nsp_macro ${fragmentMacros.push(strictHtml(m)) - 1} %}`)
+  const prot = protectHubl(src.replace(/\{#[\s\S]*?#\}/g, ''))
   fragmentTokens = prot.tokens
   // <body> first: a comment opening the document would land outside of it.
   const doc = new DOMParser().parseFromString(/<body[\s>]/i.test(prot.html) ? prot.html : `<body>${prot.html}`, 'text/html')
@@ -1012,7 +1071,7 @@ function parseFragment(html: string) {
 // Blocks for a column (used to convert a raw block in place).
 export function htmlToBlocks(html: string): Block[] {
   const body = parseFragment(html)
-  return restoreTree(convertNodes(body.childNodes, {}), fragmentTokens)
+  return restoreMacros(restoreTree(convertNodes(body.childNodes, {}), fragmentTokens))
 }
 
 // Whole-module import: loose blocks are grouped into sections, and the outer
@@ -1026,6 +1085,28 @@ export function importHtml(html: string): { sections: Section[]; bg?: string; fo
     blocks = blocks[0].cells[0]
   }
   const contentBg = wrappers.at(-1) ?? '#ffffff'
+  // Logic opened in one place and closed further down ({% for f in … %} … card … {% endfor %})
+  // must stay in one column: split into sections, the loop would lose its body.
+  let depth = 0
+  let crosses = false
+  for (const b of blocks) {
+    if (b.type === 'section') {
+      if (depth > 0) crosses = true
+      continue
+    }
+    if (b.type !== 'raw') continue
+    const st = /^\s*\{%-?\s*(\w+)/.exec(b.html)?.[1]
+    if (st && /^(if|for|unless)$/.test(st) && !/\{%-?\s*end(if|for|unless)/.test(b.html)) depth++
+    else if (st && /^end(if|for|unless)$/.test(st)) depth = Math.max(0, depth - 1)
+  }
+  if (crosses) {
+    const font = (css(body).fontFamily ? body : body.querySelector('[style*="font-family"]')) as HTMLElement | null
+    return {
+      sections: restoreMacros(restoreTree([makeSection([blocks], contentBg, 0)], fragmentTokens)) as Section[],
+      bg: wrappers.length > 1 ? wrappers[0] : bgOf(body),
+      font: font ? css(font).fontFamily.replace(/"/g, "'").replace(/[;{}<>]/g, '') || undefined : undefined,
+    }
+  }
   const sections: Section[] = []
   let loose: Block[] = []
   const flush = () => {
@@ -1041,7 +1122,7 @@ export function importHtml(html: string): { sections: Section[]; bg?: string; fo
   flush()
   const fontEl = css(body).fontFamily ? body : body.querySelector('[style*="font-family"]')
   const font = fontEl ? css(fontEl).fontFamily.replace(/"/g, "'").replace(/[;{}<>]/g, '') : ''
-  return { sections: restoreTree(sections, fragmentTokens), bg: wrappers.length > 1 ? wrappers[0] : bgOf(body), font: font || undefined }
+  return { sections: restoreMacros(restoreTree(sections, fragmentTokens)) as Section[], bg: wrappers.length > 1 ? wrappers[0] : bgOf(body), font: font || undefined }
 }
 
 // Parsing assigns fresh ids; carry over ids from the previous tree wherever the

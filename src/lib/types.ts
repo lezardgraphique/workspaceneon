@@ -237,6 +237,8 @@ export interface ExtraField {
   spec?: { [key: string]: Json }
   /** Imported (code or fields.json): kept even when the code stops using it. */
   keep?: boolean
+  /** The imported definition had no default: the value shown is only a preview stand-in, not exported. */
+  noDefault?: boolean
 }
 
 export interface ModuleTree {

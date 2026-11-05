@@ -572,6 +572,7 @@ type Node =
   | { t: 'for'; names: string[]; it: string; body: Node[]; other: Node[] }
   | { t: 'set'; name: string; e: string }
   | { t: 'seq'; body: Node[] }
+  | { t: 'macro'; name: string; params: { name: string; def?: string }[]; body: Node[] }
 
 const chip = (label: string) =>
   `<span style="display:inline-block;padding:10px 18px;border-radius:6px;background:#ff007f;color:#ffffff;font:700 14px/1.2 Arial,sans-serif;">${label}</span>`
@@ -582,7 +583,7 @@ const PLACEHOLDERS: Record<string, string> = {
   video_player: '<span style="display:block;padding:40px 16px;background:#0f0f1a;color:#ffffff;font:13px/1.4 Arial,sans-serif;text-align:center;">▶ Vidéo HubSpot</span>',
 }
 
-const SKIP_BLOCKS = new Set(['macro', 'widget_block', 'scope_css', 'require_css', 'require_js', 'set', 'call_skip'])
+const SKIP_BLOCKS = new Set(['widget_block', 'scope_css', 'require_css', 'require_js', 'set', 'call_skip'])
 const SEQ_BLOCKS = new Set(['block', 'call'])
 
 function parse(src: string): Node[] {
@@ -649,6 +650,20 @@ function parse(src: string): Node[] {
     } else if (name === 'set') {
       const f = /^([\w.]+)\s*=\s*([\s\S]+)$/.exec(rest)
       if (f && !cur().skip) cur().list.push({ t: 'set', name: f[1], e: f[2] })
+    } else if (name === 'macro') {
+      // {% macro name(a, b=1) %}…{% endmacro %}: a function printing its body.
+      const f = /^([A-Za-z_]\w*)\s*\(([\s\S]*)\)\s*$/.exec(rest)
+      const params = (f?.[2] ?? '')
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map((p) => {
+          const [n, ...d] = p.split('=')
+          return { name: n.trim(), ...(d.length ? { def: d.join('=').trim() } : {}) }
+        })
+      const node: Node = { t: 'macro', name: f?.[1] ?? '', params, body: [] }
+      if (!cur().skip && f) cur().list.push(node)
+      frames.push({ kind: 'macro', list: node.body, node, skip: cur().skip || !f })
     } else if (SKIP_BLOCKS.has(name) && name !== 'set') {
       frames.push({ kind: name, list: [], skip: true })
     } else if (SEQ_BLOCKS.has(name)) {
@@ -718,9 +733,34 @@ function run(nodes: Node[], scope: Scope, budget: { n: number }): string {
       case 'seq':
         out += run(n.body, scope, budget)
         break
+      case 'macro': {
+        const def = n
+        const outer = scope
+        scope[def.name] = (...args: unknown[]) => {
+          const child: Scope = Object.create(outer)
+          const kw = (args.find(isKw) ?? {}) as Record<string, unknown>
+          const pos = args.filter((a) => !isKw(a))
+          def.params.forEach((p, i) => (child[p.name] = i < pos.length ? pos[i] : p.name in kw ? kw[p.name] : p.def !== undefined ? evalExpr(p.def, outer) : undefined))
+          return run(def.body, child, { n: 5_000 })
+        }
+        break
+      }
     }
   }
   return out
+}
+
+// Defines the macros of a template in `scope` (a raw block holding {% macro %} definitions).
+export function defineMacros(src: string, scope: Scope) {
+  try {
+    run(
+      parse(src).filter((n) => n.t === 'macro'),
+      scope,
+      { n: 1_000 },
+    )
+  } catch {
+    /* a broken macro simply stays undefined */
+  }
 }
 
 const parsed = new Map<string, Node[]>()
@@ -804,8 +844,11 @@ const STATEMENT = /^\s*(?:\{#(?:(?!#\})[\s\S])*#\}|\{%(?:(?!%\})[\s\S])*%\})\s*$
 // A raw block that is a single {% … %} statement or {# … #} comment: the logic
 // around other blocks, not content.
 // Tags that print something (inline editing, CTA, icon, form…) are content, not logic.
+// {% macro %}…{% endmacro %} definitions (several allowed): they print nothing where they are written.
+const MACROS = /^\s*(?:\{%-?\s*macro\b[\s\S]*?\{%-?\s*endmacro\s*-?%\}\s*)+$/
+export const isMacroBlock = (b: Block): boolean => b.type === 'raw' && MACROS.test(b.html)
 export const isLogicBlock = (b: Block): boolean =>
-  b.type === 'raw' && STATEMENT.test(b.html) && !/^\s*\{%-?\s*(raw|module|inline_text|inline_rich_text|inline_link|cta|icon|form|video_player|image|logo|linked_image|menu|simple_menu)\b/.test(b.html)
+  isMacroBlock(b) || b.type === 'raw' && STATEMENT.test(b.html) && !/^\s*\{%-?\s*(raw|module|inline_text|inline_rich_text|inline_link|cta|icon|form|video_player|image|logo|linked_image|menu|simple_menu)\b/.test(b.html)
 
 function statementOf(b: Block): { name: string; rest: string } | null {
   if (b.type !== 'raw') return null
@@ -855,7 +898,14 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
       const b = blocks[i]
       const st = isLogicBlock(b) ? statementOf(b) : null
       if (isLogicBlock(b)) {
-        if (!st) continue // comment
+        if (!st) {
+          // Macro definitions: callable from every block of the module ({{ CTA(…) }}).
+          if (b.type === 'raw' && isMacroBlock(b) && active) {
+            defineMacros(b.html, scope)
+            defineMacros(b.html, sc)
+          }
+          continue // comment
+        }
         const top = frames[frames.length - 1]
         switch (st.name) {
           case 'if':
@@ -893,8 +943,9 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
               let depth = 0
               range.forEach((x, k) => {
                 const s2 = isLogicBlock(x) ? statementOf(x) : null
-                if (s2?.name === 'for') depth++
-                else if (s2?.name === 'endfor') depth--
+                // {% else %} of the loop itself, not of an {% if %} inside it.
+                if (s2?.name === 'for' || s2?.name === 'if' || s2?.name === 'unless') depth++
+                else if (s2?.name === 'endfor' || s2?.name === 'endif' || s2?.name === 'endunless') depth--
                 else if (s2?.name === 'else' && depth === 0 && elseAt < 0) elseAt = k
               })
               const body = elseAt < 0 ? range : range.slice(0, elseAt)
@@ -941,7 +992,10 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
         continue
       }
       if (!active) continue
-      out.push(block(b, sc))
+      const done = block(b, sc)
+      // A text whose variables print nothing ({{ SP("after_title", L) }} without spacer) takes no room.
+      if (done.type === 'text' && b.type === 'text' && b.id !== keepId && hasHubl(b.html) && !done.html.replace(/<[^>]*>|&nbsp;|\s/g, '') && !/<(img|table|hr|br)\b/i.test(done.html)) continue
+      out.push(done)
     }
     return out
   }
@@ -960,6 +1014,8 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
         return b.id === keepId ? b : { ...b, label: text(b.label, sc), href: text(b.href, sc), bg: text(b.bg, sc), color: text(b.color, sc) }
       case 'image':
         return b.id === keepId ? b : { ...b, src: text(b.src, sc), alt: text(b.alt, sc) }
+      case 'divider':
+        return { ...b, color: text(b.color, sc) }
       default:
         return b
     }

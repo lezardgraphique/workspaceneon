@@ -575,10 +575,16 @@ export function fromSpec(raw: Record<string, unknown>): ExtraField | null {
   const spec = asJson(rest)
   if (spec && typeof spec === 'object' && !Array.isArray(spec) && Object.keys(spec).length) field.spec = spec as { [k: string]: Json }
   const d = asJson(def)
-  field.default = d !== undefined && d !== null ? d : kind === 'choice' && field.options?.length ? field.options[0].value : def === null ? null : defaultFor(field)
+  field.default = d !== undefined && d !== null ? d : def === null ? null : standIn(field)
+  if (!('default' in raw)) field.noDefault = true
   field.keep = true
   return field
 }
+
+// Value shown for a field whose definition gives none.
+const standIn = (f: ExtraField): Json => (f.type === 'choice' && f.options?.length ? f.options[0].value : defaultFor({ ...f, default: undefined }))
+// Still the stand-in (never edited): the export writes no default, like the original.
+const isStandIn = (f: ExtraField) => !!f.noDefault && JSON.stringify(f.default) === JSON.stringify(standIn(f))
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -671,7 +677,8 @@ export function scopeValue(f: ExtraField): Json {
   if (f.type === 'group') {
     const item = (src: Json | undefined): Json => {
       const o = obj(src)
-      return Object.fromEntries((f.children ?? []).map((c) => [c.name, scopeValue({ ...c, repeater: false, default: (o[c.name] as Json | undefined) ?? (c.repeater ? undefined : c.default) })]))
+      // A repeated sub-field (a list inside each item) stays a list.
+      return Object.fromEntries((f.children ?? []).map((c) => [c.name, scopeValue({ ...c, default: (o[c.name] as Json | undefined) ?? (c.repeater ? undefined : c.default) })]))
     }
     if (f.repeater) {
       const list = Array.isArray(f.default) && f.default.length ? f.default : [{}, {}]
@@ -694,8 +701,10 @@ export function hubspotField(f: ExtraField): Record<string, unknown> {
   if (f.type === 'group') {
     const kids = (f.children ?? []).map((c) => hubspotField({ ...c }))
     const one: Json = Object.fromEntries((f.children ?? []).map((c) => [c.name, c.default ?? defaultFor(c)]))
+    if (isStandIn(f)) return { ...base, children: kids }
     return { ...base, children: kids, default: f.default ?? (f.repeater ? [one, one] : one) }
   }
+  if (isStandIn(f)) return f.type === 'choice' ? { ...(f.spec ? {} : { display_width: null, multiple: false, display: 'select' }), ...base, choices: (f.options ?? []).map((o) => [o.value, o.label]) } : base
   if (f.type === 'choice') {
     return {
       ...(f.spec ? {} : { display_width: null, multiple: false, display: 'select' }),
