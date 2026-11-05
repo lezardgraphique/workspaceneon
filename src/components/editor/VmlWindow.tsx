@@ -506,7 +506,7 @@ export function VmlWindow({
           <span className={`rounded-full bg-mute/50 transition group-hover:bg-violet group-focus-visible:bg-violet group-active:bg-violet ${row ? 'h-12 w-1' : 'h-1 w-12'}`} />
         </div>
       )}
-      <header className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-1.5">
+      <div className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-1.5">
         <Shapes className="size-4 text-violet" />
         <h2 className="min-w-0 truncate font-display text-sm font-semibold">VML · Outlook<span className="max-sm:hidden"> · module entier</span></h2>
         <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-cyan/40 px-2 py-0.5 text-[10px] text-cyan" title="Se met à jour à chaque modification">
@@ -521,12 +521,13 @@ export function VmlWindow({
         <button onClick={onClose} aria-label="Fermer le volet VML" className="rounded p-1 text-mute hover:bg-white/5 hover:text-white">
           <X className="size-4" />
         </button>
-      </header>
+      </div>
 
       {!min && (
         <>
           <div className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-2">
             <button
+              type="button"
               role="switch"
               aria-checked={on}
               aria-label="Ajouter le VML au code et à l'export"
@@ -543,33 +544,33 @@ export function VmlWindow({
 
           <div role="tablist" aria-label="Panneaux" className="flex shrink-0 border-b border-line text-sm lg:hidden">
             {([['structure', 'Structure'], ['apercu', 'Aperçu'], ['edition', 'Édition']] as const).map(([k, l]) => (
-              <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`flex-1 py-2 ${tab === k ? 'border-b-2 border-violet text-white' : 'text-mute'}`}>
+              <button key={k} type="button" role="tab" id={`vml-tab-${k}`} aria-controls={`vml-panel-${k}`} aria-selected={tab === k} onClick={() => setTab(k)} className={`flex-1 py-2 ${tab === k ? 'border-b-2 border-violet text-white' : 'text-mute'}`}>
                 {l}
               </button>
             ))}
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-            <section aria-label="Structure en direct" className={panel('structure', 'overflow-y-auto p-3 lg:w-56 lg:shrink-0 lg:border-r lg:border-line')}>
-              <h3 className="mb-2 font-mono text-[10px] uppercase tracking-wider text-mute">Structure en direct</h3>
+            <div id="vml-panel-structure" role="tabpanel" aria-labelledby="vml-tab-structure" className={panel('structure', 'overflow-y-auto p-3 lg:w-56 lg:shrink-0 lg:border-r lg:border-line')}>
+              <h2 className="mb-2 font-mono text-[10px] uppercase tracking-wider text-mute">Structure en direct</h2>
               <Outline tree={tree} selectedId={selectedId} onSelect={select} />
-            </section>
+            </div>
 
-            <section aria-label="Aperçu Outlook" className={panel('apercu', 'min-w-0 flex-1 lg:border-r lg:border-line')}>
+            <div id="vml-panel-apercu" role="tabpanel" aria-labelledby="vml-tab-apercu" className={panel('apercu', 'min-w-0 flex-1 lg:border-r lg:border-line')}>
               <OutlookPreview tree={tree} name={name} selectedId={selectedId} onSelect={select} onTweak={(id, patch) => commit(updateNode(tree, id, patch), id)} onTree={(t) => commit(t, selectedId)} />
-            </section>
+            </div>
 
-            <section aria-label="Édition" className={panel('edition', 'flex-1 lg:w-[22rem] lg:flex-none lg:shrink-0')}>
+            <div id="vml-panel-edition" role="tabpanel" aria-labelledby="vml-tab-edition" className={panel('edition', 'flex-1 lg:w-[22rem] lg:flex-none lg:shrink-0')}>
               {node && node.type !== 'raw' && (
                 <div role="tablist" aria-label="Réglages de l'élément" className="m-3 mb-0 flex shrink-0 rounded-md border border-line p-0.5 text-xs">
                   {([['edit', 'Édition'], ['outlook', 'Outlook'], ...(current ? [['code', 'Code VML']] : [])] as [typeof edit, string][]).map(([k, l]) => (
-                    <button key={k} role="tab" aria-selected={edit === k} onClick={() => setEdit(k)} className={`flex-1 rounded px-2.5 py-1 ${edit === k ? 'bg-violet/20 text-white' : 'text-mute hover:text-white'}`}>
+                    <button key={k} type="button" role="tab" id={`vml-edit-${k}`} aria-controls="vml-edit-panel" aria-selected={edit === k} onClick={() => setEdit(k)} className={`flex-1 rounded px-2.5 py-1 ${edit === k ? 'bg-violet/20 text-white' : 'text-mute hover:text-white'}`}>
                       {l}
                     </button>
                   ))}
                 </div>
               )}
-              <div className="min-h-0 flex-1 overflow-y-auto">
+              <div id="vml-edit-panel" role={node && node.type !== 'raw' ? 'tabpanel' : undefined} aria-labelledby={node && node.type !== 'raw' ? `vml-edit-${edit}` : undefined} className="min-h-0 flex-1 overflow-y-auto">
                 {node && node.type !== 'raw' && edit === 'outlook' ? (
                   <OutlookPanel tree={tree} node={node} onChange={(patch) => commit(updateNode(tree, node.id, patch), node.id)} onTree={(t) => commit(t, node.id)} />
                 ) : current && edit === 'code' ? (
@@ -610,7 +611,7 @@ export function VmlWindow({
                   </div>
                 )}
               </div>
-            </section>
+            </div>
           </div>
         </>
       )}

@@ -134,7 +134,7 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
   return (
     <div role="dialog" aria-modal="true" aria-label="Importer un module HubSpot" className="fixed inset-0 z-50 flex items-end justify-center bg-void/80 backdrop-blur-sm sm:items-center sm:p-4">
       <div className="flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-xl border border-line bg-night sm:rounded-xl">
-        <header className="flex items-start gap-3 border-b border-line p-4">
+        <div className="flex items-start gap-3 border-b border-line p-4">
           <Braces className="mt-0.5 size-5 shrink-0 text-violet" />
           <div className="min-w-0 flex-1">
             <h2 className="font-display text-lg font-semibold">Importer un module HubSpot</h2>
@@ -147,7 +147,7 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
           <button onClick={onClose} aria-label="Fermer" className="rounded p-1.5 text-mute hover:bg-white/10 hover:text-white">
             <X className="size-4" />
           </button>
-        </header>
+        </div>
 
         <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-2">
           <div className="space-y-3">
@@ -195,7 +195,7 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
           </div>
 
           <section aria-label="Champs reconnus" className="min-w-0">
-            <h3 className="mb-2 font-display font-semibold">Champs reconnus</h3>
+            <h2 className="mb-2 font-display font-semibold">Champs reconnus</h2>
             {!report && <p className="text-sm text-mute">Le détail des champs s'affiche ici dès que le code est collé (ou repris d'un JSON).</p>}
             {report && 'error' in report && <p className="text-sm text-pink">{report.error}</p>}
             {report && 'rows' in report && (

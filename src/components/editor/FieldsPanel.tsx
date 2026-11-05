@@ -402,7 +402,7 @@ export function FieldsPanel(p: Props) {
   return (
     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
       <div className="px-1">
-        <h3 className="font-display font-semibold">Champs du module</h3>
+        <h2 className="font-display font-semibold">Champs du module</h2>
         <p className="text-xs text-mute">
           Chaque titre, texte, bouton et image est un champ. Renomme-le et modifie sa valeur ici, ou directement dans l'aperçu. Le nom en{' '}
           <code className="font-mono text-[#e3a6ff]">{'{{ module.nom }}'}</code> est celui du module exporté.
@@ -414,7 +414,7 @@ export function FieldsPanel(p: Props) {
       {(p.tree.fields?.length ?? 0) > 0 && (
         <>
           <div className="px-1 pt-3">
-            <h3 className="font-display font-semibold">Variables du code</h3>
+            <h2 className="font-display font-semibold">Variables du code</h2>
             <p className="text-xs text-mute">
               Champs créés automatiquement pour les variables que ton code utilise. La variable reste en place dans le contenu : modifie ici la valeur
               affichée dans l'aperçu et exportée dans fields.json.

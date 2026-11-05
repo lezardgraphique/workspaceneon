@@ -60,19 +60,21 @@ export function Group({ label, children }: { label: string; children: ReactNode 
   )
 }
 
+// Two controls (picker + code): a group, each control named, since a <label> holds only one.
 export function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
-    <Field label={label}>
+    <Group label={label}>
       <div className="flex gap-2">
         <input
           type="color"
+          aria-label={`${label} (nuancier)`}
           value={/^#[0-9a-f]{6}$/i.test(value) ? value : '#000000'}
           onChange={(e) => onChange(e.target.value)}
           className="h-10 w-12 shrink-0 cursor-pointer rounded border border-line bg-void lg:h-8 lg:w-10"
         />
-        <input className={`${input} font-mono`} value={value} onChange={(e) => onChange(e.target.value)} />
+        <input aria-label={`${label} (code)`} className={`${input} font-mono`} value={value} onChange={(e) => onChange(e.target.value)} />
       </div>
-    </Field>
+    </Group>
   )
 }
 
@@ -163,7 +165,7 @@ function Segmented<T extends string | number>({
             aria-label={typeof o.label === 'string' ? undefined : o.title}
             onClick={() => onChange(o.value)}
             className={`flex flex-1 items-center justify-center rounded px-2 py-2 text-sm lg:py-1 lg:text-xs ${
-              value === o.value ? 'bg-pink text-white' : 'text-mute hover:text-white'
+              value === o.value ? 'bg-pink-fill text-white' : 'text-mute hover:text-white'
             }`}
           >
             {o.label}
@@ -607,7 +609,7 @@ export function Inspector(p: Props) {
     return (
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
         <div>
-          <h3 className="font-display font-semibold">Réglages du module</h3>
+          <h2 className="font-display font-semibold">Réglages du module</h2>
           <p className="text-xs text-mute">Touche ou clique un élément de l'aperçu pour le configurer.</p>
         </div>
         <RangeField label="Largeur max" value={t.width} min={320} max={800} onChange={(width) => p.commit({ ...t, width })} />
@@ -678,9 +680,9 @@ export function Inspector(p: Props) {
         )}
         <div className="flex items-center gap-2">
           <Icon className="size-4 text-cyan" />
-          <h3 className="flex-1 font-display font-semibold">
+          <h2 className="flex-1 font-display font-semibold">
             {node.type === 'section' && path.length === 1 ? 'Section' : BLOCK_LABELS[node.type]}
-          </h3>
+          </h2>
           {[
             { icon: ArrowUp, label: 'Monter', fn: () => p.commit(moveNode(p.tree, node.id, -1)) },
             { icon: ArrowDown, label: 'Descendre', fn: () => p.commit(moveNode(p.tree, node.id, 1)) },

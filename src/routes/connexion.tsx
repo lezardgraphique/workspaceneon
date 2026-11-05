@@ -138,7 +138,7 @@ function Connexion() {
   }
 
   return (
-    <div className="neon-grid fixed inset-0 overflow-hidden overscroll-none">
+    <main className="neon-grid fixed inset-0 overflow-hidden overscroll-none">
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
         <span className="auth-tile left-[6%] top-[8%] size-14" style={{ '--tile': '#ff007f', '--r': '-8deg' } as React.CSSProperties} />
         <span className="auth-tile right-[8%] top-[14%] h-10 w-20" style={{ '--tile': '#00e5ff', '--r': '6deg', animationDelay: '1.2s' } as React.CSSProperties} />
@@ -196,7 +196,7 @@ function Connexion() {
             <button
               type="submit"
               disabled={busy}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-pink px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-pink-fill px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60"
             >
               {busy ? <Loader2 className="size-4 animate-spin" /> : <LogIn className="size-4" />}
               {{ login: 'Se connecter', signup: 'Créer mon compte', forgot: 'Envoyer le lien', reset: 'Enregistrer', invite: 'Créer mon compte' }[mode]}
@@ -232,6 +232,6 @@ function Connexion() {
           <AuthIllustration />
         </div>
       </div>
-    </div>
+    </main>
   )
 }

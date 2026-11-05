@@ -61,7 +61,7 @@ export function ClientsDialog({
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Test clients de messagerie" className="fixed inset-0 z-50 flex flex-col bg-void/97 backdrop-blur-sm">
-      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line bg-space px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line bg-space px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <MailCheck className="size-5 text-cyan" />
         <div className="min-w-0 flex-1">
           <h2 className="font-display text-lg leading-tight font-semibold">Test clients de messagerie</h2>
@@ -79,10 +79,10 @@ export function ClientsDialog({
         <button onClick={onClose} aria-label="Fermer" className="rounded p-1.5 text-mute hover:bg-white/10 hover:text-white">
           <X className="size-5" />
         </button>
-      </header>
+      </div>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <main className="neon-grid min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
+        <div className="neon-grid min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
           {current ? (
             <>
               <div className="mb-4 flex items-center gap-2 overflow-x-auto pb-1">
@@ -97,7 +97,7 @@ export function ClientsDialog({
                     key={c.id}
                     onClick={() => setFocus(c.id)}
                     className={`shrink-0 rounded-full px-3 py-1.5 text-xs whitespace-nowrap ${
-                      c.id === focus ? 'bg-pink text-white' : 'border border-line text-mute hover:text-white'
+                      c.id === focus ? 'bg-pink-fill text-white' : 'border border-line text-mute hover:text-white'
                     }`}
                   >
                     {clientLabel(c)}
@@ -117,12 +117,13 @@ export function ClientsDialog({
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {CLIENTS.map((c) => (
-                <button
+                // The card is clickable as a whole through its button (stretched over it): an
+                // iframe may not sit inside a button.
+                <div
                   key={c.id}
-                  onClick={() => setFocus(c.id)}
-                  className="group flex flex-col overflow-hidden rounded-xl border border-line bg-night text-left transition hover:-translate-y-0.5 hover:border-pink"
+                  className="group relative flex flex-col overflow-hidden rounded-xl border border-line bg-night text-left transition focus-within:border-pink hover:-translate-y-0.5 hover:border-pink"
                 >
-                  <div className="flex items-center gap-2 px-3 py-2.5">
+                  <button type="button" onClick={() => setFocus(c.id)} className="flex items-center gap-2 px-3 py-2.5 text-left after:absolute after:inset-0 after:z-10 after:content-[''] focus-visible:outline-none">
                     {c.mobile ? <Smartphone className="size-4 shrink-0 text-mute" /> : <Monitor className="size-4 shrink-0 text-mute" />}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold">{c.name}</span>
@@ -130,21 +131,21 @@ export function ClientsDialog({
                     </span>
                     <Counts issues={issuesFor(c.id)} />
                     <ChevronRight className="size-4 text-mute transition group-hover:translate-x-0.5 group-hover:text-pink" />
-                  </div>
-                  <div className={`border-t border-line bg-[#1b1b2c] ${c.mobile ? 'px-10 py-3' : 'p-3'}`}>
+                  </button>
+                  <div aria-hidden className={`border-t border-line bg-[#1b1b2c] ${c.mobile ? 'px-10 py-3' : 'p-3'}`}>
                     <div className={`overflow-hidden bg-white ${c.mobile ? 'rounded-xl' : 'rounded'}`}>
                       <EmailFrame html={renders[c.id]} width={c.width} maxHeight={c.mobile ? 780 : 560} title={`Vignette ${clientLabel(c)}`} />
                     </div>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}
-        </main>
+        </div>
 
         <aside className="flex max-h-[45dvh] shrink-0 flex-col border-t border-line bg-space lg:max-h-none lg:w-[360px] lg:border-t-0 lg:border-l">
           <div className="border-b border-line px-4 py-3">
-            <h3 className="font-display font-semibold">{current ? `Points à vérifier · ${clientLabel(current)}` : 'Points à vérifier'}</h3>
+            <h2 className="font-display font-semibold">{current ? `Points à vérifier · ${clientLabel(current)}` : 'Points à vérifier'}</h2>
             <div className="mt-2">
               <div className="flex justify-between text-[11px] text-mute">
                 <span>Poids du HTML</span>
@@ -154,7 +155,7 @@ export function ClientsDialog({
               </div>
               <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line">
                 <div
-                  className={`h-full rounded-full ${bytes > 102 * 1024 ? 'bg-pink' : 'bg-cyan'}`}
+                  className={`h-full rounded-full ${bytes > 102 * 1024 ? 'bg-pink-fill' : 'bg-cyan'}`}
                   style={{ width: `${Math.min(100, (bytes / (102 * 1024)) * 100)}%` }}
                 />
               </div>

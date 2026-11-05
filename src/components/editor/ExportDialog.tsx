@@ -45,7 +45,7 @@ export function ExportDialog({ tree, name, onClose }: { tree: ModuleTree; name: 
         aria-modal="true"
         aria-label="Exporter le module"
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl border border-line bg-night pb-[env(safe-area-inset-bottom)] shadow-2xl sm:max-h-[90vh] sm:rounded-2xl sm:pb-0"
+        className="flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl border border-line bg-night pb-[max(0px,env(safe-area-inset-bottom))] shadow-2xl sm:max-h-[90vh] sm:rounded-2xl sm:pb-0"
       >
         <div className="flex items-start gap-3 border-b border-line p-5">
           <div className="flex-1">
@@ -66,7 +66,7 @@ export function ExportDialog({ tree, name, onClose }: { tree: ModuleTree; name: 
             <button
               key={f}
               onClick={() => setActive(f)}
-              className={`rounded-md px-3 py-1.5 font-mono text-xs ${active === f ? 'bg-pink text-white' : 'text-mute hover:text-white'}`}
+              className={`rounded-md px-3 py-1.5 font-mono text-xs ${active === f ? 'bg-pink-fill text-white' : 'text-mute hover:text-white'}`}
             >
               {f}
             </button>
@@ -83,12 +83,12 @@ export function ExportDialog({ tree, name, onClose }: { tree: ModuleTree; name: 
           </button>
           <button
             onClick={() => names.forEach((f, i) => setTimeout(() => download(f), i * 250))}
-            className="inline-flex items-center gap-1.5 rounded-md bg-pink px-3 py-1.5 text-xs font-semibold text-white"
+            className="inline-flex items-center gap-1.5 rounded-md bg-pink-fill px-3 py-1.5 text-xs font-semibold text-white"
           >
             <Download className="size-3.5" /> Tout télécharger
           </button>
         </div>
-        <pre className="min-h-0 flex-1 overflow-auto bg-void p-4 font-mono text-xs leading-relaxed text-[#d9d9ec]">{files[active]}</pre>
+        <pre tabIndex={0} role="region" aria-label={`Contenu de ${active}`} className="min-h-0 flex-1 overflow-auto bg-void p-4 font-mono text-xs leading-relaxed text-[#d9d9ec]">{files[active]}</pre>
       </div>
     </div>
   )

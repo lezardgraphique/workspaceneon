@@ -98,7 +98,7 @@ function Compte() {
             </p>
           )}
 
-          <button type="submit" disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-pink px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60">
+          <button type="submit" disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-pink-fill px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60">
             {busy && <Loader2 className="size-4 animate-spin" />} Enregistrer le nouveau mot de passe
           </button>
         </form>

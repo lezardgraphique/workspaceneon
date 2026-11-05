@@ -40,17 +40,17 @@ export function AccountMenu() {
 
   return (
     <div className="flex items-center gap-1.5 text-sm text-mute sm:gap-2">
-      <Link to="/compte" className="inline-flex max-w-[14rem] items-center gap-1.5 truncate rounded-md border border-line px-2 py-1.5 hover:border-violet hover:text-white sm:px-3" title={`Mon compte · ${user.email}`} aria-label={`Mon compte (${user.email})`}>
-        <User className="size-4 shrink-0 text-violet" /> <span className="hidden truncate md:inline">{user.email}</span>
+      <Link to="/compte" className="inline-flex max-w-[14rem] items-center gap-1.5 truncate rounded-md border border-line px-2 py-1.5 hover:border-violet hover:text-white sm:px-3" title={`Mon compte · ${user.email}`}>
+        <User className="size-4 shrink-0 text-violet" aria-hidden /> <span className="sr-only">Mon compte</span> <span className="sr-only truncate md:not-sr-only">{user.email}</span>
       </Link>
       <button
         onClick={out}
         disabled={busy}
-        aria-label="Se déconnecter"
+        title="Se déconnecter"
         className="inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1.5 hover:border-pink sm:px-3 hover:text-white disabled:opacity-60"
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4 text-pink" />}
-        <span className="hidden sm:inline">Déconnexion</span>
+        <span className="sr-only sm:not-sr-only">Déconnexion</span>
       </button>
     </div>
   )

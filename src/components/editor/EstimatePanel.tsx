@@ -22,7 +22,7 @@ function Card({ e }: { e: Estimate }) {
   const Icon = e.kind === 'click' ? MousePointerClick : MailOpen
   const ratio = e.baseline ? e.value / e.baseline : 0
   const width = Math.min(100, (ratio / 2) * 100) // the middle of the bar = the sector average
-  const tone = ratio >= 1.1 ? 'bg-emerald-400' : ratio >= 0.85 ? 'bg-cyan' : 'bg-pink'
+  const tone = ratio >= 1.1 ? 'bg-emerald-400' : ratio >= 0.85 ? 'bg-cyan' : 'bg-pink-fill'
   return (
     <div className="rounded-lg border border-line bg-void/60 p-3">
       <div className="flex items-start gap-3">
@@ -89,7 +89,7 @@ export function EstimatePanel({ tree, node }: { tree: ModuleTree; node: Block | 
   return (
     <section aria-label="Performance estimée" className="space-y-3 border-t border-line pt-4">
       <div className="flex items-center gap-2">
-        <h4 className="flex-1 font-display text-sm font-semibold">Performance estimée</h4>
+        <h3 className="flex-1 font-display text-sm font-semibold">Performance estimée</h3>
         <select aria-label="Secteur de référence" value={sector} onChange={(e) => choose(e.target.value as Sector)} className="max-w-[9.5rem] rounded-md border border-line bg-void px-2 py-1.5 text-base text-white outline-none focus:border-cyan lg:py-1 lg:text-xs">
           {(Object.keys(SECTORS) as Sector[]).map((k) => (
             <option key={k} value={k}>

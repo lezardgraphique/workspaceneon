@@ -371,9 +371,11 @@ function Editor({ initial }: { initial: ModuleRecord }) {
     <div className="flex h-dvh flex-col bg-void">
       {/* Top bar */}
       <header className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line bg-space px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:flex-nowrap sm:gap-2 sm:px-3">
-        <Link to="/" title="Mes modules" className="flex items-center gap-2 rounded-md p-1 hover:bg-white/5">
+        <Link to="/" title="Mes modules" aria-label="Mes modules" className="flex items-center gap-2 rounded-md p-1 hover:bg-white/5">
           <NeonLogo size={28} />
         </Link>
+        {/* The page's title for screen readers: the name field shows it to everyone else. */}
+        <h1 className="sr-only">Éditeur · {name || 'Module sans nom'}</h1>
         <input
           value={name}
           onChange={(e) => {
@@ -491,7 +493,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
         <button
           onClick={() => setExporting(true)}
           aria-label="Exporter"
-          className="glow-pink ml-1 inline-flex shrink-0 items-center gap-1.5 rounded-md bg-pink px-2.5 py-1.5 text-sm font-semibold text-white sm:px-3"
+          className="glow-pink ml-1 inline-flex shrink-0 items-center gap-1.5 rounded-md bg-pink-fill px-2.5 py-1.5 text-sm font-semibold text-white sm:px-3"
         >
           <Share className="size-4" /> <span className="hidden sm:inline">Exporter</span>
         </button>
@@ -502,7 +504,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
         {/* Left column: structure / Maily */}
-        <aside className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-72 lg:shrink-0 lg:border-r xl:w-80">
+        <aside aria-label="Structure, champs et Maily" className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-72 lg:shrink-0 lg:border-r xl:w-80">
           <div className="hidden border-b border-line lg:flex">
             <button className={tabBtn(leftTab === 'structure')} onClick={() => setLeftTab('structure')}>
               <Layers className="size-3.5" /> Structure
@@ -552,14 +554,14 @@ function Editor({ initial }: { initial: ModuleRecord }) {
         </main>
 
         {/* Right column: settings / code */}
-        <aside className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-[400px] lg:shrink-0 lg:border-l xl:w-[460px]">
+        <aside aria-label="Réglages et code" className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-[400px] lg:shrink-0 lg:border-l xl:w-[460px]">
           <div className="hidden border-b border-line lg:flex">
             <button className={tabBtn(rightTab === 'inspector')} onClick={() => setRightTab('inspector')}>
               <Settings2 className="size-3.5" /> Réglages
             </button>
             <button className={tabBtn(rightTab === 'code')} onClick={() => setRightTab('code')}>
               <Code2 className="size-3.5" /> Code
-              {codeError && <span className="size-1.5 rounded-full bg-pink" />}
+              {codeError && <span className="size-1.5 rounded-full bg-pink-fill" />}
             </button>
           </div>
           <div className={`${vis('inspector', rightTab === 'inspector')} min-h-0 w-full flex-1 flex-col bg-space`}>
@@ -631,7 +633,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
             ))}
             <button
               onClick={() => setPane('inspector')}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-pink px-3 py-2 text-sm font-semibold text-white"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-pink-fill px-3 py-2 text-sm font-semibold text-white"
             >
               <Pencil className="size-3.5" /> Modifier
             </button>
@@ -661,7 +663,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
       {/* Mobile pane switcher */}
       <nav
         aria-label="Panneaux de l'éditeur"
-        className={`${typing ? 'hidden' : 'grid'} shrink-0 grid-cols-6 border-t border-line bg-space pb-[env(safe-area-inset-bottom)] lg:hidden`}
+        className={`${typing ? 'hidden' : 'grid'} shrink-0 grid-cols-6 border-t border-line bg-space pb-[max(0px,env(safe-area-inset-bottom))] lg:hidden`}
       >
         {(
           [
@@ -681,10 +683,10 @@ function Editor({ initial }: { initial: ModuleRecord }) {
               pane === t.k ? 'text-white' : 'text-mute active:text-white'
             }`}
           >
-            {pane === t.k && <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-pink shadow-[0_0_10px_#ff007f]" />}
+            {pane === t.k && <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-pink-fill shadow-[0_0_10px_#ff007f]" />}
             <span className={`relative rounded-full px-2.5 py-0.5 ${pane === t.k ? 'bg-pink/15 text-pink' : ''}`}>
               <t.icon className="size-5" />
-              {t.dot && <span className={`absolute top-0 right-2 size-1.5 rounded-full ${t.k === 'code' ? 'bg-pink' : 'bg-cyan'}`} />}
+              {t.dot && <span className={`absolute top-0 right-2 size-1.5 rounded-full ${t.k === 'code' ? 'bg-pink-fill' : 'bg-cyan'}`} />}
             </span>
             {t.label}
           </button>

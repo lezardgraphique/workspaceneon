@@ -466,10 +466,10 @@ export function MailyPanel({
           className="w-full rounded-lg border border-cyan/30 bg-cyan/5 p-3 text-left"
           title="Astuce suivante"
         >
-          <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-cyan">
-            <Lightbulb className="size-3.5" /> L'astuce de Maily
-          </p>
-          <p className="text-sm text-[#d9d9ec]">{TIPS[tip]}</p>
+          <span className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-cyan">
+            <Lightbulb className="size-3.5" aria-hidden /> L'astuce de Maily
+          </span>
+          <span className="block text-sm text-[#d9d9ec]">{TIPS[tip]}</span>
         </button>
 
         {messages.length === 0 && (
@@ -497,7 +497,7 @@ export function MailyPanel({
             {m.role === 'assistant' && <Maily size={26} bob={false} mood={m.applied ? 'success' : 'happy'} className="mt-1 shrink-0" />}
             <div
               className={`max-w-[88%] rounded-xl px-3 py-2 text-sm ${
-                m.role === 'user' ? 'bg-pink/90 text-white' : 'maily-md border border-line bg-panel text-[#e3e3f0]'
+                m.role === 'user' ? 'bg-pink-fill text-white' : 'maily-md border border-line bg-panel text-[#e3e3f0]'
               }`}
             >
               {m.role === 'assistant' ? (
@@ -636,11 +636,11 @@ export function MailyPanel({
             className="min-h-10 flex-1 resize-none rounded-lg border border-line bg-void px-3 py-2 text-base outline-none focus:border-violet lg:text-sm"
           />
           {loading ? (
-            <button type="button" onClick={() => abortRef.current?.abort()} aria-label="Arrêter" className="rounded-lg bg-line p-2.5 hover:bg-pink">
+            <button type="button" onClick={() => abortRef.current?.abort()} aria-label="Arrêter" className="rounded-lg bg-line p-2.5 hover:bg-pink-fill">
               <Square className="size-4" />
             </button>
           ) : (
-            <button type="submit" disabled={!input.trim() && !files.length} aria-label="Envoyer" className="rounded-lg bg-pink p-2.5 text-white disabled:opacity-40">
+            <button type="submit" disabled={!input.trim() && !files.length} aria-label="Envoyer" className="rounded-lg bg-pink-fill p-2.5 text-white disabled:opacity-40">
               <Send className="size-4" />
             </button>
           )}

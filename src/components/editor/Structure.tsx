@@ -96,7 +96,7 @@ function Row({ b, depth, p, nested }: { b: Block; depth: number; p: Props; neste
             title={a.label}
             aria-label={a.label}
             onClick={(e) => act(e, a.fn)}
-            className="rounded p-1 text-mute hover:bg-white/10 hover:text-white"
+            className="rounded p-1.5 text-mute hover:bg-white/10 hover:text-white"
           >
             <a.icon className="size-3" />
           </button>

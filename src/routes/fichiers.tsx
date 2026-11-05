@@ -115,7 +115,7 @@ function FilesPage() {
               </span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Espace utilisé">
-              <div className={`h-full ${pct > 90 ? 'bg-pink' : 'bg-cyan'}`} style={{ width: `${pct}%` }} />
+              <div className={`h-full ${pct > 90 ? 'bg-pink-fill' : 'bg-cyan'}`} style={{ width: `${pct}%` }} />
             </div>
           </div>
         </div>
@@ -142,7 +142,7 @@ function FilesPage() {
             <>
               <Upload className="size-6 text-cyan" />
               <p className="text-sm">Glisse tes fichiers ici ou</p>
-              <button onClick={() => input.current?.click()} className="glow-pink rounded-md bg-pink px-4 py-2 text-sm font-semibold text-white">
+              <button onClick={() => input.current?.click()} className="glow-pink rounded-md bg-pink-fill px-4 py-2 text-sm font-semibold text-white">
                 Choisir des fichiers
               </button>
               <p className="text-xs text-mute">10 Mo maximum par fichier · JPG, PNG, GIF, WebP, PDF, TXT, CSV, JSON, HTML, CSS, ZIP, DOCX, XLSX, PPTX</p>
@@ -190,7 +190,7 @@ function FilesPage() {
                     <Download className="size-3.5" />
                   </a>
                   {confirm === f.key ? (
-                    <button onClick={() => remove(f)} className="rounded-md bg-pink px-2 py-1.5 text-xs font-semibold text-white">
+                    <button onClick={() => remove(f)} className="rounded-md bg-pink-fill px-2 py-1.5 text-xs font-semibold text-white">
                       Confirmer
                     </button>
                   ) : (

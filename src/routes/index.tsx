@@ -103,7 +103,7 @@ function Library() {
               <button
                 onClick={() => start('newsletter')}
                 disabled={!!busy}
-                className="glow-pink inline-flex items-center gap-2 rounded-lg bg-pink px-5 py-3 font-display font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+                className="glow-pink inline-flex items-center gap-2 rounded-lg bg-pink-fill px-5 py-3 font-display font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
               >
                 {busy === 'newsletter' ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
                 Créer un module
@@ -145,7 +145,7 @@ function Library() {
           {FEATURES.map((f) => (
             <div key={f.title} className="rounded-xl border border-line bg-night/70 p-5">
               <f.icon className="mb-3 size-5 text-cyan" />
-              <h3 className="font-display font-semibold">{f.title}</h3>
+              <h2 className="font-display font-semibold">{f.title}</h2>
               <p className="mt-1 text-sm text-mute">{f.text}</p>
             </div>
           ))}
@@ -161,15 +161,15 @@ function Library() {
                 disabled={!!busy}
                 className="group rounded-xl border border-line bg-panel/60 p-5 text-left transition hover:-translate-y-0.5 hover:border-pink disabled:opacity-60"
               >
-                <div className="flex items-center justify-between">
-                  <h3 className="font-display font-semibold">{s.name}</h3>
+                <span className="flex items-center justify-between">
+                  <span className="font-display font-semibold">{s.name}</span>
                   {busy === s.key ? (
                     <Loader2 className="size-4 animate-spin text-pink" />
                   ) : (
                     <ArrowRight className="size-4 text-mute transition group-hover:translate-x-0.5 group-hover:text-pink" />
                   )}
-                </div>
-                <p className="mt-2 text-sm text-mute">{s.description}</p>
+                </span>
+                <span className="mt-2 block text-sm text-mute">{s.description}</span>
               </button>
             ))}
           </div>
@@ -186,15 +186,14 @@ function Library() {
             <ul className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {modules.map((m) => (
                 <li key={m.id} className="group flex flex-col overflow-hidden rounded-xl border border-line bg-night/70 transition hover:border-pink">
-                  <Link
-                    to="/editor/$moduleId"
-                    params={{ moduleId: m.id }}
-                    aria-label={`Ouvrir ${m.name}`}
-                    className="relative block h-56 overflow-hidden border-b border-line bg-white"
-                  >
-                    <EmailFrame html={previewEmail(m.tree, m.name)} width={m.tree.width + 40} maxHeight={900} title={`Vignette de ${m.name}`} />
+                  {/* The thumbnail (an iframe) sits beside the link covering it: an iframe may not be inside a link. */}
+                  <div className="relative block h-56 overflow-hidden border-b border-line bg-white">
+                    <div aria-hidden>
+                      <EmailFrame html={previewEmail(m.tree, m.name)} width={m.tree.width + 40} maxHeight={900} title={`Vignette de ${m.name}`} />
+                    </div>
                     <span className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/25 to-transparent" />
-                  </Link>
+                    <Link to="/editor/$moduleId" params={{ moduleId: m.id }} aria-label={`Ouvrir ${m.name}`} tabIndex={-1} className="absolute inset-0" />
+                  </div>
                   <div className="flex items-center gap-2 px-4 py-3">
                     <Link to="/editor/$moduleId" params={{ moduleId: m.id }} className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{m.name}</p>

@@ -9,6 +9,8 @@
   --color-line: #262642;
   --color-mute: #8a8aa8;
   --color-pink: #ff007f;
+  /* Pink behind white text: same hue, dark enough for a 4.5:1 contrast (WCAG AA). */
+  --color-pink-fill: #e0006f;
   --color-cyan: #00e5ff;
   --color-violet: #bc13fe;
   --font-display: 'Chakra Petch', ui-sans-serif, system-ui, sans-serif;
@@ -84,7 +86,7 @@ body {
   z-index: 5;
   padding: 1px 6px;
   border-radius: 4px;
-  background: var(--color-pink);
+  background: var(--color-pink-fill);
   color: #fff;
   font: 600 9px/14px var(--font-mono);
   letter-spacing: 0.05em;

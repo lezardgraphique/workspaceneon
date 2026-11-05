@@ -92,7 +92,7 @@ function ModulePreview() {
         <Link
           to="/editor/$moduleId"
           params={{ moduleId: mod.id }}
-          aria-label="Modifier le module" className="glow-pink inline-flex items-center justify-center gap-1.5 rounded-md bg-pink px-2.5 py-1.5 text-sm font-semibold text-white sm:px-3"
+          aria-label="Modifier le module" className="glow-pink inline-flex items-center justify-center gap-1.5 rounded-md bg-pink-fill px-2.5 py-1.5 text-sm font-semibold text-white sm:px-3"
         >
           <Pencil className="size-4" /> <span className="hidden sm:inline">Modifier</span>
         </Link>
