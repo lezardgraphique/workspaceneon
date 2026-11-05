@@ -1,5 +1,6 @@
 import { codeToTree, syncExtraFields } from '@/lib/hubl'
 import { isLogicBlock } from '@/lib/hubl-render'
+import { withLegacySpecs } from '@/lib/hubl-legacy'
 import { validateSyntax } from '@/lib/validator'
 import type { FieldBinding, FieldSpec } from '@/lib/module-fields'
 import type { Block, ModuleTree } from '@/lib/types'
@@ -50,7 +51,9 @@ export type Recognition =
   | { ok: true; tree: ModuleTree; kind: string; complete: boolean; summary: string; issue?: string; binding?: FieldBinding }
   | { ok: false; kind: string; error: string }
 
-export function recognizeCode(code: string, current: ModuleTree, specs?: FieldSpec[]): Recognition {
+export function recognizeCode(code: string, current: ModuleTree, given?: FieldSpec[]): Recognition {
+  // Fields declared by old template tags ({% text "titre" … %}) count like a fields.json.
+  const specs = withLegacySpecs(code, given)
   const kind = kindOf(code)
   const res = codeToTree(code, current, specs)
   if (!res.ok) return { ok: false, kind, error: res.error }

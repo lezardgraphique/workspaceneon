@@ -1,4 +1,5 @@
 import { toFieldName } from './fields'
+import { normalizeHubl } from './hubl-legacy'
 import type { Block, ButtonBlock, FieldDef, ImageBlock, ModuleTree } from './types'
 
 // Exact module fields from existing HuBL code.
@@ -87,7 +88,7 @@ const REF = /module\.([A-Za-z_]\w*)((?:\.[A-Za-z_]\w*)*)/g
 // an expression ({{ module.x }}) or in logic ({% if module.x %}).
 export function extractFieldRefs(code: string): string[] {
   const seen = new Set<string>()
-  const clean = code.replace(/\{#[\s\S]*?#\}/g, '')
+  const clean = normalizeHubl(code.replace(/\{#[\s\S]*?#\}/g, ''))
   for (const stmt of clean.match(/\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}/g) ?? []) {
     for (const m of stmt.matchAll(REF)) seen.add(m[1])
   }
@@ -156,12 +157,14 @@ export function bindFields(source: ModuleTree, specs: FieldSpec[] = []): FieldBi
     return Object.keys(specs).length ? { specs } : {}
   }
   const def = (name: string, extra: Partial<FieldDef> = {}): FieldDef => ({ name, label: labelOf(name), ...specOf(name), ...extra })
+  // A field declared with another type (choice, number, date…) printed in a text stays a variable.
+  const isText = (root: string) => { const t = byName.get(root)?.type; return !t || t === 'text' || t === 'richtext' }
 
   const bindBlock = (b: Block) => {
     switch (b.type) {
       case 'heading': {
         const r = wholeRef(b.text)
-        if (!r || r.path.length) return
+        if (!r || r.path.length || !isText(r.root)) return
         if (!claim(r.root)) {
           b.text = defStr(r.root) ?? humanize(r.root)
           return
@@ -175,7 +178,7 @@ export function bindFields(source: ModuleTree, specs: FieldSpec[] = []): FieldBi
       }
       case 'text': {
         const r = wholeRef(b.html)
-        if (!r || r.path.length) return
+        if (!r || r.path.length || !isText(r.root)) return
         if (!claim(r.root)) {
           b.html = defStr(r.root) ?? humanize(r.root)
           return

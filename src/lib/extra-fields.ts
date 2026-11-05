@@ -1,5 +1,6 @@
 import { collectFields } from './fields'
 import { humanize } from './module-fields'
+import { normalizeHubl, withLegacySpecs } from './hubl-legacy'
 import type { FieldSpec } from './module-fields'
 import type { ExtraField, ExtraFieldType, Json, ModuleTree } from './types'
 
@@ -153,7 +154,7 @@ class Analyzer {
   }
 
   run(code: string) {
-    const clean = code.replace(/\{#[\s\S]*?#\}/g, '')
+    const clean = normalizeHubl(code.replace(/\{#[\s\S]*?#\}/g, ''))
     // Loops and their end, to pop the loop variable.
     const ends: number[] = []
     for (const m of clean.matchAll(/\{\{-?([\s\S]*?)-?\}\}|\{%-?([\s\S]*?)-?%\}/g)) {
@@ -291,6 +292,8 @@ function hubspotType(name: string, n: UseNode): string {
     // A border has sides described by width/style/color (or its .css); a lone `radius` is a number.
     if (only(k, BORDER_SIDES) && [...deep].some((x) => ['top', 'bottom', 'left', 'right'].includes(x))) return 'border'
     if (only(k, ['properties', 'id']) && k.has('properties')) return 'crmobject'
+    // A font field also prints its CSS through .style.
+    if (only(k, ['style', 'css']) && named(name, /font|police|typo/i)) return 'font'
     if (only(k, ['css'])) {
       // `.css` alone: the name says which style field it is.
       if (named(name, /font|police|typo/i)) return 'font'
@@ -317,6 +320,8 @@ function hubspotType(name: string, n: UseNode): string {
   if (f.some((x) => NUMBER_FILTERS.has(x)) || /^(nombre|count|qty|quantite|prix|price|montant|amount|number|note|rating)\b|_(count|price|prix|nombre|montant|note)$/.test(name)) return 'number'
   // A plain value in src="…" / background="…" is a file (an image URL).
   if (n.ctx.some((c) => /(src|background)\s*=\s*["']?$|url\(\s*['"]?$/i.test(c))) return 'file'
+  // A document to download: a plain value in href="…" named like a file.
+  if (n.ctx.some((c) => /href\s*=\s*["']?$/i.test(c)) && /(fichier|file|pdf|brochure|document|doc\b|telecharg|download|piece|plaquette|catalogue_pdf)/i.test(name)) return 'file'
   if (f.some((x) => RICH_FILTERS.has(x)) || /(rich|body|corps|contenu|content|description|paragraph|paragraphe|html|intro)/i.test(name)) return 'richtext'
   return 'text'
 }
@@ -581,7 +586,8 @@ export function fromSpec(raw: Record<string, unknown>): ExtraField | null {
 
 // Fields used by the code, typed from their uses; with a fields.json, its
 // definitions win (all of them, even those the code doesn't reference).
-export function analyzeFieldRefs(code: string, specs: FieldSpec[] = []): ExtraField[] {
+export function analyzeFieldRefs(code: string, given: FieldSpec[] = []): ExtraField[] {
+  const specs = withLegacySpecs(code, given) ?? []
   const a = new Analyzer()
   a.run(code)
   const out: ExtraField[] = []

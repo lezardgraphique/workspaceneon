@@ -1,5 +1,6 @@
 import { humanize } from './module-fields'
 import { extractFieldRefs } from './module-fields'
+import { withLegacySpecs } from './hubl-legacy'
 import type { FieldSpec } from './module-fields'
 import type { Block, ExtraField, Json, ModuleTree } from './types'
 
@@ -60,18 +61,18 @@ const fieldName = (s: string) => {
 
 // Type names of other tools → HubSpot types.
 const TYPE_MAP: [RegExp, string][] = [
-  [/^(text|string|symbol|short_?text|single_?line|input|textfield|plain|textinput|title|slug|uid|keyword)$/i, 'text'],
-  [/^(richtext|rich_?text|html|wysiwyg|markdown|textarea|long_?text|multiline|editor|bloks?_?richtext|body|paragraph)$/i, 'richtext'],
-  [/^(number|integer|int|float|decimal|numeric|range|slider|double)$/i, 'number'],
+  [/^(text|string|symbol|short_?text|single_?line(_?text)?|input|textfield|plain(_?text)?|textinput|title|slug|uid|keyword|email|phone(_?number)?|tel|key_?text)$/i, 'text'],
+  [/^(richtext|rich_?text|html|wysiwyg|markdown|textarea|long_?text|multiline(_?text)?|editor|bloks?_?richtext|body|paragraph|structured_?text|input_?rich_?text(_?(html|md))?|input_?multiline|block_?content|portable_?text)$/i, 'richtext'],
+  [/^(number|integer|int|float|decimal|numeric|range|slider|double|currency|percent|rating|duration|big_?integer|auto_?number|count)$/i, 'number'],
   [/^(boolean|bool|checkbox|toggle|switch|true_false|yes_?no)$/i, 'boolean'],
-  [/^(select|dropdown|radio|choice|enum|option|options|single_?select|multi_?select|buttons|segmented|multioption)$/i, 'choice'],
-  [/^(image|img|picture|photo|media|asset|file_?image|upload)$/i, 'image'],
-  [/^(file|document|attachment|pdf)$/i, 'file'],
-  [/^(link|cta_?link|button|multilink|reference)$/i, 'link'],
+  [/^(select|dropdown|radio|choice|enum|enumeration|option|options|single_?select|multi_?select|buttons|segmented|multioption|select_?dropdown|select_?radio|select_?multiple_?dropdown|select_?icons)$/i, 'choice'],
+  [/^(image|img|picture|photo|media|asset|file_?image|upload|image_?upload|images?)$/i, 'image'],
+  [/^(file|document|attachment|attachments|multiple_?attachments|pdf|files)$/i, 'file'],
+  [/^(link|cta_?link|button|multilink|reference|link_?to_?media|content_?link)$/i, 'link'],
   [/^(url|href|uri|web|website)$/i, 'url'],
-  [/^(color|colour|colorpicker|color_?picker|hex)$/i, 'color'],
+  [/^(color|colour|colorpicker|color_?picker|hex|select_?color)$/i, 'color'],
   [/^(date|day)$/i, 'date'],
-  [/^(datetime|date_?time|timestamp|time)$/i, 'datetime'],
+  [/^(datetime|date_?time|timestamp|time|created_?time|last_?modified_?time)$/i, 'datetime'],
   [/^(group|object|fieldset|section|block|component|repeater|list|array|blocks|collection|flexible_?content)$/i, 'group'],
   [/^(font|typography)$/i, 'font'],
   [/^(alignment|align)$/i, 'alignment'],
@@ -90,15 +91,34 @@ const HUBSPOT_TYPES = new Set(['text', 'richtext', 'number', 'boolean', 'choice'
 
 function mapType(raw: unknown, def: Obj): string | null {
   if (typeof raw !== 'string') return null
-  const t = raw.trim()
+  const t = raw.trim().replace(/-/g, '_')
   if (HUBSPOT_TYPES.has(t)) return t
   // Contentful
   if (t === 'Link') return def.linkType === 'Asset' ? 'image' : 'link'
   if (t === 'Array') return 'group'
   if (t === 'Location') return 'text'
-  for (const [re, ht] of TYPE_MAP) if (re.test(t)) return ht
+  // Prismic StructuredText: a single heading is a text, paragraphs a rich text.
+  if (t === 'StructuredText') return isObj(def.config) && typeof def.config.single === 'string' && /^heading\d$/.test(def.config.single.split(',')[0].trim()) && !/paragraph/.test(def.config.single) ? 'text' : 'richtext'
+  if (t === 'Group' && isObj(def.config)) return 'group'
+  // Strapi plugin custom fields: plugin::color-picker.color
+  const last = t.split(/[:.]/).filter(Boolean).pop() ?? t
+  for (const [re, ht] of TYPE_MAP) if (re.test(t) || re.test(last)) return ht
   return null
 }
+
+// The most precise type the definition gives: an interface / widget (Directus
+// meta.interface, Strapi customField) says more than the storage type.
+function typeOfDef(def: Obj): string | null {
+  const meta = isObj(def.meta) ? def.meta : null
+  for (const raw of [meta?.interface, def.customField, def.interface, ...TYPE_KEYS.map((k) => def[k])]) {
+    const t = mapType(raw, def)
+    if (t) return t
+  }
+  return null
+}
+
+const IMAGE_EXT = /^(\.?(jpe?g|png|gif|webp|svg|avif|heic)|image\/.*|images?)$/i
+const IMAGE_NAME = /(image|img|visuel|photo|logo|picto|banni|banner|illustration|thumbnail|vignette|avatar|cover|hero)/i
 
 // A value's HubSpot type (for values without definitions).
 export function typeOfValue(name: string, v: unknown): string {
@@ -144,9 +164,14 @@ function hubspotValue(type: string, v: unknown): unknown {
 }
 
 // Options of a choice: [[v, l]], ['a', 'b'], [{ value, label }], Contentful validations [{ in: [...] }].
-function choicesOf(def: Obj): [string, string][] | undefined {
+function choicesOf(def: Obj, depth = 0): [string, string][] | undefined {
   for (const k of OPTION_KEYS) {
     const raw = def[k]
+    // Nested: Sanity options.list, Directus meta.options.choices, Webflow validations.options, Prismic config.options…
+    if (isObj(raw) && depth < 3) {
+      const inner = choicesOf({ ...raw, ...(Array.isArray(raw.list) ? { options: raw.list } : {}) }, depth + 1)
+      if (inner) return inner
+    }
     if (!Array.isArray(raw) || !raw.length) continue
     const list: [string, string][] = []
     for (const o of raw) {
@@ -158,6 +183,10 @@ function choicesOf(def: Obj): [string, string][] | undefined {
       } else if (typeof o === 'string' || typeof o === 'number') list.push([String(o), String(o)])
     }
     if (list.length) return list
+  }
+  if (depth === 0) for (const k of ['meta', 'config']) if (isObj(def[k])) {
+    const inner = choicesOf(def[k] as Obj, depth + 1)
+    if (inner) return inner
   }
   return undefined
 }
@@ -171,12 +200,30 @@ function toHubSpot(def: Obj, nameHint?: string, depth = 0): Obj | null {
   if (typeof rawName !== 'string' && typeof rawName !== 'number') return null
   const name = fieldName(String(rawName))
   if (!name) return null
-  let type = mapType(pick(def, TYPE_KEYS), def)
+  let type = typeOfDef(def)
+  const cfg = isObj(def.config) ? (def.config as Obj) : null
+  // Sanity: arrays say what they hold in `of` (block = rich text, objects = repeated groups).
+  const of = Array.isArray(def.of) ? def.of.filter(isObj) : null
+  if (of?.length) {
+    if (of.some((o) => o.type === 'block')) type = 'richtext'
+    else if (of.length === 1 && !Array.isArray(of[0].fields)) {
+      const inner = toHubSpot({ ...of[0], name: String(rawName) }, undefined, depth + 1)
+      if (inner) return { ...inner, label: inner.label === humanize(name) ? (pick(def, ['title', 'label']) ?? inner.label) : inner.label, occurrence: { min: 0, max: 20, default: 2 } }
+    }
+  }
+  // A file restricted to images is an image.
+  if (type === 'file') {
+    const exts = pick(def, ['allowedFileTypes', 'allowed_types', 'allowedTypes', 'accept', 'mimeTypes', 'extensions'])
+    const list = Array.isArray(exts) ? exts.map(String) : typeof exts === 'string' ? exts.split(/[\s,]+/) : []
+    if ((list.length && list.every((e) => IMAGE_EXT.test(e))) || (!list.length && IMAGE_NAME.test(name))) type = 'image'
+  }
+  // Strapi: a single media is an image, a component / dynamic zone a group.
+  if (def.type === 'media' && Array.isArray(def.allowedTypes) && !def.allowedTypes.includes('images')) type = 'file'
   // JSON Schema
   const schemaType = def.type
-  if (schemaType === 'string') type = def.format === 'uri' ? 'url' : def.format === 'date' ? 'date' : def.format === 'date-time' ? 'datetime' : def.format === 'color' ? 'color' : Array.isArray(def.enum) ? 'choice' : /html|rich/i.test(String(def.contentMediaType ?? def.format ?? '')) ? 'richtext' : 'text'
-  if (schemaType === 'array' || schemaType === 'object') type = 'group'
-  const labelRaw = contentful ? def.name : pick(def, LABEL_KEYS.filter((k) => k !== 'name' || nameHint !== undefined || pick(def, NAME_KEYS.filter((n) => n !== 'name')) !== undefined))
+  if (schemaType === 'string' && (!type || type === 'text')) type = def.format === 'uri' ? 'url' : def.format === 'date' ? 'date' : def.format === 'date-time' ? 'datetime' : def.format === 'color' ? 'color' : Array.isArray(def.enum) ? 'choice' : /html|rich/i.test(String(def.contentMediaType ?? def.format ?? '')) ? 'richtext' : 'text'
+  if ((schemaType === 'array' && !of?.some((o) => o.type === 'block')) || schemaType === 'object') type = 'group'
+  const labelRaw = contentful ? def.name : cfg && typeof cfg.label === 'string' && cfg.label ? cfg.label : pick(def, LABEL_KEYS.filter((k) => k !== 'name' || nameHint !== undefined || pick(def, NAME_KEYS.filter((n) => n !== 'name')) !== undefined))
   const label = typeof labelRaw === 'string' && labelRaw.trim() ? labelRaw.trim() : humanize(name)
   const out: Obj = { name, label }
 
@@ -184,8 +231,9 @@ function toHubSpot(def: Obj, nameHint?: string, depth = 0): Obj | null {
   let kids: Obj[] = []
   let repeater = false
   const itemsSchema = isObj(def.items) ? (def.items as Obj) : undefined
-  if (schemaType === 'array' || def.type === 'Array' || /^(repeater|list|array|blocks|collection|flexible_?content)$/i.test(String(pick(def, TYPE_KEYS) ?? ''))) repeater = true
-  const childSource = itemsSchema && (isObj(itemsSchema.properties) || Array.isArray(itemsSchema.fields)) ? itemsSchema : def
+  if ((schemaType === 'array' && type !== 'richtext') || def.type === 'Array' || def.repeatable === true || def.type === 'dynamiczone' || def.type === 'Group' || /^(repeater|list|array|collection|flexible_?content)$/i.test(String(pick(def, TYPE_KEYS) ?? ''))) repeater = true
+  if (type === 'richtext' && of?.length) repeater = false
+  const childSource = itemsSchema && (isObj(itemsSchema.properties) || Array.isArray(itemsSchema.fields)) ? itemsSchema : cfg && isObj(cfg.fields) ? cfg : of?.length === 1 && Array.isArray(of[0].fields) ? of[0] : def
   for (const k of CHILD_KEYS) {
     const c = childSource[k]
     if (Array.isArray(c) && c.some(isObj)) {
@@ -205,6 +253,11 @@ function toHubSpot(def: Obj, nameHint?: string, depth = 0): Obj | null {
     const inner = toHubSpot({ ...itemsSchema, name }, undefined, depth + 1)
     type = (inner?.type as string) ?? 'text'
   } else if (kids.length) type = 'group'
+  // Strapi v5 `blocks` (rich text) and other groups without anything inside.
+  else if (type === 'group' && /^blocks$/i.test(String(def.type ?? ''))) {
+    type = 'richtext'
+    repeater = false
+  }
   if (!type) type = kids.length ? 'group' : 'text'
   out.type = type
   if (type === 'group') out.children = kids
@@ -213,6 +266,16 @@ function toHubSpot(def: Obj, nameHint?: string, depth = 0): Obj | null {
     const ch = choicesOf(def)
     if (ch) out.choices = ch
     else out.type = 'text'
+  } else if (type === 'text' || !type) {
+    // A text whose pattern / placeholder is a web address is a URL.
+    const hint = [def.regex, def.pattern, def.placeholder, def.format, isObj(def.meta) && isObj(def.meta.options) ? def.meta.options.placeholder : undefined].filter((x) => typeof x === 'string').join(' ')
+    if (/https?\??:|^uri$|\burl\b/i.test(hint)) out.type = 'url'
+    // A text limited to a list of values is a choice (Sanity options.list, enum…).
+    const ch = choicesOf(def)
+    if (ch && ch.length > 1) {
+      out.type = 'choice'
+      out.choices = ch
+    }
   }
   const d = pick(def, DEFAULT_KEYS.filter((k) => k !== 'value' || !Array.isArray(def.value)))
   const v = hubspotValue(String(out.type), d)
@@ -265,6 +328,68 @@ const loose = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, '')
 
 const isCode = (v: unknown) => typeof v === 'string' && /<[a-z!][\s\S]*>|\{\{|\{%/i.test(v)
 
+// Bookkeeping keys of CMS entries (ids, revisions, dates): never module values.
+const META_KEYS = /^(_.*|id|documentId|document_id|sys|metadata|createdAt|updatedAt|publishedAt|created_at|updated_at|published_at|createdOn|lastUpdated|lastPublished|locale|localizations|cmsLocaleId|isDraft|isArchived|first_publication_date|last_publication_date|uid|href|slugs|lang|alternate_languages|linked_documents|type)$/
+const LOCALE = /^[a-z]{2}(-[A-Za-z]{2,4})?$/
+
+// Prismic / Sanity rich text (lists of blocks) → HTML; a single heading → its text.
+function richToHtml(v: unknown[]): string | undefined {
+  const blocks = v.filter(isObj)
+  if (!blocks.length || blocks.length !== v.length) return undefined
+  const textOf = (b: Obj) => (typeof b.text === 'string' ? b.text : Array.isArray(b.children) ? b.children.filter(isObj).map((c) => (typeof c.text === 'string' ? c.text : '')).join('') : null)
+  if (!blocks.every((b) => textOf(b) !== null && (typeof b.type === 'string' || b._type === 'block'))) return undefined
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  if (blocks.length === 1 && /^heading\d$/.test(String(blocks[0].type))) return textOf(blocks[0])!
+  return blocks
+    .map((b) => {
+      const tag = /^heading([1-6])$/.exec(String(b.type ?? ''))?.[1] ?? /^h([1-6])$/.exec(String(b.style ?? ''))?.[1]
+      const t = esc(textOf(b)!)
+      return tag ? `<h${tag}>${t}</h${tag}>` : /list-item|bullet/.test(String(b.type ?? b.listItem ?? '')) ? `<li>${t}</li>` : `<p>${t}</p>`
+    })
+    .join('')
+}
+
+// Values as the editor expects them: CMS wrappers unwrapped (Strapi attributes,
+// Webflow fieldData, Contentful locales), bookkeeping keys dropped, rich text
+// block lists turned into HTML.
+function cleanValues(values: Obj, depth = 0): Obj {
+  let v = values
+  for (const k of ['attributes', 'fieldData', 'field_data']) if (isObj(v[k])) v = { ...(v[k] as Obj) }
+  // Only a CMS entry (it has an id of its own) loses its bookkeeping keys.
+  const entry = ['id', '_id', 'documentId', 'sys', '_type', 'cmsLocaleId'].some((k) => k in values)
+  const out: Obj = {}
+  for (const [k, x] of Object.entries(v)) {
+    if ((entry && META_KEYS.test(k)) || k.startsWith('_')) continue
+    const c = cleanValue(x, depth)
+    if (c !== undefined) out[k] = c
+  }
+  return out
+}
+function cleanValue(x: unknown, depth: number): unknown {
+  if (depth > 4) return x
+  if (Array.isArray(x)) return richToHtml(x) ?? x.map((y) => (isObj(y) ? cleanValues(y, depth + 1) : y))
+  if (!isObj(x)) return x
+  const keys = Object.keys(x)
+  // Sanity image (asset reference without an address): nothing usable.
+  if (x._type === 'image' || (isObj(x.asset) && typeof (x.asset as Obj)._ref === 'string')) return typeof x.url === 'string' ? { src: x.url, alt: typeof x.alt === 'string' ? x.alt : '' } : undefined
+  // Contentful: { "fr-FR": value }
+  if (keys.length && keys.every((k) => LOCALE.test(k))) return cleanValue(x[keys[0]], depth)
+  // Strapi media: { data: { attributes: { url, alternativeText } } } / { url, alternativeText }
+  const media = isObj(x.data) && isObj((x.data as Obj).attributes) ? ((x.data as Obj).attributes as Obj) : x
+  if (typeof media.url === 'string' && ('mime' in media || 'alternativeText' in media || 'formats' in media)) return { src: media.url, alt: typeof media.alternativeText === 'string' ? media.alternativeText : '' }
+  // Prismic image: { url, alt, dimensions }; Prismic link: { link_type, url }
+  if (typeof x.url === 'string' && 'dimensions' in x) return { src: x.url, alt: typeof x.alt === 'string' ? x.alt : '' }
+  if (typeof x.link_type === 'string' && typeof x.url === 'string') return { url: { type: 'EXTERNAL', href: x.url, content_id: null }, open_in_new_tab: x.target === '_blank', no_follow: false }
+  // Contentful asset: { fields: { file: { url } , title } }
+  if (isObj(x.fields) && isObj((x.fields as Obj).file)) {
+    const f = x.fields as Obj
+    const file = cleanValue(f.file, depth) as Obj
+    const title = cleanValue(f.title, depth)
+    if (typeof file?.url === 'string') return { src: file.url.startsWith('//') ? 'https:' + file.url : file.url, alt: typeof title === 'string' ? title : '' }
+  }
+  return cleanValues(x, depth + 1)
+}
+
 // Finds what the JSON carries, wherever it sits (a few levels deep).
 export function parseForeignJson(text: string): ForeignJson | null {
   let data: unknown
@@ -298,13 +423,21 @@ export function parseForeignJson(text: string): ForeignJson | null {
       defs = Object.entries(v.properties as Obj).map(([n, x]) => (isObj(x) ? toHubSpot(x, n) : null)).filter((x): x is Obj => !!x)
       format ||= 'JSON Schema'
     }
-    for (const key of ['fields', 'schema', 'children', 'properties', 'module_fields', 'fieldDefinitions', 'field_definitions']) {
+    // Prismic custom types: { json: { Main: { titre: { type, config } }, SEO: {…} } } (tabs of definitions).
+    if (!defs && isObj(v.json) && Object.values(v.json as Obj).some((t) => isObj(t) && looksLikeDefMap(t as Obj))) {
+      defs = Object.values(v.json as Obj)
+        .filter((t): t is Obj => isObj(t) && looksLikeDefMap(t as Obj))
+        .flatMap((t) => Object.entries(t).map(([n, d]) => toHubSpot(d as Obj, n)))
+        .filter((d): d is Obj => !!d && d.type !== 'uid')
+      format ||= 'type de contenu Prismic'
+    }
+    for (const key of ['fields', 'schema', 'children', 'properties', 'attributes', 'inputs', 'module_fields', 'fieldDefinitions', 'field_definitions']) {
       const x = v[key]
       if (defs) break
       if (Array.isArray(x) && looksLikeDefs(x)) visit(x, [...path, key], depth + 1)
       else if (isObj(x) && looksLikeDefMap(x)) {
         defs = Object.entries(x).map(([n, d]) => toHubSpot(d as Obj, n)).filter((d): d is Obj => !!d)
-        format ||= 'schéma de composant'
+        format ||= key === 'attributes' ? 'type de contenu Strapi' : 'schéma de composant'
       }
     }
     // Values of a module in a page or e-mail.
@@ -326,9 +459,17 @@ export function parseForeignJson(text: string): ForeignJson | null {
     for (const [k, x] of Object.entries(v)) if (isObj(x) || Array.isArray(x)) visit(x, [...path, k], depth + 1)
   }
 
-  if (Array.isArray(data) && looksLikeDefs(data)) {
-    defs = data.filter(isObj).map((x) => (typeof x.type === 'string' && HUBSPOT_TYPES.has(x.type) ? x : toHubSpot(x))).filter((x): x is Obj => !!x)
-    format = data.every((x) => isObj(x) && typeof x.type === 'string' && HUBSPOT_TYPES.has(x.type)) ? 'fields.json HubSpot' : 'liste de champs'
+  // Entries of other tools: a Contentful entry (fields by locale), Airtable records.
+  if (isObj(data) && isObj(data.sys) && (data.sys as Obj).type === 'Entry' && isObj(data.fields)) {
+    values = data.fields as Obj
+    format = 'entrée Contentful'
+  } else if (isObj(data) && Array.isArray(data.records) && isObj(data.records[0]) && isObj((data.records[0] as Obj).fields)) {
+    values = (data.records[0] as Obj).fields as Obj
+    format = 'enregistrement Airtable'
+  } else if (Array.isArray(data) && looksLikeDefs(data)) {
+    const hubspot = (x: Obj) => typeof x.type === 'string' && HUBSPOT_TYPES.has(x.type) && typeof x.name === 'string'
+    defs = data.filter(isObj).map((x) => (hubspot(x) ? x : toHubSpot(x))).filter((x): x is Obj => !!x)
+    format = data.every((x) => isObj(x) && hubspot(x)) ? 'fields.json HubSpot' : 'liste de champs'
   } else visit(data, [], 0)
 
   // Plain object of values (nothing else recognised): { titre: "…", image: {…} }.
@@ -338,6 +479,7 @@ export function parseForeignJson(text: string): ForeignJson | null {
   }
   if (isObj(data) && Array.isArray(data.fields) && (data.fields as unknown[]).every((x) => isObj(x) && typeof x.type === 'string' && HUBSPOT_TYPES.has(x.type))) format = html ? 'module HubSpot (API)' : 'fields.json HubSpot'
 
+  if (values) values = cleanValues(values)
   const list: Obj[] = defs ?? []
   // Values without definitions say something of the types too (weaker than the code).
   const valueSpecs = values ? specsFromValues(values).filter((s) => !list.some((d) => d.name === s.name)) : []
@@ -457,6 +599,5 @@ export function importSpecs(code: string, fieldsJson: FieldSpec[] | null | undef
   const foreignSpecs = (foreign?.specs ?? []).map(rename)
   const exact = [...fj, ...foreignSpecs.filter((s) => !fj.some((f) => top(f.name) === top(s.name)))]
   const weak = (foreign?.guessed ?? []).map(rename).filter((s) => !exact.some((e) => top(e.name) === top(s.name)) && !used.has(top(s.name)))
-  const all = [...exact, ...weak]
-  return all.length ? all : undefined
+  return withLegacySpecs(code, [...exact, ...weak])
 }

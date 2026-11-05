@@ -9,6 +9,7 @@ import { isSafeUrl, sanitizeHtml as strictHtml, sanitizeStyle } from './sanitize
 import type { FieldBinding, FieldSpec } from './module-fields'
 import { olAttr, olParse, olStyle } from './outlook'
 import { protectHubl, restoreDom, restoreTree } from './hubl-protect'
+import { normalizeHubl, withLegacySpecs } from './hubl-legacy'
 import { classAttr, columnWidths, dividerLine, headingLine, headingWeight, hideClass, hideStyle, marginCss, responsiveCss, safeBgImage, sectionPad, spacingAttrs, spacingOf, spacingParse, textLine } from './look'
 import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight, buttonWidth, msoCell, msoOnly, notMso, vmlShape } from './vml'
 import { uid } from './types'
@@ -526,7 +527,9 @@ export function codeToTree(code: string, fallback: ModuleTree, specs?: FieldSpec
   const sectionEls = Array.from(doc.querySelectorAll('[data-neon="section"]')).filter((s) => !ownerSection(s))
   if (!sectionEls.length) {
     // Free HTML/HuBL without markers: convert it into editable blocks.
-    const imp = importHtml(cleaned)
+    // module['x'], widget_data.x.value and the old template tags read as module.x.
+    const src = normalizeHubl(cleaned)
+    const imp = importHtml(src)
     if (!imp.sections.length) {
       return { ok: false, error: 'Aucun contenu reconnu — l\'aperçu garde la dernière version valide.' }
     }
@@ -536,10 +539,10 @@ export function codeToTree(code: string, fallback: ModuleTree, specs?: FieldSpec
       font: imp.font ?? fallback.font,
       sections: imp.sections,
     }
-    const binding = bindFieldsFromCode(imported, cleaned, specs)
+    const binding = bindFieldsFromCode(imported, src, withLegacySpecs(cleaned, specs))
     // A HubSpot module: its fields are the ones it declares. Its other texts,
     // buttons and images stay fixed content instead of becoming new fields.
-    if (/\b(module|widget)\.[A-Za-z_]/.test(cleaned)) markFixed(binding.tree.sections)
+    if (/\b(module|widget)\.[A-Za-z_]/.test(src)) markFixed(binding.tree.sections)
     return { ok: true, imported: true, tree: binding.tree, binding }
   }
   const g = (k: string) => mod?.getAttribute(`data-${k}`) ?? null

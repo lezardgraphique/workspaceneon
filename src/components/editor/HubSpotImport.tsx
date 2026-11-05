@@ -1,3 +1,4 @@
+import { legacySpecs } from '@/lib/hubl-legacy'
 import { useMemo, useState } from 'react'
 import { AlertTriangle, Braces, Check, FileUp, X } from 'lucide-react'
 
@@ -11,7 +12,7 @@ import type { ExtraField, ModuleTree } from '@/lib/types'
 
 // Import of a HubSpot module as it is downloaded (module.html + fields.json,
 // optionally module.css), plus any JSON copied from another tool (values of
-// the module, JSON Schema, Contentful/Storyblok models, another tool's field
+// the module, JSON Schema, Contentful/Storyblok/Sanity/Strapi/Prismic/Webflow/Directus/Builder.io/Airtable models and entries, another tool's field
 // list, the HubSpot API's module JSON…) that helps recognise the fields. The
 // report lists every field with its exact type and where it comes from before
 // anything replaces the current module.
@@ -20,7 +21,7 @@ const input =
   'w-full rounded-md border border-line bg-void px-2.5 py-2 font-mono text-base text-white outline-none focus:border-cyan lg:text-xs'
 const caption = 'mb-1 block font-mono text-[10px] uppercase tracking-wider text-mute'
 
-type Origin = 'fields.json' | 'JSON' | 'code'
+type Origin = 'fields.json' | 'JSON' | 'balise' | 'code'
 
 interface Row {
   name: string
@@ -37,6 +38,7 @@ type Report = { error: string } | { rows: Row[]; missing: string[]; unknown: str
 const ORIGIN_TITLE: Record<Origin, string> = {
   'fields.json': 'Défini par le fields.json',
   JSON: 'Défini par le JSON importé',
+  balise: 'Déclaré par une balise du code ({% text "nom" %}, {% choice %}…)',
   code: 'Déduit de l’usage dans le code',
 }
 
@@ -68,8 +70,10 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
     if (!rec.ok) return { error: rec.error }
     const { tree: valued, applied } = applyValues(rec.tree, foreign?.values ?? null)
     const fromFj = new Set((fieldsJson ?? []).map((s) => s.name))
-    const fromJson = new Set((specs ?? []).filter((s) => !fromFj.has(s.name)).map((s) => s.name))
-    const origin = (n: string): Origin => (fromFj.has(n) ? 'fields.json' : fromJson.has(n) ? 'JSON' : 'code')
+    // Fields declared by old template tags come from the code, not from a JSON.
+    const tags = new Set(legacySpecs(source).map((s) => s.name))
+    const fromJson = new Set((specs ?? []).filter((s) => !fromFj.has(s.name) && !tags.has(s.name)).map((s) => s.name))
+    const origin = (n: string): Origin => (fromFj.has(n) ? 'fields.json' : fromJson.has(n) ? 'JSON' : tags.has(n) ? 'balise' : 'code')
     const got = new Set(applied)
     const rows = (f: ExtraField, depth = 0, prefix = ''): Row[] => {
       const full = prefix ? `${prefix}.${f.name}` : f.name
@@ -166,7 +170,7 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
                 className={`${input} min-h-28`}
                 value={other}
                 onChange={(e) => setOther(e.target.value)}
-                placeholder='Valeurs du module ({ "titre": "…", "cartes": [ … ] }), widget_data, JSON Schema, modèle Contentful ou Storyblok, liste de champs d’un autre outil, JSON du module via l’API HubSpot…'
+                placeholder='Valeurs du module ({ "titre": "…", "cartes": [ … ] }), widget_data, JSON Schema, modèle ou entrée Contentful, Storyblok, Sanity, Strapi, Prismic, Webflow, Directus, Builder.io, Airtable, liste de champs d’un autre outil, JSON du module via l’API HubSpot…'
               />
               {other.trim() &&
                 (foreign ? (
@@ -199,9 +203,12 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
                 <p className="mb-2 text-xs text-mute">
                   {report.rows.filter((r) => r.depth === 0).length} champs
                   {report.rows.length > report.rows.filter((r) => r.depth === 0).length && ` (${report.rows.length} avec les sous-champs)`}
-                  {fieldsJson || foreign
-                    ? ` · ${report.rows.filter((r) => r.origin !== 'code').length === report.rows.length ? 'tous' : report.rows.filter((r) => r.origin !== 'code').length} définis par un JSON`
-                    : ' · types déduits du code (ajoute le fields.json ou le JSON d’un autre outil pour plus d’exactitude)'}
+                  {report.rows.some((r) => r.origin === 'balise') && ` · ${report.rows.filter((r) => r.origin === 'balise').length} déclarés par des balises`}
+                  {(fieldsJson || foreign) && report.rows.some((r) => r.origin === 'fields.json' || r.origin === 'JSON')
+                    ? ` · ${report.rows.filter((r) => r.origin === 'fields.json' || r.origin === 'JSON').length === report.rows.length ? 'tous' : report.rows.filter((r) => r.origin === 'fields.json' || r.origin === 'JSON').length} définis par un JSON`
+                    : fieldsJson || foreign
+                      ? ''
+                    : report.rows.some((r) => r.origin === 'balise') ? '' : ' · types déduits du code (ajoute le fields.json ou le JSON d’un autre outil pour plus d’exactitude)'}
                   {report.rows.some((r) => r.valued) && ` · ${report.rows.filter((r) => r.valued).length} valeur${report.rows.filter((r) => r.valued).length > 1 ? 's' : ''} reprise${report.rows.filter((r) => r.valued).length > 1 ? 's' : ''} du JSON`}
                 </p>
                 <ul className="divide-y divide-line overflow-hidden rounded-md border border-line text-xs">
