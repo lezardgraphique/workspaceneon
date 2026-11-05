@@ -295,7 +295,12 @@ export function createBlock(type: BlockType): Block {
     case 'spacer':
       return { id, type, height: 24 }
     case 'raw':
-      return { id, type, html: '{% if contact.firstname %}Bonjour {{ contact.firstname }},{% endif %}' }
+      // Plain HTML, editable in place; HuBL variables and logic work too.
+      return {
+        id,
+        type,
+        html: '<div style="padding:16px;background:#f4f4fa;border-radius:8px;font-size:15px;line-height:1.5;color:#1d1d1b;"><p style="margin:0 0 8px;font-weight:700;">Bonjour {{ contact.firstname }},</p><p style="margin:0;">Écris ou colle ton HTML ici, puis clique sur un élément de l\'aperçu pour le modifier.</p></div>',
+      }
     case 'section':
       return createSection(1, true)
   }
@@ -321,6 +326,6 @@ export const BLOCK_LABELS: Record<BlockType, string> = {
   image: 'Image',
   divider: 'Séparateur',
   spacer: 'Espace',
-  raw: 'Code libre',
+  raw: 'Bloc HTML',
   section: 'Card imbriquée',
 }

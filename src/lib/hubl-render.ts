@@ -1005,7 +1005,8 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
       case 'section':
         return { ...b, bg: text(b.bg, sc), ...(b.css ? { css: text(b.css, sc) } : {}), cells: b.cells.map((c) => list(c, sc)) }
       case 'raw':
-        return { ...b, html: text(b.html, sc) }
+        // The selected HTML block is edited from its own code (variables shown as written).
+        return b.id === keepId ? b : { ...b, html: text(b.html, sc) }
       case 'heading':
         return b.id === keepId ? b : { ...b, text: text(b.text, sc), color: text(b.color, sc) }
       case 'text':

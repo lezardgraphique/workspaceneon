@@ -93,6 +93,11 @@ body {
   text-transform: uppercase;
   pointer-events: none;
   opacity: 0;
+  /* One line, whatever the width (long hints are cut, not wrapped over the content). */
+  max-width: calc(100% - 8px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Touch drag (long press) in the preview */
@@ -107,6 +112,35 @@ body {
 }
 
 /* In-place editing of headings, texts and button labels */
+/* Selected HTML block: its elements are picked, typed into and dragged in place. */
+.neon-html .neon-hubl {
+  display: inline-block;
+  margin: 1px 2px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #ede9fe;
+  color: #5b21b6;
+  font: 500 11px/18px var(--font-mono);
+}
+.neon-html [data-nsp-p] {
+  cursor: pointer;
+}
+.neon-html [data-nsp-p]:hover {
+  outline: 1px dashed var(--color-cyan);
+  outline-offset: 1px;
+}
+.neon-html [data-nsp-sel] {
+  outline: 2px solid var(--color-pink) !important;
+  outline-offset: 1px;
+}
+.neon-html [contenteditable='true'] {
+  cursor: text;
+  outline: 2px solid var(--color-cyan) !important;
+}
+.neon-html a {
+  cursor: pointer;
+}
+
 .neon-editable {
   min-height: 1em;
 }

@@ -4,6 +4,7 @@ import { ImageIcon } from 'lucide-react'
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 
 import { firstImage } from '@/lib/images'
+import { HtmlBlockEditor } from './HtmlBlockEditor'
 import { isSafeUrl, sanitizeHtml } from '@/lib/sanitize'
 
 import type { MoveTarget } from '@/lib/tree'
@@ -110,6 +111,7 @@ function Node({
   hidden,
   label,
   editable,
+  hint,
   selectedId,
   onSelect,
   style,
@@ -120,6 +122,7 @@ function Node({
   hidden?: boolean
   label: string
   editable?: boolean
+  hint?: string
   selectedId: string | null
   onSelect: (id: string) => void
   style?: CSSProperties
@@ -141,6 +144,7 @@ function Node({
       <span className="neon-tag">
         {label}
         {editable && selectedId === id && ' · clique pour écrire'}
+        {hint && selectedId === id && hint}
       </span>
       {children}
     </div>
@@ -161,6 +165,7 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
       hidden={hidden}
       label={`${b.type !== 'section' && 'field' in b && b.field?.label ? b.field.label : BLOCK_LABELS[b.type]}${hide === 'mobile' ? ' · masqué sur mobile' : hide === 'desktop' ? ' · mobile seulement' : ''}`}
       editable={b.type === 'heading' || b.type === 'text' || b.type === 'button'}
+      hint={b.type === 'raw' && /<[a-zA-Z]/.test(b.html) ? ' · clique un élément pour le modifier, glisse-le pour le déplacer' : undefined}
       selectedId={p.selectedId} onSelect={p.onSelect} style={{ marginTop: sp.t || undefined, marginBottom: sp.b || undefined, ...style }} onDropImage={p.onDropImage}>
       {children}
     </Node>
@@ -231,6 +236,9 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
     case 'spacer':
       return node(<div style={{ height: p.mobile && b.mobileHeight != null ? b.mobileHeight : b.height }} />)
     case 'raw':
+      // Selected HTML block: its own code, editable in place (texts, images,
+      // links, elements dragged within the block).
+      if (active && /<[a-zA-Z]/.test(b.html)) return node(<HtmlBlockEditor html={b.html} font={font} onChange={(html) => edit({ html })} />)
       // The tree reaching the preview is already interpreted: show the result.
       return node(
         b.html.trim() ? (

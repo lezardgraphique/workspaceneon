@@ -389,7 +389,7 @@ function ConvertRaw({ html, onConvert }: { html: string; onConvert: (blocks: Blo
       </button>
       <p className="mt-2 text-xs text-mute">
         {note ||
-          'Titres, textes, boutons, images, séparateurs et colonnes deviennent des blocs. La logique ({% if %}, {% for %}…) reste en code libre autour.'}
+          'Titres, textes, boutons, images, séparateurs et colonnes deviennent des blocs. La logique ({% if %}, {% for %}…) reste autour, en lignes de logique.'}
       </p>
     </div>
   )
@@ -528,7 +528,7 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
     case 'raw':
       return (
         <>
-          <Field label="Code libre (HTML, HuBL…)">
+          <Field label="Bloc HTML (HTML, HuBL…)">
             <textarea className={`${input} ${mono} min-h-40`} value={b.html} onChange={(e) => set({ html: e.target.value })} />
           </Field>
           <RawFields html={b.html} p={p} />
@@ -628,7 +628,7 @@ export function Inspector(p: Props) {
         {rawCount > 0 && (
           <div className="rounded-lg border border-cyan/30 bg-cyan/5 p-3">
             <p className="mb-2 text-xs text-mute">
-              {rawCount} bloc{rawCount > 1 ? 's' : ''} de code libre dans ce module.
+              {rawCount} {rawCount > 1 ? 'Blocs HTML' : 'Bloc HTML'} dans ce module.
             </p>
             <button
               type="button"

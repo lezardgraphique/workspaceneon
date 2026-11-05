@@ -65,7 +65,7 @@ function OverrideField({ label, value, base, min, max, onChange }: { label: stri
 // Adjustments that only Outlook for Windows reads (written as mso-* properties):
 // the other messageries keep the element as it is.
 export function OutlookPanel({ tree, node, onChange, onTree }: { tree: ModuleTree; node: Block; onChange: (patch: Partial<Block>) => void; onTree: (t: ModuleTree) => void }) {
-  if (node.type === 'raw') return <p className="p-3 text-sm text-mute">Le code libre n'a pas de réglage Outlook : modifie son code directement.</p>
+  if (node.type === 'raw') return <p className="p-3 text-sm text-mute">Un Bloc HTML n'a pas de réglage Outlook : modifie son code directement.</p>
   const o: OutlookTweaks = (node as { outlook?: OutlookTweaks }).outlook ?? {}
   const f = (k: Key, label: string, min: number, max: number) => (
     <OverrideField key={k} label={label} value={o[k]} base={olBase(tree, node, k)} min={min} max={max} onChange={(v) => onChange(olPatch(node, k, v))} />

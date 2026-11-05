@@ -72,7 +72,7 @@ export const Route = createFileRoute('/api/maily')({
             : `\n\nL'utilisateur est en mode « Conseil ». S'il te demande de créer, recréer, refaire, reproduire ou modifier le module (ou s'il t'envoie une capture ou du code à recréer), fais-le avec le bloc neon. Sinon réponds sans bloc neon.`
 
         const importNote = imported
-          ? `\n\nLe code joint au dernier message a déjà été reconnu, converti et appliqué dans l'éditeur : c'est le module actuel ci-dessous. S'il demande seulement de le transformer ou de l'afficher, ne renvoie PAS de bloc neon : fais un bilan court (type de code reconnu, ce qui est resté en Code libre et pourquoi, 2 ou 3 améliorations concrètes de compatibilité, d'accessibilité ou de modernité). S'il demande aussi des changements, applique-les à ce module avec le bloc neon.`
+          ? `\n\nLe code joint au dernier message a déjà été reconnu, converti et appliqué dans l'éditeur : c'est le module actuel ci-dessous. S'il demande seulement de le transformer ou de l'afficher, ne renvoie PAS de bloc neon : fais un bilan court (type de code reconnu, ce qui est resté en Bloc HTML et pourquoi, 2 ou 3 améliorations concrètes de compatibilité, d'accessibilité ou de modernité). S'il demande aussi des changements, applique-les à ce module avec le bloc neon.`
           : issue
             ? `\n\nAnalyse automatique du code joint au dernier message : ${issue}. Recrée-le fidèlement en blocs éditables avec le bloc neon (si des variables {{ module.… }} apparaissent, remplace-les par la valeur par défaut d'un fields.json joint ou par un contenu plausible, et donne le nom du champ en data-field).`
             : ''

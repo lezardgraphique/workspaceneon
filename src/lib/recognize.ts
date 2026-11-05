@@ -89,13 +89,13 @@ export function recognizeCode(code: string, current: ModuleTree, given?: FieldSp
       : left > 0
       ? `${plural(left, 'variable', 'variables')} {{ module.… }} (${unbound.join(', ')}) non liée${left > 1 ? 's' : ''} à un champ`
       : st.blocks && st.raw / st.blocks > 0.5
-        ? `${st.raw} blocs sur ${st.blocks} restent en Code libre`
+        ? `${st.raw} blocs sur ${st.blocks} restent en Bloc HTML`
         : undefined
 
   const parts = [plural(tree.sections.length, 'section', 'sections'), plural(st.blocks - st.raw, 'bloc éditable', 'blocs éditables')]
   if (st.cards) parts.push(plural(st.cards, 'card', 'cards'))
   const raw = st.raw
-    ? ` et ${plural(st.raw, 'bloc Code libre', 'blocs Code libre')} (logique HuBL ou éléments non reconnus, conservés tels quels)`
+    ? ` et ${plural(st.raw, 'Bloc HTML', 'Blocs HTML')} (logique HuBL ou éléments non reconnus, conservés tels quels)`
     : ''
   const fields = binding?.bound.length
     ? ` ${plural(binding.bound.length, 'champ reconnu', 'champs reconnus')} avec leurs noms exacts (${binding.bound.flatMap((f) => f.exposed).join(', ')}).`
