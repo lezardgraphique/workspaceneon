@@ -6,7 +6,7 @@ import { RULES, hit } from '@/server/rate-limit'
 
 // Content-Security-Policy. The app renders untrusted HTML only through the
 // sanitizer, but the policy is the second wall: nothing from another origin
-// can run, and the page can't be framed or post elsewhere.
+// can run, and the page can't be framed (except by Netlify's dashboard) or post elsewhere.
 // Inline scripts are needed by the SSR bootstrap; the email preview is a
 // script-less sandboxed iframe that inherits this policy (hence the open
 // img/style/font sources: emails load remote images and web fonts).
@@ -19,7 +19,9 @@ const CSP = [
   "media-src 'self'",
   "connect-src 'self'",
   "frame-src 'self' about: data: blob:",
-  "frame-ancestors 'none'",
+  // Only Netlify's dashboard may show the app in a frame (deploy previews);
+  // any other site still can't frame it (clickjacking).
+  "frame-ancestors 'self' https://app.netlify.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -29,7 +31,8 @@ const CSP = [
 const HEADERS: Record<string, string> = {
   'Content-Security-Policy': CSP,
   'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
+  // Older browsers only; current ones follow frame-ancestors above.
+  'X-Frame-Options': 'SAMEORIGIN',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
