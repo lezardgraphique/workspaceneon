@@ -99,8 +99,6 @@ const isTyping = (el: EventTarget | null) =>
 const opensKeyboard = (el: EventTarget | null) =>
   isTyping(el) && !(el as HTMLElement).matches('input[type=range], input[type=color], select')
 
-// The page may come from the server while newer edits wait in the local copy
-// (made offline): those win, and the editor restarts from them.
 function EditorGate() {
   const server = Route.useLoaderData()
   const [local, setLocal] = useState<ModuleRecord | null>(null)
@@ -118,9 +116,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
   const [tree, setTree] = useState<ModuleTree>(initial.tree)
   const [code, setCode] = useState(() => treeToCode(initial.tree, initial.name))
   const [codeError, setCodeError] = useState<string | null>(null)
-  // True when the code is free HTML (no data-neon markers) converted on the fly.
   const [codeImported, setCodeImported] = useState(false)
-  // Fields the last pasted/typed code created (names), shown next to the code.
   const [newFields, setNewFields] = useState<string[]>([])
   const [codeJump, setCodeJump] = useState<{ line: number; n: number }>()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -137,15 +133,19 @@ function Editor({ initial }: { initial: ModuleRecord }) {
   const [conflictCopy, setConflictCopy] = useState<string | null>(null)
   const [past, setPast] = useState<ModuleTree[]>([])
   const [future, setFuture] = useState<ModuleTree[]>([])
-  // Mobile: hide the tab bar while the on-screen keyboard is up.
   const [typing, setTyping] = useState(false)
+  const [pageHidden, setPageHidden] = useState(() => document.visibilityState === 'hidden')
 
   const lastPush = useRef(0)
   const codeTyped = useRef(false)
 
-  // Rapid successive edits (slider drags, typing) collapse into one undo step.
-  // Edits within 600 ms (typing, a slider) make one undo step; a change of
-  // structure (add, delete, move, duplicate) always gets its own.
+  useEffect(() => {
+    const onVisibility = () => setPageHidden(document.visibilityState === 'hidden')
+    onVisibility()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
+
   const pushHistory = useCallback((prev: ModuleTree, next?: ModuleTree) => {
     const now = Date.now()
     if (now - lastPush.current > 600 || (next && structureKey(prev) !== structureKey(next))) setPast((p) => [...p.slice(-60), prev])
@@ -153,9 +153,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
     setFuture([])
   }, [])
 
-  // Visual edit → tree is the source of truth, code is regenerated.
   const commit = (raw: ModuleTree, select?: string | null) => {
-    // Variables used by the code get their module field (and lose it when gone).
     const next = syncExtraFields(raw)
     pushHistory(tree, next)
     setTree(next)
@@ -165,14 +163,12 @@ function Editor({ initial }: { initial: ModuleRecord }) {
     if (select !== undefined) setSelectedId(select)
   }
 
-  // Code edit → parse (debounced) and update the tree, but never rewrite the
-  // text the user is typing.
   const onCodeChange = (text: string) => {
     codeTyped.current = true
     setCode(text)
   }
   useEffect(() => {
-    if (!codeTyped.current) return
+    if (!codeTyped.current || pageHidden) return
     const t = setTimeout(() => {
       codeTyped.current = false
       const res = codeToTree(code, tree)
@@ -180,8 +176,6 @@ function Editor({ initial }: { initial: ModuleRecord }) {
       setCodeError(null)
       setCodeImported(!!res.imported)
       pushHistory(tree)
-      // Fields already created keep their edits; new variables get theirs.
-      // Pasted code without the editor's markers (a HubSpot module…): its fields are read from the code itself.
       const next = syncExtraFields({ ...reconcileIds(res.tree, tree), fields: res.imported ? undefined : tree.fields }, undefined, res.imported ? code : undefined)
       const known = new Set((tree.fields ?? []).map((f) => f.name))
       setNewFields((next.fields ?? []).map((f) => f.name).filter((n) => !known.has(n)))
@@ -189,21 +183,17 @@ function Editor({ initial }: { initial: ModuleRecord }) {
     }, 250)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code])
+  }, [code, pageHidden])
 
-  // Used by Maily: returns an error message, or null when applied.
   const applyCode = (generated: string, specs?: FieldSpec[], values?: Record<string, unknown> | null) => {
     const res = codeToTree(generated, tree, specs)
     if (!res.ok) return res.error
-    // A whole new module: its variables become its fields (types from fields.json when given),
-    // then the values of an imported JSON fill them.
     const next = applyValues(syncExtraFields({ ...res.tree, fields: undefined }, specs, generated), values ?? null).tree
     setNewFields((next.fields ?? []).map((f) => f.name))
     commit(next, null)
     return null
   }
 
-  // Used by Maily's custom blocks: appends the section unless the module already has the same one.
   const addSection = (section: Section): string | null => {
     const sig = signature(section)
     if (tree.sections.some((s) => signature(s) === sig)) return 'Ce bloc est déjà dans le module : je ne l\'ai pas ajouté une seconde fois.'
@@ -233,7 +223,6 @@ function Editor({ initial }: { initial: ModuleRecord }) {
     lastPush.current = 0
   }
 
-  // Autosave to Netlify Database
   const saveSeq = useRef(0)
   const firstRender = useRef(true)
   const persist = useCallback(async () => {
@@ -254,10 +243,14 @@ function Editor({ initial }: { initial: ModuleRecord }) {
       firstRender.current = false
       return
     }
+    if (pageHidden) {
+      setSave('dirty')
+      return
+    }
     setSave('dirty')
     const t = setTimeout(persist, 1000)
     return () => clearTimeout(t)
-  }, [persist])
+  }, [persist, pageHidden])
 
   useEffect(() => {
     if (save === 'saved' || save === 'local') return
@@ -266,7 +259,6 @@ function Editor({ initial }: { initial: ModuleRecord }) {
     return () => window.removeEventListener('beforeunload', warn)
   }, [save])
 
-  // Keyboard shortcuts
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {})
   keyHandler.current = (e) => {
     const mod = e.metaKey || e.ctrlKey
@@ -295,7 +287,6 @@ function Editor({ initial }: { initial: ModuleRecord }) {
     return () => window.removeEventListener('keydown', h)
   }, [])
 
-  // Phones get the mobile preview by default.
   useEffect(() => {
     if (window.matchMedia('(max-width: 639px)').matches) setMobile(true)
   }, [])
@@ -311,8 +302,6 @@ function Editor({ initial }: { initial: ModuleRecord }) {
     }
   }, [])
 
-  // Image files dropped on the preview: uploaded, then applied to the tree as
-  // it is once the upload finishes (the user may keep editing meanwhile).
   const [uploading, setUploading] = useState<string | null>(null)
   const latest = useRef({ tree, commit })
   latest.current = { tree, commit }
@@ -336,8 +325,6 @@ function Editor({ initial }: { initial: ModuleRecord }) {
     }
   }
 
-  // The preview page reads the saved module: save first. The tab is opened
-  // right away so the browser doesn't treat it as a popup.
   const openPreview = async () => {
     const tab = window.open('about:blank', '_blank')
     if (save !== 'saved') await persist()
@@ -351,16 +338,15 @@ function Editor({ initial }: { initial: ModuleRecord }) {
     if (id && rightTab !== 'code') setRightTab('inspector')
   }
 
-  // A pane is visible on mobile when it is the active pane, and on desktop
-  // when it is the active tab of its column.
   const vis = (k: Pane, desktop: boolean) => `${pane === k ? 'flex' : 'hidden'} ${desktop ? 'lg:flex' : 'lg:hidden'}`
   const tabBtn = (active: boolean) =>
     `flex flex-1 items-center justify-center gap-1.5 border-b-2 py-2.5 text-xs font-semibold ${
       active ? 'border-pink text-white' : 'border-transparent text-mute hover:text-white'
     }`
-  // The preview shows the HuBL as the platform would render it; the block being
-  // edited in place keeps its source text.
-  const previewTree = useMemo(() => interpretTree(tree, previewScope(tree, contact), selectedId), [tree, contact, selectedId])
+  const previewTree = useMemo(() => {
+    if (pageHidden) return tree
+    return interpretTree(tree, previewScope(tree, contact), selectedId)
+  }, [tree, contact, selectedId, pageHidden])
   const treeProps = { tree, selectedId, onSelect: select, commit }
   const selected = selectedId ? findNode(tree, selectedId) : null
   const selectedLabel =
@@ -369,12 +355,10 @@ function Editor({ initial }: { initial: ModuleRecord }) {
 
   return (
     <div className="flex h-dvh flex-col bg-void">
-      {/* Top bar */}
       <header className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line bg-space px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:flex-nowrap sm:gap-2 sm:px-3">
         <Link to="/" title="Mes modules" aria-label="Mes modules" className="flex items-center gap-2 rounded-md p-1 hover:bg-white/5">
           <NeonLogo size={28} />
         </Link>
-        {/* The page's title for screen readers: the name field shows it to everyone else. */}
         <h1 className="sr-only">Éditeur · {name || 'Module sans nom'}</h1>
         <input
           value={name}
@@ -388,7 +372,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
         <span className="flex shrink-0 items-center gap-1 text-xs text-mute" aria-live="polite">
           {save === 'saving' && <><Loader2 className="size-3.5 animate-spin" /> <span className="hidden md:inline">Sauvegarde…</span></>}
           {save === 'saved' && <><Check className="size-3.5 text-cyan" /> <span className="hidden md:inline">Sauvegardé</span></>}
-          {save === 'local' && <><CloudOff className="size-3.5 text-cyan" /> <span className="hidden md:inline" title="Enregistré sur cet appareil, envoyé dès que la connexion revient">Enregistré sur cet appareil</span></>}
+          {save === 'local' && <><CloudOff className="size-3.5 text-cyan" /> <span className="hidden md:inline" title="Enregistré sur cet appareil, envoyé dès que la connexion revient">Enregistré localement</span></>}
           {save === 'conflict' && (
             <span className="flex items-center gap-1 text-pink">
               <CloudOff className="size-3.5" />
@@ -408,13 +392,12 @@ function Editor({ initial }: { initial: ModuleRecord }) {
           )}
         </span>
         <span className="hidden flex-1 sm:block" />
-        {/* Phones: the tools go on a second row. */}
         <span className="order-1 h-0 basis-full sm:hidden" aria-hidden />
         <div className="order-2 flex flex-1 items-center sm:order-none sm:flex-none">
-          <button onClick={undo} disabled={!past.length} title="Annuler (Ctrl+Z)" aria-label="Annuler" className="max-sm:flex-1 max-sm:justify-center rounded-md p-2 text-mute hover:bg-white/5 hover:text-white disabled:opacity-30">
+          <button onClick={undo} disabled={!past.length} title="Annuler (Ctrl+Z)" aria-label="Annuler" className="max-sm:flex-1 max-sm:justify-center rounded-md p-2 text-mute hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">
             <Undo2 className="size-4" />
           </button>
-          <button onClick={redo} disabled={!future.length} title="Rétablir (Ctrl+Shift+Z)" aria-label="Rétablir" className="max-sm:flex-1 max-sm:justify-center rounded-md p-2 text-mute hover:bg-white/5 hover:text-white disabled:opacity-30">
+          <button onClick={redo} disabled={!future.length} title="Rétablir (Ctrl+Shift+Z)" aria-label="Rétablir" className="max-sm:flex-1 max-sm:justify-center rounded-md p-2 text-mute hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">
             <Redo2 className="size-4" />
           </button>
         </div>
@@ -449,7 +432,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
           title="Volet VML pour Outlook, structure en direct"
           aria-label="Volet VML pour Outlook"
           aria-pressed={vmlOpen}
-          className={`order-2 inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-sm hover:text-white max-sm:flex-1 sm:order-none sm:ml-1 sm:px-2.5 ${vmlOpen ? 'border-violet text-white' : 'border-line text-mute hover:border-violet'}`}
+          className={`order-2 inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-sm hover:text-white max-sm:flex-1 sm:order-none sm:ml-1 sm:px-2.5 ${vmlOpen ? 'border-cyan bg-cyan/10 text-cyan' : 'border-line text-mute hover:border-cyan'}`}
         >
           <Shapes className="size-4" /> <span className="max-sm:text-xs sm:hidden xl:inline">VML</span>
           {tree.vml && <span className="size-1.5 rounded-full bg-cyan" aria-label="VML actif" />}
@@ -458,7 +441,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
           onClick={() => setTesting(true)}
           title="Tester dans les clients de messagerie"
           aria-label="Tester dans les clients de messagerie"
-          className="order-2 inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-sm text-mute hover:border-cyan hover:text-white max-sm:flex-1 sm:order-none sm:ml-1 sm:px-2.5"
+          className="order-2 inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-sm text-mute hover:border-cyan hover:text-white max-sm:flex-1 sm:order-none"
         >
           <MailCheck className="size-4" /> <span className="max-sm:text-xs sm:hidden xl:inline">Clients</span>
         </button>
@@ -466,7 +449,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
           onClick={openPreview}
           title="Aperçu du module dans un nouvel onglet"
           aria-label="Aperçu du module"
-          className="order-2 inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-sm text-mute hover:border-cyan hover:text-white max-sm:flex-1 sm:order-none sm:px-2.5"
+          className="order-2 inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-sm text-mute hover:border-cyan hover:text-white max-sm:flex-1 sm:order-none"
         >
           <ExternalLink className="size-4" /> <span className="max-sm:text-xs sm:hidden xl:inline">Aperçu</span>
         </button>
@@ -499,168 +482,160 @@ function Editor({ initial }: { initial: ModuleRecord }) {
         </button>
       </header>
 
-      {/* Work area + docked VML panel: under the work, or beside it on a phone held sideways. */}
       <div className="flex min-h-0 flex-1 flex-col [@media(max-height:500px)]:flex-row">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1">
-        {/* Left column: structure / Maily */}
-        <aside aria-label="Structure, champs et Maily" className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-72 lg:shrink-0 lg:border-r xl:w-80">
-          <div className="hidden border-b border-line lg:flex">
-            <button className={tabBtn(leftTab === 'structure')} onClick={() => setLeftTab('structure')}>
-              <Layers className="size-3.5" /> Structure
-            </button>
-            <button className={tabBtn(leftTab === 'fields')} onClick={() => setLeftTab('fields')}>
-              <ListChecks className="size-3.5" /> Champs
-            </button>
-            <button className={tabBtn(leftTab === 'maily')} onClick={() => setLeftTab('maily')}>
-              <Sparkles className="size-3.5" /> Maily
-            </button>
-          </div>
-          <div className={`${vis('structure', leftTab === 'structure')} min-h-0 w-full flex-1 flex-col bg-space ${showSelectionBar ? 'max-lg:pb-20' : ''}`}>
-            <Structure {...treeProps} storageKey={initial.id} />
-          </div>
-          <div className={`${vis('fields', leftTab === 'fields')} min-h-0 w-full flex-1 flex-col bg-space`}>
-            <FieldsPanel {...treeProps} />
-          </div>
-          <div className={`${vis('maily', leftTab === 'maily')} min-h-0 w-full flex-1 flex-col bg-space`}>
-            <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="size-5 animate-spin text-cyan" /></div>}>
-              <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyCode} addSection={addSection} />
-            </Suspense>
-          </div>
-        </aside>
-
-        {/* Center: live preview */}
-        <main className={`${vis('preview', true)} neon-grid min-h-0 min-w-0 flex-1 flex-col`}>
-          <div className={`min-h-0 flex-1 overflow-auto overscroll-contain p-3 sm:p-6 ${showSelectionBar ? 'max-lg:pb-24' : ''}`}>
-            <div className="mx-auto overflow-hidden rounded-xl shadow-[0_0_0_1px_#262642,0_20px_60px_-20px_rgba(188,19,254,0.35)]" style={{ maxWidth: mobile ? 420 : tree.width + 80 }}>
-              <Preview
-                tree={previewTree}
-                selectedId={selectedId}
-                onSelect={(id) => select(id ? id.split('~')[0] : id)}
-                // Loop clones (id~k) are display-only: edit the source block instead.
-                onEdit={(id, patch) => !id.includes('~') && commit(updateNode(tree, id, patch))}
-                onDropImage={dropImage}
-                onMove={(id, target) => commit(moveNodeTo(tree, id, target), id)}
-                mobile={mobile}
-              />
-            </div>
-            {uploading && (
-              <div role="status" className="sticky bottom-3 mx-auto mt-3 flex w-max max-w-full items-center gap-2 rounded-full border border-line bg-night/95 px-4 py-2 text-sm shadow-lg">
-                {uploading.endsWith('…') ? <Loader2 className="size-4 animate-spin text-cyan" /> : <AlertTriangle className="size-4 text-pink" />}
-                {uploading}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1">
+            <aside aria-label="Structure, champs et Maily" className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-72 lg:shrink-0 lg:border-r xl:w-80">
+              <div className="hidden border-b border-line lg:flex">
+                <button className={tabBtn(leftTab === 'structure')} onClick={() => setLeftTab('structure')}>
+                  <Layers className="size-3.5" /> Structure
+                </button>
+                <button className={tabBtn(leftTab === 'fields')} onClick={() => setLeftTab('fields')}>
+                  <ListChecks className="size-3.5" /> Champs
+                </button>
+                <button className={tabBtn(leftTab === 'maily')} onClick={() => setLeftTab('maily')}>
+                  <Sparkles className="size-3.5" /> Maily
+                </button>
               </div>
-            )}
-          </div>
-        </main>
+              <div className={`${vis('structure', leftTab === 'structure')} min-h-0 w-full flex-1 flex-col bg-space ${showSelectionBar ? 'max-lg:pb-20' : ''}`}>
+                <Structure {...treeProps} storageKey={initial.id} />
+              </div>
+              <div className={`${vis('fields', leftTab === 'fields')} min-h-0 w-full flex-1 flex-col bg-space`}>
+                <FieldsPanel {...treeProps} />
+              </div>
+              <div className={`${vis('maily', leftTab === 'maily')} min-h-0 w-full flex-1 flex-col bg-space`}>
+                <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="size-5 animate-spin text-cyan" /></div>}>
+                  <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyCode} addSection={addSection} />
+                </Suspense>
+              </div>
+            </aside>
 
-        {/* Right column: settings / code */}
-        <aside aria-label="Réglages et code" className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-[400px] lg:shrink-0 lg:border-l xl:w-[460px]">
-          <div className="hidden border-b border-line lg:flex">
-            <button className={tabBtn(rightTab === 'inspector')} onClick={() => setRightTab('inspector')}>
-              <Settings2 className="size-3.5" /> Réglages
-            </button>
-            <button className={tabBtn(rightTab === 'code')} onClick={() => setRightTab('code')}>
-              <Code2 className="size-3.5" /> Code
-              {codeError && <span className="size-1.5 rounded-full bg-pink-fill" />}
-            </button>
+            <main className={`${vis('preview', true)} neon-grid min-h-0 min-w-0 flex-1 flex-col`}>
+              <div className={`min-h-0 flex-1 overflow-auto overscroll-contain p-3 sm:p-6 ${showSelectionBar ? 'max-lg:pb-24' : ''}`}>
+                <div className="mx-auto overflow-hidden rounded-xl shadow-[0_0_0_1px_#262642,0_20px_60px_-20px_rgba(188,19,254,0.35)]" style={{ maxWidth: mobile ? 420 : tree.width + 80 }}>
+                  <Preview
+                    tree={previewTree}
+                    selectedId={selectedId}
+                    onSelect={(id) => select(id ? id.split('~')[0] : id)}
+                    onEdit={(id, patch) => !id.includes('~') && commit(updateNode(tree, id, patch))}
+                    onDropImage={dropImage}
+                    onMove={(id, target) => commit(moveNodeTo(tree, id, target), id)}
+                    mobile={mobile}
+                  />
+                </div>
+                {uploading && (
+                  <div role="status" className="sticky bottom-3 mx-auto mt-3 flex w-max max-w-full items-center gap-2 rounded-full border border-line bg-night/95 px-4 py-2 text-sm shadow-lg">
+                    {uploading.endsWith('…') ? <Loader2 className="size-4 animate-spin text-cyan" /> : <AlertTriangle className="size-4 text-pink" />}
+                    {uploading}
+                  </div>
+                )}
+              </div>
+            </main>
+
+            <aside aria-label="Réglages et code" className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-[400px] lg:shrink-0 lg:border-l xl:w-[460px]">
+              <div className="hidden border-b border-line lg:flex">
+                <button className={tabBtn(rightTab === 'inspector')} onClick={() => setRightTab('inspector')}>
+                  <Settings2 className="size-3.5" /> Réglages
+                </button>
+                <button className={tabBtn(rightTab === 'code')} onClick={() => setRightTab('code')}>
+                  <Code2 className="size-3.5" /> Code
+                  {codeError && <span className="size-1.5 rounded-full bg-pink-fill" />}
+                </button>
+              </div>
+              <div className={`${vis('inspector', rightTab === 'inspector')} min-h-0 w-full flex-1 flex-col bg-space`}>
+                <Inspector {...treeProps} />
+              </div>
+              <div className={`${vis('code', rightTab === 'code')} min-h-0 w-full flex-1 flex-col bg-space`}>
+                <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-xs">
+                  {codeError ? (
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5 text-pink">
+                      <AlertTriangle className="size-3.5 shrink-0" /> <span className="truncate" title={codeError}>{codeError}</span>
+                    </span>
+                  ) : codeImported ? (
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5 text-cyan">
+                      <Wand2 className="size-3.5 shrink-0" />{' '}
+                      <span className="truncate">
+                        Code reconnu et converti en blocs
+                        {newFields.length > 0 && ` · ${newFields.length} champ${newFields.length > 1 ? 's' : ''} créé${newFields.length > 1 ? 's' : ''}`}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="flex flex-1 items-center gap-1.5 text-cyan">
+                      <Check className="size-3.5" /> Synchronisé avec l'aperçu
+                    </span>
+                  )}
+                  <button
+                    onClick={() => {
+                      setCode(treeToCode(tree, name))
+                      setCodeError(null)
+                      setCodeImported(false)
+                    }}
+                    title={codeImported ? 'Réécrire le code au format blocs, synchronisé avec l\'aperçu' : 'Régénérer le code depuis l\'aperçu'}
+                    className={`inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1.5 lg:py-1 ${
+                      codeImported ? 'border-cyan bg-cyan/10 text-cyan' : 'border-line text-mute hover:border-cyan hover:text-white'
+                    }`}
+                  >
+                    <RefreshCw className="size-3" /> {codeImported ? 'Appliquer' : 'Reformater'}
+                  </button>
+                  <button
+                    onClick={() => setHsImport(true)}
+                    title="Importer un module HubSpot (module.html + fields.json) avec ses champs exacts"
+                    className="inline-flex shrink-0 items-center gap-1 rounded border border-line px-2 py-1.5 text-mute hover:border-violet hover:text-white lg:py-1"
+                  >
+                    <Braces className="size-3" /> HubSpot
+                  </button>
+                </div>
+                <CodeEditor value={code} onChange={onCodeChange} jump={codeJump} />
+                <ValidatorPanel code={code} onFix={onCodeChange} onJump={(line) => setCodeJump((j) => ({ line, n: (j?.n ?? 0) + 1 }))} />
+              </div>
+            </aside>
           </div>
-          <div className={`${vis('inspector', rightTab === 'inspector')} min-h-0 w-full flex-1 flex-col bg-space`}>
-            <Inspector {...treeProps} />
-          </div>
-          <div className={`${vis('code', rightTab === 'code')} min-h-0 w-full flex-1 flex-col bg-space`}>
-            <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-xs">
-              {codeError ? (
-                <span className="flex min-w-0 flex-1 items-center gap-1.5 text-pink">
-                  <AlertTriangle className="size-3.5 shrink-0" /> <span className="truncate" title={codeError}>{codeError}</span>
-                </span>
-              ) : codeImported ? (
-                <span className="flex min-w-0 flex-1 items-center gap-1.5 text-cyan">
-                  <Wand2 className="size-3.5 shrink-0" />{' '}
-                  <span className="truncate">
-                    Code reconnu et converti en blocs
-                    {newFields.length > 0 && ` · ${newFields.length} champ${newFields.length > 1 ? 's' : ''} créé${newFields.length > 1 ? 's' : ''}`}
-                  </span>
-                </span>
-              ) : (
-                <span className="flex flex-1 items-center gap-1.5 text-cyan">
-                  <Check className="size-3.5" /> Synchronisé avec l'aperçu
-                </span>
-              )}
-              <button
-                onClick={() => {
-                  setCode(treeToCode(tree, name))
-                  setCodeError(null)
-                  setCodeImported(false)
-                }}
-                title={codeImported ? 'Réécrire le code au format blocs, synchronisé avec l\'aperçu' : 'Régénérer le code depuis l\'aperçu'}
-                className={`inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1.5 lg:py-1 ${
-                  codeImported ? 'border-cyan bg-cyan/10 text-cyan' : 'border-line text-mute hover:border-cyan hover:text-white'
-                }`}
-              >
-                <RefreshCw className="size-3" /> {codeImported ? 'Appliquer' : 'Reformater'}
-              </button>
-              <button
-                onClick={() => setHsImport(true)}
-                title="Importer un module HubSpot (module.html + fields.json) avec ses champs exacts"
-                className="inline-flex shrink-0 items-center gap-1 rounded border border-line px-2 py-1.5 text-mute hover:border-violet hover:text-white lg:py-1"
-              >
-                <Braces className="size-3" /> HubSpot
-              </button>
+
+          {showSelectionBar && selected && (
+            <div className="pointer-events-none relative h-0 lg:hidden">
+              <div className="pointer-events-auto absolute inset-x-2 bottom-2 flex items-center gap-1 rounded-xl border border-pink/50 bg-night/95 p-1.5 shadow-[0_8px_30px_-6px_rgba(255,0,127,0.45)]">
+                {(() => {
+                  const Icon = BLOCK_ICONS[selected.type]
+                  return <Icon className="ml-1.5 size-4 shrink-0 text-cyan" />
+                })()}
+                <span className="min-w-0 flex-1 truncate px-1 text-sm font-semibold">{selectedLabel}</span>
+                {[
+                  { icon: ArrowUp, label: 'Monter', fn: () => commit(moveNode(tree, selected.id, -1)) },
+                  { icon: ArrowDown, label: 'Descendre', fn: () => commit(moveNode(tree, selected.id, 1)) },
+                  { icon: Trash2, label: 'Supprimer', fn: () => commit(removeNode(tree, selected.id), null) },
+                ].map((a) => (
+                  <button key={a.label} onClick={a.fn} aria-label={a.label} className="rounded-lg p-2.5 text-mute active:bg-white/10 active:text-white">
+                    <a.icon className="size-4" />
+                  </button>
+                ))}
+                <button
+                  onClick={() => setPane('inspector')}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-pink-fill px-3 py-2 text-sm font-semibold text-white"
+                >
+                  <Pencil className="size-3.5" /> Modifier
+                </button>
+              </div>
             </div>
-            <CodeEditor value={code} onChange={onCodeChange} jump={codeJump} />
-            <ValidatorPanel code={code} onFix={onCodeChange} onJump={(line) => setCodeJump((j) => ({ line, n: (j?.n ?? 0) + 1 }))} />
-          </div>
-        </aside>
-      </div>
-
-      {/* Mobile: quick actions on the selected element */}
-      {showSelectionBar && selected && (
-        <div className="pointer-events-none relative h-0 lg:hidden">
-          <div className="pointer-events-auto absolute inset-x-2 bottom-2 flex items-center gap-1 rounded-xl border border-pink/50 bg-night/95 p-1.5 shadow-[0_8px_30px_-6px_rgba(255,0,127,0.45)] backdrop-blur">
-            {(() => {
-              const Icon = BLOCK_ICONS[selected.type]
-              return <Icon className="ml-1.5 size-4 shrink-0 text-cyan" />
-            })()}
-            <span className="min-w-0 flex-1 truncate px-1 text-sm font-semibold">{selectedLabel}</span>
-            {[
-              { icon: ArrowUp, label: 'Monter', fn: () => commit(moveNode(tree, selected.id, -1)) },
-              { icon: ArrowDown, label: 'Descendre', fn: () => commit(moveNode(tree, selected.id, 1)) },
-              { icon: Trash2, label: 'Supprimer', fn: () => commit(removeNode(tree, selected.id), null) },
-            ].map((a) => (
-              <button key={a.label} onClick={a.fn} aria-label={a.label} className="rounded-lg p-2.5 text-mute active:bg-white/10 active:text-white">
-                <a.icon className="size-4" />
-              </button>
-            ))}
-            <button
-              onClick={() => setPane('inspector')}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-pink-fill px-3 py-2 text-sm font-semibold text-white"
-            >
-              <Pencil className="size-3.5" /> Modifier
-            </button>
-          </div>
+          )}
         </div>
-      )}
 
+        {vmlOpen && (
+          <VmlWindow
+            tree={tree}
+            name={name.trim() || 'Sans titre'}
+            selectedId={selectedId}
+            onSelect={select}
+            onToggle={() => {
+              const { vml: _v, ...rest } = tree
+              void _v
+              commit(tree.vml ? rest : { ...rest, vml: true })
+            }}
+            onClose={() => setVmlOpen(false)}
+            commit={commit}
+          />
+        )}
       </div>
 
-      {vmlOpen && (
-        <VmlWindow
-          tree={tree}
-          name={name.trim() || 'Sans titre'}
-          selectedId={selectedId}
-          onSelect={select}
-          onToggle={() => {
-            const { vml: _v, ...rest } = tree
-            void _v
-            commit(tree.vml ? rest : { ...rest, vml: true })
-          }}
-          onClose={() => setVmlOpen(false)}
-          commit={commit}
-        />
-      )}
-      </div>
-
-      {/* Mobile pane switcher */}
       <nav
         aria-label="Panneaux de l'éditeur"
         className={`${typing ? 'hidden' : 'grid'} shrink-0 grid-cols-6 border-t border-line bg-space pb-[max(0px,env(safe-area-inset-bottom))] lg:hidden`}
@@ -679,7 +654,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
             key={t.k}
             onClick={() => setPane(t.k)}
             aria-current={pane === t.k ? 'page' : undefined}
-            className={`relative flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors sm:text-[11px] [@media(max-height:500px)]:min-h-11 [@media(max-height:500px)]:flex-row [@media(max-height:500px)]:gap-1.5 ${
+            className={`relative flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors sm:text-[11px] [@media(max-height:500px)]:min-h-11 ${
               pane === t.k ? 'text-white' : 'text-mute active:text-white'
             }`}
           >
@@ -692,7 +667,6 @@ function Editor({ initial }: { initial: ModuleRecord }) {
           </button>
         ))}
       </nav>
-
 
       {testing && (
         <ClientsDialog
