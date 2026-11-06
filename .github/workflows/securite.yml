@@ -1,52 +1,75 @@
 name: Sécurité
+
 on:
   push:
     branches: [main]
   pull_request:
   schedule:
-    - cron: '17 5 * * *' # chaque jour, même sans modification du code (nouvelles failles publiées)
+    - cron: '17 5 * * *' # chaque jour, même sans modification du code
   workflow_dispatch:
+
+# Permissions minimales par défaut ; chaque job ne reçoit que ce dont il a besoin.
 permissions:
   contents: read
+
+# Évite de consommer inutilement des runners sur les anciens commits d'une branche.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   controle:
+    name: Audit, typage et build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Échoue dès qu'une faille de gravité haute ou critique est connue.
+      # Les vulnérabilités modérées ou plus graves dans les dépendances livrées bloquent le CI.
+      - run: pnpm audit --prod --audit-level=moderate
+      # Bloque également les vulnérabilités hautes/critiques dans les outils de développement.
       - run: pnpm audit --audit-level=high
-      # Les failles moindres sont listées sans bloquer (corrigées par Dependabot / la veille).
-      - run: pnpm audit || true
-      - run: npx tsc --noEmit
-      - run: npx vite build
+      # Utilise exclusivement les exécutables installés dans le lockfile.
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm exec vite build
 
-  # Aucun secret (clé d'API, jeton, mot de passe) dans le code ni dans l'historique.
   secrets:
+    name: Détection de secrets
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Une demande de fusion ne peut pas ajouter de dépendance vulnérable.
   dependances:
+    name: Revue des dépendances de PR
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/dependency-review-action@v4
         with:
-          fail-on-severity: high
-          comment-summary-in-pr: on-failure
+          # Refuse les nouvelles dépendances vulnérables de gravité modérée ou supérieure.
+          fail-on-severity: moderate
