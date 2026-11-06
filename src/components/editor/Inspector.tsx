@@ -538,6 +538,15 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
     case 'section':
       return (
         <>
+          <Field label="Nom (dans la Structure)">
+            <input
+              className={input}
+              maxLength={40}
+              placeholder="Ex. En-tête, Offre, Pied de page"
+              value={b.name ?? ''}
+              onChange={(e) => set({ name: e.target.value.replace(/[<>{}]/g, '') || undefined } as Partial<Block>)}
+            />
+          </Field>
           <Segmented
             label="Colonnes"
             value={b.columns}

@@ -241,6 +241,7 @@ ${p}    </td>`
     ...(s.columns === 2 && s.ratio && s.ratio !== 50 ? { ratio: s.ratio } : {}),
     ...(s.valign && s.valign !== 'top' ? { valign: s.valign } : {}),
     ...(s.css ? { css: s.css } : {}),
+    ...(s.name ? { name: s.name } : {}),
     ...spacingAttrs(s),
     ...olAttr(s.outlook),
   })} class="${cls}" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"${img ? ` background="${img}"` : ''} style="${hideStyle(s.hide)}width:100%;background:${escKeep(s.bg)};${bgImg}${border}border-radius:${s.radius}px;border-collapse:separate;${margin}${s.css ? `${s.css};` : ''}${olStyle(s.outlook)}">
@@ -528,6 +529,9 @@ function parseCell(td: Element): Block[] {
   return out
 }
 
+// A section's name in the Structure: plain text, one line, 40 characters at most.
+export const sectionName = (v: unknown) => (typeof v === 'string' ? v.replace(/[<>{}]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40) : '')
+
 function parseSection(el: Element): Section {
   const g = (k: string) => el.getAttribute(`data-${k}`)
   const cols = Array.from(el.querySelectorAll('[data-neon="column"]')).filter(
@@ -550,6 +554,7 @@ function parseSection(el: Element): Section {
     ...(cells.length === 2 ? optNum(g('ratio'), 'ratio', 20, 80) : {}),
     ...(g('valign') === 'middle' || g('valign') === 'bottom' ? { valign: g('valign') as 'middle' | 'bottom' } : {}),
     ...(g('css') && sanitizeStyle(g('css')!) ? { css: sanitizeStyle(g('css')!) } : {}),
+    ...(sectionName(g('name')) ? { name: sectionName(g('name')) } : {}),
     ...spacingParse(g),
     ...olParse(g('ol')),
     cells,

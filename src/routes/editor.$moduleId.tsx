@@ -517,7 +517,7 @@ function Editor({ initial }: { initial: ModuleRecord }) {
             </button>
           </div>
           <div className={`${vis('structure', leftTab === 'structure')} min-h-0 w-full flex-1 flex-col bg-space ${showSelectionBar ? 'max-lg:pb-20' : ''}`}>
-            <Structure {...treeProps} />
+            <Structure {...treeProps} storageKey={initial.id} />
           </div>
           <div className={`${vis('fields', leftTab === 'fields')} min-h-0 w-full flex-1 flex-col bg-space`}>
             <FieldsPanel {...treeProps} />

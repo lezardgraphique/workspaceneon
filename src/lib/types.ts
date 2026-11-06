@@ -178,6 +178,8 @@ export interface Section extends Spacing {
   valign?: 'top' | 'middle' | 'bottom'
   /** Inline style declarations with HuBL kept from an imported module ({{ module.spacing.css }}…). */
   css?: string
+  /** Name shown in the Structure tab (« En-tête », « Offre »…); not in the e-mail. */
+  name?: string
 }
 
 export type Block =
