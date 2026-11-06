@@ -1,6 +1,10 @@
 type JsonObject = Record<string, unknown>
 
-/** Normalize names across CMSs without changing the original/exported field key. */
+/**
+ * Canonicalise CMS keys without erasing hierarchy. Separators inside one key
+ * (camelCase, snake_case, accents, kebab-case) are equivalent; dots remain path
+ * boundaries so `ab.c` can never accidentally match `a.bc`.
+ */
 export const normalizeFieldKey = (name: string): string =>
   name
     .normalize('NFD')
@@ -9,13 +13,11 @@ export const normalizeFieldKey = (name: string): string =>
     .toLowerCase()
     .split(/[./[\]_-]+/)
     .filter(Boolean)
-    .join('')
+    .join('.')
 
-const isObject = (value: unknown): value is JsonObject =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const normalizedEntries = (object: JsonObject) =>
-  Object.entries(object).map(([key, value]) => [normalizeFieldKey(key), value] as const)
+const isObject = (value: unknown): value is JsonObject => typeof value === 'object' && value !== null && !Array.isArray(value)
+const splitPath = (path: string) => path.split(/[./[\]]+/).filter(Boolean)
+const normalizedEntries = (object: JsonObject) => Object.entries(object).map(([key, value]) => [normalizeFieldKey(key), value] as const)
 
 /**
  * Resolve HuBL aliases such as `{% set c = module.card_settings %}` and chained
@@ -69,20 +71,22 @@ const getNested = (values: JsonObject, path: string[]): unknown => {
   for (const segment of path) {
     if (!isObject(current)) return undefined
     const key = normalizeFieldKey(segment)
-    const entry = normalizedEntries(current).find(([normalized]) => normalized === key)
-    if (!entry) return undefined
-    current = entry[1]
+    const matches = normalizedEntries(current).filter(([normalized]) => normalized === key)
+    // Never choose arbitrarily when two source keys normalize to the same key.
+    if (matches.length !== 1) return undefined
+    current = matches[0][1]
   }
   return current
 }
 
 /**
- * Read values from either nested objects (`card_settings.banner_image`) or
- * flat CMS exports (`card_settings.banner_image`, `card-settings/banner-image`).
- * A unique leaf-name match is the last resort; ambiguous leaves are rejected.
+ * Read values from nested objects or flattened CMS exports. Exact hierarchy and
+ * normalized full paths win; a unique leaf match is the last resort. Ambiguous
+ * matches deliberately return undefined to prevent values crossing fields.
  */
 export function resolveImportedValue(values: JsonObject, fieldPath: string, aliases: Map<string, string[]> = new Map()): unknown {
-  const parts = fieldPath.split(/[./]+/).filter(Boolean)
+  const parts = splitPath(fieldPath)
+  if (!parts.length) return undefined
   const alias = aliases.get(parts[0])
   const candidates = [parts, ...(alias ? [[...alias, ...parts.slice(1)]] : [])]
   const flat = Object.entries(values)
@@ -90,20 +94,19 @@ export function resolveImportedValue(values: JsonObject, fieldPath: string, alia
     const nested = getNested(values, path)
     if (nested !== undefined) return nested
     const normalizedPath = normalizeFieldKey(path.join('.'))
-    const exact = flat.find(([key]) => normalizeFieldKey(key) === normalizedPath)
-    if (exact) return exact[1]
+    const exact = flat.filter(([key]) => normalizeFieldKey(key) === normalizedPath)
+    if (exact.length === 1) return exact[0][1]
   }
   const leaf = normalizeFieldKey(parts.at(-1) ?? fieldPath)
   const matches: unknown[] = []
-  const visit = (value: unknown, path: string[], depth: number) => {
+  const visit = (value: unknown, depth: number) => {
     if (depth > 8 || !isObject(value)) return
     for (const [key, child] of Object.entries(value)) {
-      const next = [...path, key]
       if (normalizeFieldKey(key) === leaf) matches.push(child)
-      if (isObject(child)) visit(child, next, depth + 1)
+      if (isObject(child)) visit(child, depth + 1)
     }
   }
-  visit(values, [], 0)
+  visit(values, 0)
   return matches.length === 1 ? matches[0] : undefined
 }
 
@@ -123,6 +126,6 @@ export function matchImportedFieldPath(codePath: string[], importedPaths: string
     if (match) return match
   }
   const leaf = normalized(codePath.at(-1) ?? '')
-  const leaves = importedPaths.filter((path) => normalized(path.split(/[./]+/).filter(Boolean).at(-1) ?? '') === leaf)
+  const leaves = importedPaths.filter((path) => normalized(splitPath(path).at(-1) ?? '') === leaf)
   return leaves.length === 1 ? leaves[0] : undefined
 }
