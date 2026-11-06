@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { CloudOff, Loader2, RefreshCw, X } from 'lucide-react'
 
@@ -9,6 +9,8 @@ import { dismissNotice, isOffline, markOnline, refreshPending, syncAll, useDataS
 export function OfflineManager() {
   const router = useRouter()
   const st = useDataStatus()
+  const pendingRef = useRef(st.pending)
+  pendingRef.current = st.pending
 
   useEffect(() => {
     if ('serviceWorker' in navigator && import.meta.env.PROD) {
@@ -28,21 +30,30 @@ export function OfflineManager() {
     else if (isOffline()) void router.invalidate()
 
     const sync = () => {
+      if (document.visibilityState !== 'visible') return
       markOnline()
-      if (!isOffline()) void syncAll()
+      // Don't wake the network every 30 seconds when there are no edits queued.
+      if (!isOffline() && pendingRef.current > 0) void syncAll()
     }
     const onOffline = () => markOnline()
     const onOnline = () => {
-      sync()
+      markOnline()
+      void refreshPending().then((pending) => {
+        if (!isOffline() && document.visibilityState === 'visible' && pending > 0) void syncAll()
+      })
       void router.invalidate()
     }
-    const onVisible = () => document.visibilityState === 'visible' && sync()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') sync()
+    }
     window.addEventListener('online', onOnline)
     window.addEventListener('offline', onOffline)
     document.addEventListener('visibilitychange', onVisible)
     const timer = setInterval(sync, 30000)
     markOnline()
-    void refreshPending().then(() => sync())
+    void refreshPending().then((pending) => {
+      if (!isOffline() && document.visibilityState === 'visible' && pending > 0) void syncAll()
+    })
     return () => {
       window.removeEventListener('online', onOnline)
       window.removeEventListener('offline', onOffline)
