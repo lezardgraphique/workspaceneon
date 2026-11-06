@@ -73,3 +73,28 @@ jobs:
         with:
           # Refuse les nouvelles dépendances vulnérables de gravité modérée ou supérieure.
           fail-on-severity: moderate
+
+  codeql:
+    name: Analyse CodeQL (JavaScript/TypeScript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Initialiser CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      - name: Construire le code analysé
+        uses: github/codeql-action/autobuild@v3
+      - name: Publier les résultats d'analyse
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
