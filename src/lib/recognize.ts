@@ -9,21 +9,44 @@ import type { Block, ModuleTree } from '@/lib/types'
 // turn it into a rendered module locally, before asking the model anything.
 // Only when the local import is too lossy is the model asked to recreate it.
 
-const FENCE = /```(?:html?|hubl|jinja2?|xml|neon)?[^\n]*\n([\s\S]*?)```/i
-const TAG =
-  /<\/?(table|tr|td|div|p|h[1-6]|img|a|span|section|body|html|head|style|center|ul|ol|li|br|hr|strong|em|button|header|footer|main|article)\b[^>]*>/gi
+const FENCE = /```([^\n`]*)\n([\s\S]*?)```/g
+const TAG = /<\/?[a-z][\w:-]*\b[^>]*>/gi
+const CODE_LANGUAGES = /^(html?|hubl|jinja2?|twig|liquid|nunjucks|xml|xhtml|mjml|neon)$/i
+const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'])
 
-export const looksLikeCode = (text: string) =>
-  (text.match(TAG)?.length ?? 0) >= 3 || /\{%[\s\S]*?%\}[\s\S]*<[a-z]/i.test(text)
+export const looksLikeCode = (text: string) => {
+  const tags = text.match(TAG) ?? []
+  if (tags.length >= 2 || /\{%[\s\S]*?%\}[\s\S]*<[a-z]/i.test(text) || /data-neon=["'](?:module|section)/i.test(text)) return true
+  // Accept a single complete element (including void elements), but don't
+  // mistake an incidental tag mentioned in prose for a pasted template.
+  const first = text.trimStart().match(/^<([a-z][\w:-]*)\b[^>]*>/i)
+  if (!first) return /^\s*<!doctype\s+html\b/i.test(text)
+  const name = first[1].toLowerCase()
+  return VOID_TAGS.has(name) || new RegExp(`<\\/${name}\\s*>`, 'i').test(text)
+}
 
-// Separates code typed in a message from the instruction around it.
+// Separates code typed in a message from the instruction around it. Multiple
+// fenced HTML/HuBL fragments are kept together (e.g. markup and a second block).
 export function extractCode(text: string): { code: string; instruction: string } | null {
-  const f = FENCE.exec(text)
-  if (f && looksLikeCode(f[1])) {
-    return { code: f[1].trim(), instruction: `${text.slice(0, f.index)} ${text.slice(f.index + f[0].length)}`.trim() }
+  const fences = [...text.matchAll(FENCE)]
+  const codeFences = fences.filter((f) => {
+    const language = (f[1] ?? '').trim().split(/\s+/)[0]
+    return CODE_LANGUAGES.test(language) || looksLikeCode(f[2] ?? '')
+  })
+  if (codeFences.length) {
+    const code = codeFences.map((f) => (f[2] ?? '').trim()).filter(Boolean).join('\n')
+    let instruction = ''
+    let cursor = 0
+    for (const fence of codeFences) {
+      const start = fence.index ?? cursor
+      instruction += `${text.slice(cursor, start)} `
+      cursor = start + fence[0].length
+    }
+    instruction += text.slice(cursor)
+    return { code, instruction.trim() }
   }
   if (!looksLikeCode(text)) return null
-  const start = text.search(/<[a-z!]|\{[%{#]/i)
+  const start = text.search(/<[a-z][\w:-]*\b|\{[%{#]/i)
   const end = Math.max(text.lastIndexOf('>'), text.lastIndexOf('%}') + 1, text.lastIndexOf('}}') + 1) + 1
   if (start < 0 || end <= start) return null
   return { code: text.slice(start, end).trim(), instruction: `${text.slice(0, start)} ${text.slice(end)}`.trim() }
@@ -81,16 +104,17 @@ export function recognizeCode(code: string, current: ModuleTree, given?: FieldSp
   // content) are the only ones the model still has to deal with.
   const binding = res.binding
   const unbound = (binding?.unbound ?? []).filter((n) => !created.some((f) => f.name === n))
-  const left = unbound.length
   const syntax = validateSyntax(code)
-  const issue =
-    syntax.errors > 0
-      ? `${plural(syntax.errors, 'erreur de syntaxe', 'erreurs de syntaxe')} dans le code (ligne ${syntax.issues.find((i) => i.severity === 'error')!.line} : ${syntax.issues.find((i) => i.severity === 'error')!.message})`
-      : left > 0
-      ? `${plural(left, 'variable', 'variables')} {{ module.… }} (${unbound.join(', ')}) non liée${left > 1 ? 's' : ''} à un champ`
-      : st.blocks && st.raw / st.blocks > 0.5
-        ? `${st.raw} blocs sur ${st.blocks} restent en Bloc HTML`
-        : undefined
+  const issues: string[] = []
+  if (syntax.errors > 0) {
+    const first = syntax.issues.find((i) => i.severity === 'error')!
+    issues.push(`${plural(syntax.errors, 'erreur de syntaxe', 'erreurs de syntaxe')} dans le code (ligne ${first.line} : ${first.message})`)
+  }
+  if (unbound.length) {
+    issues.push(`${plural(unbound.length, 'variable', 'variables')} {{ module.… }} (${unbound.join(', ')}) non liée${unbound.length > 1 ? 's' : ''} à un champ`)
+  }
+  if (st.blocks && st.raw / st.blocks > 0.5) issues.push(`${st.raw} blocs sur ${st.blocks} restent en Bloc HTML`)
+  const issue = issues.length ? issues.join(' ; ') : undefined
 
   const parts = [plural(tree.sections.length, 'section', 'sections'), plural(st.blocks - st.raw, 'bloc éditable', 'blocs éditables')]
   if (st.cards) parts.push(plural(st.cards, 'card', 'cards'))
