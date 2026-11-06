@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { HeadContent, Scripts, createRootRoute, redirect } from '@tanstack/react-router'
 
 import { AuthLinkRedirect } from '@/components/AuthLinkRedirect'
