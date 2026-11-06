@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { HeadContent, Scripts, createRootRoute, redirect } from '@tanstack/react-router'
 
 import { AuthLinkRedirect } from '@/components/AuthLinkRedirect'
@@ -10,7 +11,28 @@ import '../styles.css'
 
 const siteName = 'Neon Sandbox Pro'
 const siteDescription =
-  "L'éditeur de modules email et web avec synchronisation code ↔ visuel en temps réel, conversion de HTML en blocs modifiables, layouts multi-colonnes, cards imbriquées et Maily, l'assistante IA marketing."
+  "L'éditeur de modules email et web avec synchronisation code ↔ visuel en temps réel, conversion de HTML en blocs modifiables, layouts multi-colonnes, cards imbriquées et Maily, l'assistante IA qui aide à créer, modifier et optimiser des modules marketing."
+
+function ReducedMotionGuard() {
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const apply = () => {
+      const reduced = media.matches || document.visibilityState === 'hidden'
+      document.body.dataset.reducedMotion = String(reduced)
+    }
+    apply()
+    const onVisibility = () => apply()
+    document.addEventListener('visibilitychange', onVisibility)
+    if (typeof media.addEventListener === 'function') media.addEventListener('change', onVisibility)
+    else media.addListener(onVisibility)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      if (typeof media.removeEventListener === 'function') media.removeEventListener('change', onVisibility)
+      else media.removeListener(onVisibility)
+    }
+  }, [])
+  return null
+}
 
 export const Route = createRootRoute({
   // The whole app is behind the sign-in page. This is only the front door:
@@ -68,6 +90,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <ReducedMotionGuard />
         <AuthLinkRedirect />
         <OfflineManager />
         {children}
