@@ -20,6 +20,8 @@
     "@tanstack/react-start": "1.169.4",
     "@tanstack/react-store": "0.11.2",
     "@tanstack/store": "0.11.2",
+    "@wllama/wllama": "3.8.1",
+    "@wllama/wllama-compat": "3.8.1",
     "drizzle-orm": "1.0.0-beta.22",
     "gifenc": "^1.0.3",
     "highlight.js": "11.12.0",

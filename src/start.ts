@@ -22,6 +22,8 @@ const CSP = [
   // Hugging Face and the GPU kernels from the MLC repository, on the user's request.
   "connect-src 'self' https://huggingface.co https://*.hf.co https://*.huggingface.co https://raw.githubusercontent.com",
   "frame-src 'self' about: data: blob:",
+  // Offline Maily on the processor (llama.cpp in WebAssembly) runs in workers built from blob: URLs.
+  "worker-src 'self' blob:",
   // Only Netlify's dashboard may show the app in a frame (deploy previews);
   // any other site still can't frame it (clickjacking).
   "frame-ancestors 'self' https://app.netlify.com",
