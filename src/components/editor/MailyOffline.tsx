@@ -22,11 +22,17 @@ const size = (s: OfflineAiState) => (s.engine === 'nano' ? 'géré par le naviga
 export function MailyOffline({ offline }: { offline: boolean }) {
   const s = useOfflineAi()
   const [confirm, setConfirm] = useState(false)
-  if (s.status === 'checking' || (s.status === 'unsupported' && !offline)) return null
 
   const btn = 'tap-auto min-h-6 shrink-0 rounded-md border border-cyan/50 px-2 py-1 text-[11px] font-semibold text-cyan hover:bg-cyan/10'
   let body: ReactNode
-  if (s.status === 'ready') {
+  if (s.status === 'checking') {
+    body = (
+      <>
+        <Loader2 className="size-3.5 shrink-0 animate-spin text-mute" aria-hidden />
+        <span className="min-w-0 flex-1">Maily hors ligne : je regarde ce que ton navigateur peut faire tourner…</span>
+      </>
+    )
+  } else if (s.status === 'ready') {
     body = (
       <>
         <span className="min-w-0 flex-1">
@@ -61,7 +67,11 @@ export function MailyOffline({ offline }: { offline: boolean }) {
       </>
     )
   } else if (s.status === 'unsupported') {
-    body = <span>Ce navigateur ne peut pas faire tourner Maily sur l'appareil : Chrome ou Edge récents (ou un navigateur WebGPU) la rendent disponible hors ligne.</span>
+    body = (
+      <span>
+        Maily hors ligne n'est pas disponible dans ce navigateur (ni Gemini Nano ni WebGPU) : ouvre l'application dans Chrome ou Edge récents pour la préparer.
+      </span>
+    )
   } else if (offline) {
     body = <span>Pas de connexion. Prépare « Maily hors ligne » la prochaine fois que tu es en ligne pour me parler sans réseau.</span>
   } else {
@@ -80,7 +90,7 @@ export function MailyOffline({ offline }: { offline: boolean }) {
 
   return (
     <div role="status" className="flex items-center gap-2 border-b border-line bg-void/40 px-4 py-2 text-[11px] text-mute">
-      {s.status === 'ready' || s.status === 'downloading' ? null : offline ? (
+      {s.status === 'ready' || s.status === 'downloading' || s.status === 'checking' ? null : offline ? (
         <CloudOff className="size-3.5 shrink-0 text-pink" aria-hidden />
       ) : (
         <Cpu className="size-3.5 shrink-0 text-cyan" aria-hidden />
