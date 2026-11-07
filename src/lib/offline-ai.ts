@@ -1,127 +1,150 @@
-export type OfflineAiStatus = 'idle' | 'loading' | 'ready' | 'error'
+export type OfflineAiStatus = 'idle' | 'loading' | 'ready' | 'error' | 'downloadable'
 
 export interface OfflineAiState {
   status: OfflineAiStatus
-  progress: number | null
   message: string | null
 }
 
-interface ChatEngine {
-  chat: {
-    completions: {
-      create: (params: {
-        messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
-        temperature?: number
-        max_tokens?: number
-      }) => Promise<{ choices?: Array<{ message?: { content?: string } }> }>
-    }
+type ModelAvailability = 'unavailable' | 'downloadable' | 'downloading' | 'available'
+
+type ModelSession = {
+  prompt: (text: string, options?: { signal?: AbortSignal }) => Promise<string>
+  destroy: () => Promise<void>
+}
+
+type PromptApi = {
+  availability: () => Promise<ModelAvailability>
+  create: (options?: {
+    initialPrompts?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+    monitor?: (monitor: { addEventListener: (type: string, callback: (event: any) => void) => void }) => void
+  }) => Promise<ModelSession>
+}
+
+declare global {
+  interface Window {
+    LanguageModel?: PromptApi
   }
 }
 
-interface WebLLMModule {
-  CreateMLCEngine: (
-    model: string,
-    options: {
-      appConfig: { useIndexedDBCache: boolean }
-      initProgressCallback?: (progress: { text?: string; progress?: number }) => void
-    },
-  ) => Promise<ChatEngine>
-}
+let session: ModelSession | null = null
+let state: OfflineAiState = { status: 'idle', message: null }
+const listeners = new Set<(next: OfflineAiState) => void>()
 
-// A compact model suitable for first experiments. Its weights are downloaded on
-// first preparation and retained by WebLLM in IndexedDB for later offline use.
-export const OFFLINE_AI_MODEL = 'Llama-3.2-1B-Instruct-q4f32_1-MLC'
-
-let engine: ChatEngine | null = null
-let loading: Promise<ChatEngine> | null = null
-let state: OfflineAiState = { status: 'idle', progress: null, message: null }
-const listeners = new Set<(value: OfflineAiState) => void>()
-
-function update(next: Partial<OfflineAiState>) {
-  state = { ...state, ...next }
+function setState(patch: Partial<OfflineAiState>) {
+  state = { ...state, ...patch }
   for (const listener of listeners) listener(state)
 }
 
-export function subscribeOfflineAi(listener: (value: OfflineAiState) => void) {
+export function subscribeOfflineAi(listener: (next: OfflineAiState) => void) {
   listeners.add(listener)
   listener(state)
   return () => listeners.delete(listener)
 }
 
-export function getOfflineAiState(): OfflineAiState {
-  return state
-}
-
 export function supportsOfflineAi(): boolean {
-  return typeof navigator !== 'undefined' && 'gpu' in navigator && 'indexedDB' in globalThis
+  return typeof window !== 'undefined' && !!window.LanguageModel
 }
 
-/** Download and initialize the local model. Call this while online to prepare for travel. */
-export async function prepareOfflineAi(): Promise<boolean> {
-  if (engine) return true
-  if (loading) {
-    try {
-      await loading
-      return true
-    } catch {
-      return false
-    }
-  }
+export async function getOfflineAiStatus(): Promise<OfflineAiState> {
   if (!supportsOfflineAi()) {
-    update({ status: 'error', progress: null, message: 'WebGPU ou IndexedDB n’est pas disponible dans ce navigateur.' })
+    return { status: 'idle', message: 'Aucune IA locale disponible dans ce navigateur.' }
+  }
+
+  try {
+    const availability = await window.LanguageModel!.availability()
+    if (availability === 'downloadable') {
+      setState({ status: 'downloadable', message: 'Modèle local disponible pour téléchargement.' })
+      return state
+    }
+    if (availability === 'downloading') {
+      setState({ status: 'loading', message: 'Téléchargement du modèle local…' })
+      return state
+    }
+    if (availability === 'available') {
+      setState({ status: 'ready', message: 'IA locale prête.' })
+      return state
+    }
+    setState({ status: 'idle', message: 'IA locale indisponible sur cet appareil.' })
+    return state
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'L’IA locale n’a pas pu être vérifiée.'
+    setState({ status: 'error', message })
+    return state
+  }
+}
+
+export async function prepareOfflineAi(): Promise<boolean> {
+  if (!supportsOfflineAi()) {
+    setState({ status: 'error', message: 'Ce navigateur ne prend pas en charge l’IA native de Chrome.' })
     return false
   }
 
-  update({ status: 'loading', progress: 0, message: 'Préparation du modèle local…' })
-  loading = (async () => {
-    // Keep this import lazy so the large inference runtime is not part of the
-    // initial application bundle. The package is installed as an app dependency.
-    const webllm = (await import('@mlc-ai/web-llm')) as unknown as WebLLMModule
-    return webllm.CreateMLCEngine(OFFLINE_AI_MODEL, {
-      appConfig: { useIndexedDBCache: true },
-      initProgressCallback: ({ text, progress }) => {
-        update({
-          status: progress === 1 ? 'ready' : 'loading',
-          progress: typeof progress === 'number' ? Math.max(0, Math.min(1, progress)) : null,
-          message: text || (progress === 1 ? 'Modèle local prêt.' : 'Téléchargement du modèle local…'),
+  if (session) {
+    setState({ status: 'ready', message: 'IA locale prête.' })
+    return true
+  }
+
+  setState({ status: 'loading', message: 'Préparation de l’IA locale…' })
+
+  try {
+    const availability = await window.LanguageModel!.availability()
+    if (availability === 'unavailable') {
+      setState({ status: 'idle', message: 'Le modèle local n’est pas disponible sur cet appareil.' })
+      return false
+    }
+
+    if (availability === 'downloadable') {
+      setState({ status: 'downloadable', message: 'Téléchargement du modèle local…' })
+    }
+
+    session = await window.LanguageModel!.create({
+      monitor: (monitor) => {
+        monitor.addEventListener('downloadprogress', (event) => {
+          const loaded = Number(event?.loaded ?? 0)
+          const total = Number(event?.total ?? 0)
+          if (total > 0) {
+            const progress = Math.min(1, Math.max(0, loaded / total))
+            setState({ status: 'loading', message: `Téléchargement du modèle local (${Math.round(progress * 100)} %)` })
+          }
         })
       },
     })
-  })()
 
-  try {
-    engine = await loading
-    update({ status: 'ready', progress: 1, message: 'Modèle local prêt.' })
+    setState({ status: 'ready', message: 'IA locale prête pour fonctionner hors ligne.' })
     return true
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Impossible de charger le modèle local.'
-    update({ status: 'error', progress: null, message })
+    const message = error instanceof Error ? error.message : 'Le modèle local n’a pas pu démarrer.'
+    setState({ status: 'error', message })
     return false
-  } finally {
-    loading = null
   }
 }
 
-/** Generate a local answer; returns null when unsupported or not prepared. */
-export async function generateOfflineText(
-  prompt: string,
-  options: { system?: string; maxTokens?: number } = {},
-): Promise<string | null> {
-  if (!prompt.trim() || !(await prepareOfflineAi()) || !engine) return null
+export async function generateOfflineText(prompt: string, signal?: AbortSignal): Promise<string | null> {
+  if (!prompt.trim()) return null
+  if (!supportsOfflineAi()) return null
 
   try {
-    const messages: Array<{ role: 'system' | 'user'; content: string }> = []
-    if (options.system) messages.push({ role: 'system', content: options.system })
-    messages.push({ role: 'user', content: prompt })
-    const result = await engine.chat.completions.create({
-      messages,
-      temperature: 0.4,
-      max_tokens: options.maxTokens ?? 500,
-    })
-    const text = result.choices?.[0]?.message?.content?.trim()
-    return text || null
+    if (!session) {
+      const ready = await prepareOfflineAi()
+      if (!ready) return null
+    }
+
+    const text = await session!.prompt(prompt, { signal })
+    return text.trim() || null
   } catch (error) {
-    update({ status: 'error', message: error instanceof Error ? error.message : 'La génération locale a échoué.' })
+    if (signal?.aborted) return null
+    const message = error instanceof Error ? error.message : 'La génération locale a échoué.'
+    setState({ status: 'error', message })
     return null
+  }
+}
+
+export async function disposeOfflineAi(): Promise<void> {
+  if (!session) return
+  try {
+    await session.destroy()
+  } finally {
+    session = null
+    setState({ status: 'idle', message: 'IA locale mise hors tension.' })
   }
 }
