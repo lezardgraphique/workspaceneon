@@ -21,6 +21,7 @@ import { Route as ApiImagesRouteImport } from './routes/api.images'
 import { Route as ApiMailyRouteImport } from './routes/api.maily'
 import { Route as ApiWidgetRouteImport } from './routes/api.widget'
 import { Route as EditorModuleIdRouteImport } from './routes/editor.$moduleId'
+import { Route as ModeleLocalSplatRouteImport } from './routes/modele-local.$'
 import { Route as ApiFilesKeyRouteImport } from './routes/api.files_.$key'
 import { Route as ApiImagesKeyRouteImport } from './routes/api.images_.$key'
 
@@ -84,6 +85,11 @@ const EditorModuleIdRoute = EditorModuleIdRouteImport.update({
   path: '/editor/$moduleId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ModeleLocalSplatRoute = ModeleLocalSplatRouteImport.update({
+  id: '/modele-local/$',
+  path: '/modele-local/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiFilesKeyRoute = ApiFilesKeyRouteImport.update({
   id: '/api/files_/$key',
   path: '/api/files/$key',
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/api/maily': typeof ApiMailyRoute
   '/api/widget': typeof ApiWidgetRoute
   '/editor/$moduleId': typeof EditorModuleIdRoute
+  '/modele-local/$': typeof ModeleLocalSplatRoute
   '/api/files/$key': typeof ApiFilesKeyRoute
   '/api/images/$key': typeof ApiImagesKeyRoute
 }
@@ -124,6 +131,7 @@ export interface FileRoutesByTo {
   '/api/maily': typeof ApiMailyRoute
   '/api/widget': typeof ApiWidgetRoute
   '/editor/$moduleId': typeof EditorModuleIdRoute
+  '/modele-local/$': typeof ModeleLocalSplatRoute
   '/api/files/$key': typeof ApiFilesKeyRoute
   '/api/images/$key': typeof ApiImagesKeyRoute
 }
@@ -141,6 +149,7 @@ export interface FileRoutesById {
   '/api/maily': typeof ApiMailyRoute
   '/api/widget': typeof ApiWidgetRoute
   '/editor/$moduleId': typeof EditorModuleIdRoute
+  '/modele-local/$': typeof ModeleLocalSplatRoute
   '/api/files_/$key': typeof ApiFilesKeyRoute
   '/api/images_/$key': typeof ApiImagesKeyRoute
 }
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
     | '/api/maily'
     | '/api/widget'
     | '/editor/$moduleId'
+    | '/modele-local/$'
     | '/api/files/$key'
     | '/api/images/$key'
   fileRoutesByTo: FileRoutesByTo
@@ -175,6 +185,7 @@ export interface FileRouteTypes {
     | '/api/maily'
     | '/api/widget'
     | '/editor/$moduleId'
+    | '/modele-local/$'
     | '/api/files/$key'
     | '/api/images/$key'
   id:
@@ -191,6 +202,7 @@ export interface FileRouteTypes {
     | '/api/maily'
     | '/api/widget'
     | '/editor/$moduleId'
+    | '/modele-local/$'
     | '/api/files_/$key'
     | '/api/images_/$key'
   fileRoutesById: FileRoutesById
@@ -208,6 +220,7 @@ export interface RootRouteChildren {
   ApiMailyRoute: typeof ApiMailyRoute
   ApiWidgetRoute: typeof ApiWidgetRoute
   EditorModuleIdRoute: typeof EditorModuleIdRoute
+  ModeleLocalSplatRoute: typeof ModeleLocalSplatRoute
   ApiFilesKeyRoute: typeof ApiFilesKeyRoute
   ApiImagesKeyRoute: typeof ApiImagesKeyRoute
 }
@@ -298,6 +311,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EditorModuleIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/modele-local/$': {
+      id: '/modele-local/$'
+      path: '/modele-local/$'
+      fullPath: '/modele-local/$'
+      preLoaderRoute: typeof ModeleLocalSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/files_/$key': {
       id: '/api/files_/$key'
       path: '/api/files/$key'
@@ -328,6 +348,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiMailyRoute: ApiMailyRoute,
   ApiWidgetRoute: ApiWidgetRoute,
   EditorModuleIdRoute: EditorModuleIdRoute,
+  ModeleLocalSplatRoute: ModeleLocalSplatRoute,
   ApiFilesKeyRoute: ApiFilesKeyRoute,
   ApiImagesKeyRoute: ApiImagesKeyRoute,
 }

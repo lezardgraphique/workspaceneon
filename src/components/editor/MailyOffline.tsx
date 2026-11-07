@@ -2,7 +2,19 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { CloudOff, Cpu, Loader2 } from 'lucide-react'
 
-import { checkOfflineAi, getOfflineAiState, offlineAiWanted, offlineAiWantedHere, prepareOfflineAi, removeOfflineAi, skipOfflineAiHere, subscribeOfflineAi } from '@/lib/offline-ai'
+import {
+  accountModelId,
+  canShareOfflineAi,
+  checkOfflineAi,
+  getOfflineAiState,
+  offlineAiWanted,
+  offlineAiWantedHere,
+  prepareOfflineAi,
+  removeOfflineAi,
+  shareOfflineAi,
+  skipOfflineAiHere,
+  subscribeOfflineAi,
+} from '@/lib/offline-ai'
 import type { OfflineAiState } from '@/lib/offline-ai'
 import { SETTINGS_EVENT } from '@/lib/settings-sync'
 
@@ -49,9 +61,21 @@ export function MailyOffline({ offline }: { offline: boolean }) {
               {s.engine === 'cpu' ? ' (sur le processeur : la première réponse peut prendre une minute).' : '.'}
             </>
           ) : (
-            <>Maily hors ligne prête ({s.model}) : je prends le relais sur l'appareil si la connexion tombe.</>
+            <>
+              Maily hors ligne prête ({s.model}) : je prends le relais sur l'appareil si la connexion tombe.
+              {typeof s.sharing === 'number'
+                ? ` Copie sur ton compte pour tes autres appareils : ${Math.round(s.sharing * 100)} %.`
+                : s.engine === 'cpu' && accountModelId()
+                  ? ' Une copie est gardée sur ton compte : tes autres appareils la récupèrent depuis l’application.'
+                  : ''}
+            </>
           )}
         </span>
+        {!offline && !confirm && s.sharing == null && canShareOfflineAi() && (
+          <button type="button" className={btn} onClick={() => void shareOfflineAi()}>
+            Copier sur mon compte
+          </button>
+        )}
         {!offline &&
           (confirm ? (
             <span role="group" aria-label="Retirer Maily hors ligne" className="flex shrink-0 flex-wrap justify-end gap-1">
@@ -79,6 +103,7 @@ export function MailyOffline({ offline }: { offline: boolean }) {
         <Loader2 className="size-3.5 shrink-0 animate-spin text-cyan" aria-hidden />
         <span className="min-w-0 flex-1">
           Préparation de {s.model ?? 'Maily hors ligne'}
+          {s.fromAccount ? ' depuis la copie de ton compte' : ''}
           {pct !== null && ` : ${pct} %`}
           <progress className="mt-1 block h-1 w-full accent-cyan" max={100} value={pct ?? undefined} aria-label="Téléchargement du modèle local" />
         </span>
@@ -98,7 +123,9 @@ export function MailyOffline({ offline }: { offline: boolean }) {
       <>
         <span className="min-w-0 flex-1">
           {s.status === 'error' && s.message ? `${s.message} ` : ''}
-          Maily hors ligne est activée sur ton compte. Pour l'avoir aussi ici, cet appareil télécharge sa propre copie de {s.model} ({size(s)}, de préférence en Wi-Fi).
+          {s.fromAccount
+            ? `Une copie de ${s.model} est gardée sur ton compte : cet appareil la récupère depuis l'application (${size(s)}) et je suis prête dès que le réseau tombe.`
+            : `Maily hors ligne est activée sur ton compte. Pour l'avoir aussi ici, cet appareil télécharge sa propre copie de ${s.model} (${size(s)}, de préférence en Wi-Fi).`}
         </span>
         <span className="flex shrink-0 flex-wrap justify-end gap-1">
           <button type="button" className={btn} onClick={() => void prepareOfflineAi()}>

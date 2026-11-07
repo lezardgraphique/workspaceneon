@@ -101,6 +101,32 @@ export async function cpuReady(id: string): Promise<boolean> {
   }
 }
 
+/** The prepared model file, to send a copy to the account (null when absent). */
+export async function cpuModelFile(id: string): Promise<Blob | null> {
+  const model = CPU_MODELS.find((m) => m.id === id)
+  if (!model) return null
+  const found = (await files().modelManager.getModels()).find((m) => m.url === model.url)
+  const [blob] = found ? await found.open() : []
+  return blob ?? null
+}
+
+/**
+ * Writes a model received from the account (shared-model.ts) where wllama keeps
+ * the ones it downloads itself, so the rest (cpuReady, loadCpu) is unchanged.
+ */
+export async function importCpuModel(id: string, size: number, stream: ReadableStream<Uint8Array>): Promise<void> {
+  const model = CPU_MODELS.find((m) => m.id === id)
+  if (!model) throw new Error('Modèle inconnu')
+  const cache = files().modelManager.cacheManager
+  const name = await cache.getNameFromURL(model.url)
+  // Metadata last: an interrupted copy stays invalid and is fetched again.
+  await cache.write(name, stream, { etag: '', originalSize: size, originalURL: model.url })
+  if ((await cache.getSize(name)) !== size) {
+    await cache.delete(name).catch(() => {})
+    throw new Error('Copie du modèle incomplète')
+  }
+}
+
 let loaded: { model: CpuModel; wllama: Wllama; blob: string } | null = null
 let loading: Promise<{ model: CpuModel; wllama: Wllama; blob: string }> | null = null
 

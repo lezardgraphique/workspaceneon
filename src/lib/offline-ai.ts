@@ -14,9 +14,15 @@
 //
 // Nothing is downloaded or run until the user asks ("Préparer"); the Gemma
 // engine is unloaded after a few idle minutes or when the page is hidden.
+//
+// Account copy: a device that prepared Gemma 3 on the processor sends the model
+// file to the account once (shared-model.ts, on an unmetered connection); the
+// account's other devices then fetch that copy from the app and use it first,
+// so they are ready before the network drops.
 
-import { AI_WANTED_KEY } from '@/lib/settings-keys'
-import { getPref, setPref } from '@/lib/settings-sync'
+import { AI_SHARED_KEY, AI_WANTED_KEY } from '@/lib/settings-keys'
+import { getPref, setPref, SETTINGS_EVENT } from '@/lib/settings-sync'
+import { deleteSharedModel, isSharedModelId, sharedManifest, sharedModelStream, uploadSharedModel } from '@/lib/shared-model'
 
 export type LocalEngine = 'nano' | 'gemma' | 'cpu'
 
@@ -38,6 +44,10 @@ export interface OfflineAiState {
   message: string | null
   // Download size shown before "Préparer"
   size: string | null
+  // The model comes (or would come) from the copy stored on the account
+  fromAccount?: boolean
+  // 0..1 while this device sends its model to the account
+  sharing?: number | null
 }
 
 export interface LocalMessage {
@@ -211,12 +221,16 @@ async function cpuCandidates() {
 }
 
 let checked: Promise<OfflineAiState> | null = null
+// The account copy couldn't be fetched this time: fall back to the usual sources.
+let accountFailed = false
 
 /** Looks (without downloading anything) at what this browser can run. */
 export function checkOfflineAi(): Promise<OfflineAiState> {
   if (!browser()) return Promise.resolve(state)
   checked ??= (async () => {
+    state = { ...state, fromAccount: false }
     const pref = readPref()
+    const shared = accountFailed ? null : accountModelId()
     const nano = await nanoAvailability()
     // A model prepared with the processor engine (also the fallback when the others fail).
     if (pref?.engine === 'cpu' && pref.model && wasmOk()) {
@@ -227,6 +241,14 @@ export function checkOfflineAi(): Promise<OfflineAiState> {
         return state
       }
       writePref(null)
+    }
+    // A copy is waiting on the account: this device takes the same model from the app.
+    if (shared && wasmOk() && pref?.engine !== 'nano' && pref?.engine !== 'gemma') {
+      const chosen = (await cpu()).CPU_MODELS.find((x) => x.id === shared)
+      if (chosen) {
+        setState({ status: 'available', engine: 'cpu', model: chosen.label, message: null, size: `${chosen.size}, copie de ton compte`, fromAccount: true })
+        return state
+      }
     }
     if (nano !== 'unavailable') {
       if (pref?.engine === 'nano' && nano === 'available') setState({ status: 'ready', engine: 'nano', model: 'Gemini Nano', message: null, size: null })
@@ -334,10 +356,11 @@ const errorText = (e: unknown) =>
       : 'Le modèle local n’a pas pu être préparé. Réessaie en ligne.'
 
 // Processor engine: works where the two others can't (or failed to load).
-async function prepareCpu(): Promise<boolean> {
+async function prepareCpu(only?: string): Promise<boolean> {
   if (!wasmOk()) throw new Error('unsupported')
   const m = await cpu()
-  const model = await m.loadCpu(await cpuCandidates(), true, (progress, mod) =>
+  const candidates = only ? m.CPU_MODELS.filter((x) => x.id === only) : await cpuCandidates()
+  const model = await m.loadCpu(candidates, true, (progress, mod) =>
     setState({ status: 'downloading', engine: 'cpu', model: mod.label, progress, message: null, size: mod.size }),
   )
   cpuLoaded = true
@@ -355,6 +378,8 @@ async function prepareCpu(): Promise<boolean> {
 export async function prepareOfflineAi(): Promise<boolean> {
   const ok = await prepare()
   if (ok) {
+    // Prepared from Hugging Face on a computer / Wi-Fi: keep a copy on the account.
+    if (unmetered()) void shareOfflineAi()
     // The account's other devices offer (or start) the same preparation.
     setPref(AI_WANTED_KEY, '1')
     try {
@@ -392,6 +417,20 @@ async function prepare(): Promise<boolean> {
   void navigator.storage?.persist?.().catch(() => false)
   setState({ status: 'downloading', progress: null, message: null })
   let first: unknown = null
+  if (state.fromAccount) {
+    try {
+      if (await prepareFromAccount()) return true
+    } catch (e) {
+      first = e
+      await releaseOfflineAi()
+    }
+    // No usable copy on the account: the usual choice of model.
+    accountFailed = true
+    checked = null
+    await checkOfflineAi()
+    if (getOfflineAiState().status === 'unsupported') return false
+    setState({ status: 'downloading', progress: null, message: null })
+  }
   try {
     if (state.engine === 'nano') {
       const api = window.LanguageModel!
@@ -439,7 +478,11 @@ async function prepare(): Promise<boolean> {
 export async function removeOfflineAi(scope: 'here' | 'everywhere' | 'remote' = 'here'): Promise<void> {
   const pref = readPref()
   writePref(null)
-  if (scope === 'everywhere') setPref(AI_WANTED_KEY, null)
+  if (scope === 'everywhere') {
+    setPref(AI_WANTED_KEY, null)
+    setPref(AI_SHARED_KEY, null)
+    void deleteSharedModel()
+  }
   else if (scope === 'here') skipOfflineAiHere()
   await releaseOfflineAi()
   if (pref?.engine === 'gemma' && pref.model) {
@@ -450,6 +493,87 @@ export async function removeOfflineAi(scope: 'here' | 'everywhere' | 'remote' = 
   checked = null
   setState({ status: 'checking', message: null, progress: null })
   await checkOfflineAi()
+}
+
+// ---- account copy (shared-model.ts) ----------------------------------------------
+
+/** Model id the account holds a copy of (set by the device that sent it). */
+export const accountModelId = (): string | null => {
+  const id = getPref(AI_SHARED_KEY)
+  return id && isSharedModelId(id) ? id : null
+}
+
+// A large transfer may start without a click only on a connection that isn't
+// metered: desktop without the Network Information API counts as unmetered,
+// phones and tablets without it don't (they may be on mobile data).
+export function unmetered(): boolean {
+  if (!browser()) return false
+  const c = (navigator as Navigator & { connection?: { saveData?: boolean; type?: string; effectiveType?: string } }).connection
+  if (!c) return !matchMedia('(pointer: coarse)').matches
+  if (c.saveData) return false
+  if (c.type === 'cellular' || c.type === 'none') return false
+  return !/(^|-)2g|3g/.test(c.effectiveType ?? '')
+}
+
+/** The user asked to keep data use low (browser / system "économie de données"). */
+export const saveData = () => !!(navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData
+
+// Fetches the account copy into this device's model storage, then checks it loads.
+async function prepareFromAccount(): Promise<boolean> {
+  const id = accountModelId()
+  if (!id || !wasmOk()) return false
+  const m = await cpu()
+  const model = m.CPU_MODELS.find((x) => x.id === id)
+  const manifest = model ? await sharedManifest(id) : null
+  if (!model || !manifest?.complete) return false
+  setState({ status: 'downloading', engine: 'cpu', model: model.label, progress: 0, message: null, size: model.size, fromAccount: true })
+  const stream = sharedModelStream(manifest, (progress) => setState({ status: 'downloading', progress }))
+  await m.importCpuModel(id, manifest.size, stream)
+  return prepareCpu(id)
+}
+
+let sharing: Promise<boolean> | null = null
+
+/**
+ * Sends the model prepared on this device (Gemma 3 on the processor) to the
+ * account, once, resuming where an interrupted send stopped. The other devices
+ * then take it from the app. Quiet: a failure is retried next time.
+ */
+export function shareOfflineAi(): Promise<boolean> {
+  sharing ??= (async () => {
+    const pref = readPref()
+    if (!pref || pref.engine !== 'cpu' || !pref.model || !isSharedModelId(pref.model)) return false
+    if (accountModelId() === pref.model) return true
+    const file = await (await cpu()).cpuModelFile(pref.model)
+    if (!file) return false
+    setState({ sharing: 0 })
+    await uploadSharedModel(pref.model, file, (p) => setState({ sharing: p }))
+    setPref(AI_SHARED_KEY, pref.model)
+    return true
+  })()
+    .catch(() => false)
+    .finally(() => {
+      sharing = null
+      setState({ sharing: null })
+    })
+  return sharing
+}
+
+/** This device holds a model it could send to the account (and the account has none yet). */
+export const canShareOfflineAi = () => {
+  const pref = readPref()
+  return !!pref && pref.engine === 'cpu' && !!pref.model && isSharedModelId(pref.model) && !accountModelId()
+}
+
+if (browser()) {
+  // A copy just reached the account (sent from another device): offer it here.
+  window.addEventListener(SETTINGS_EVENT, (e) => {
+    const keys = (e as CustomEvent<string[]>).detail ?? []
+    if (keys.includes(AI_SHARED_KEY) && (state.status === 'available' || state.status === 'error')) {
+      checked = null
+      void checkOfflineAi()
+    }
+  })
 }
 
 // ---- generation ------------------------------------------------------------------
