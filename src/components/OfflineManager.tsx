@@ -98,11 +98,20 @@ export function OfflineManager() {
       } catch {
         /* private mode */
       }
-      showNotice('De retour en ligne. Pour la prochaine coupure, prépare « Maily hors ligne » dans l’onglet Maily.')
+      showNotice('De retour en ligne. Pour la prochaine coupure, ouvre un module, onglet Maily, puis « Préparer » dans le bandeau « Maily hors ligne ».')
     }
   }, [st.online])
 
   const [open, setOpen] = useState(false)
+  // The badge shows its text for a few seconds when the connection drops,
+  // then shrinks to a small icon so it never covers the work.
+  const [peek, setPeek] = useState(false)
+  useEffect(() => {
+    if (st.online) return
+    setPeek(true)
+    const t = setTimeout(() => setPeek(false), 5000)
+    return () => clearTimeout(t)
+  }, [st.online])
   const boxRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (st.online) setOpen(false)
@@ -146,14 +155,22 @@ export function OfflineManager() {
             aria-expanded={open}
             aria-controls="nsp-offline-panel"
             onClick={() => setOpen((o) => !o)}
-            className={`${pill} tap-auto border-cyan/50 bg-night/95 text-white hover:border-cyan`}
+            title="Hors ligne : voir ce qui fonctionne"
+            className={`fixed right-3 bottom-20 z-40 flex items-center gap-1.5 rounded-full border border-cyan/40 bg-night/80 text-xs text-white shadow-md backdrop-blur transition-all hover:border-cyan hover:opacity-100 focus-visible:opacity-100 lg:bottom-3 tap-auto ${
+              peek || open ? 'max-w-[calc(100vw-1.5rem)] px-3 py-1.5' : 'size-8 justify-center opacity-70'
+            }`}
           >
             <CloudOff className="size-3.5 shrink-0 text-cyan" aria-hidden />
-            <span className="truncate">
+            <span className={peek || open ? 'truncate' : 'sr-only'}>
               Hors ligne · {[pendingText, mailyReady ? 'Maily sur l’appareil' : null].filter(Boolean).join(' · ') || 'tes modules restent disponibles'}
             </span>
-            {mailyReady && <Cpu className="size-3.5 shrink-0 text-cyan" aria-hidden />}
-            <ChevronUp className={`size-3.5 shrink-0 text-mute transition-transform ${open ? '' : 'rotate-180'}`} aria-hidden />
+            {!peek && !open && st.pending > 0 && (
+              <span aria-hidden className="absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full bg-pink-fill px-1 text-[10px] font-semibold leading-4 text-white">
+                {st.pending}
+              </span>
+            )}
+            {(peek || open) && mailyReady && <Cpu className="size-3.5 shrink-0 text-cyan" aria-hidden />}
+            {(peek || open) && <ChevronUp className={`size-3.5 shrink-0 text-mute transition-transform ${open ? '' : 'rotate-180'}`} aria-hidden />}
           </button>
           <div
             id="nsp-offline-panel"
@@ -191,7 +208,7 @@ export function OfflineManager() {
                   ) : ai.status === 'unsupported' ? (
                     'Ce navigateur ne peut pas faire tourner Maily sur l’appareil : Chrome ou Edge récents (ou un navigateur WebGPU) le permettent.'
                   ) : (
-                    'Maily n’est pas préparée pour le hors ligne : à ta prochaine connexion, onglet Maily > « Préparer » (une seule fois).'
+                    'Maily n’est pas préparée pour le hors ligne : à ta prochaine connexion, ouvre un module, onglet Maily, puis « Préparer » dans le bandeau « Maily hors ligne » (une seule fois).'
                   )}
                   {mailyReady && inEditor && (
                     <button
