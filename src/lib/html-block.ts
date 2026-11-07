@@ -34,6 +34,16 @@ function serialize({ root, tokens }: Parsed): string {
 
 const elementsOf = (el: Element) => Array.from(el.children)
 
+function withoutComments(src: string): string {
+  let plain = src
+  let previous: string
+  do {
+    previous = plain
+    plain = plain.replace(/<!--[\s\S]*?-->/g, '')
+  } while (plain !== previous)
+  return plain
+}
+
 function walk(el: Element, path: string, fn: (el: Element, path: string) => void) {
   elementsOf(el).forEach((c, i) => {
     const p = path ? `${path}.${i}` : String(i)
@@ -53,7 +63,7 @@ function at(root: Element, path: string): Element | null {
 
 // Tag names written in the code (comments and HuBL left out), in order.
 function writtenTags(src: string): string[] {
-  const plain = src.replace(/<!--[\s\S]*?-->/g, '').replace(/\{%[\s\S]*?%\}|\{\{[\s\S]*?\}\}|\{#[\s\S]*?#\}/g, '')
+  const plain = withoutComments(src).replace(/\{%[\s\S]*?%\}|\{\{[\s\S]*?\}\}|\{#[\s\S]*?#\}/g, '')
   return [...plain.matchAll(/<([a-zA-Z][\w:-]*)/g)].map((m) => m[1].toUpperCase())
 }
 
