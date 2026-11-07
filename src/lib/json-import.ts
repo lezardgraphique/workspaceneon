@@ -3,6 +3,7 @@ import { extractFieldRefs } from './module-fields'
 import { withLegacySpecs } from './hubl-legacy'
 import type { FieldSpec } from './module-fields'
 import type { Block, ExtraField, Json, ModuleTree } from './types'
+import { stripTags } from './sanitize'
 
 // JSON copied from other tools, turned into what the import understands:
 // field definitions (as fields.json entries), field values, and the module's
@@ -549,7 +550,7 @@ export function applyValues(tree: ModuleTree, values: Obj | null): { tree: Modul
         const v = str(get(name))
         if (v === undefined) return b
         applied.push(name)
-        return { ...b, text: v.replace(/<[^>]*>/g, '') }
+        return { ...b, text: stripTags(v) }
       }
       case 'text': {
         const v = str(get(name))
