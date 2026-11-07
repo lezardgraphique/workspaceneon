@@ -17,7 +17,7 @@ import type { ModuleTree, Section } from '@/lib/types'
 import { slugify } from '@/lib/custom-blocks'
 import type { CustomBlock } from '@/lib/custom-blocks'
 import { createLocalFirst, isNetworkError, isOffline, loadBlocks, loadModules, saveBlock, useDataStatus } from '@/lib/data'
-import { libraryNote, localSystemPrompt } from '@/lib/maily-prompts'
+import { guideAnswer, libraryNote, localSystemPrompt } from '@/lib/maily-prompts'
 import { localAiEnabled, localContextTokens, streamOfflineMaily } from '@/lib/offline-ai'
 import type { LocalMessage } from '@/lib/offline-ai'
 import { refreshCustomBlocks } from './useCustomBlocks'
@@ -497,7 +497,8 @@ export function MailyPanel({
           role: 'assistant',
           content: localAiEnabled()
             ? '⚠️ Mon modèle hors ligne n’a pas pu répondre. Réessaie, ou attends le retour de la connexion : l’éditeur, lui, continue de fonctionner.'
-            : '⚠️ Je n’ai pas de connexion pour réfléchir. Pour me parler sans réseau, prépare « Maily hors ligne » (en haut de ce panneau) la prochaine fois que tu es en ligne. L’éditeur, lui, continue de fonctionner hors ligne.',
+            : // No model on the device: Maily still answers, from her built-in guide.
+              guideAnswer(userMsg.content),
         })
       } else {
         push({ role: 'assistant', content: `⚠️ ${(e as Error).message}` })
@@ -536,7 +537,7 @@ export function MailyPanel({
         <Maily size={48} mood={mood} />
         <div className="min-w-0">
           <p className="font-display font-semibold tracking-wide">NEON AI CHAT</p>
-          <p className="text-xs text-mute">{loading ? 'Maily réfléchit…' : onDevice ? `Maily · hors ligne · ${localAi.model}` : 'Maily · Gemini Flash · recherche web'}</p>
+          <p className="text-xs text-mute">{loading ? 'Maily réfléchit…' : onDevice ? `Maily · hors ligne · ${localAi.model}` : !online ? 'Maily · hors ligne · guide intégré' : 'Maily · Gemini Flash · recherche web'}</p>
         </div>
       </div>
       <MailyOffline offline={!online} />

@@ -206,9 +206,9 @@ export function OfflineManager() {
                   ) : ai.status === 'downloading' ? (
                     'Maily hors ligne est en cours de préparation.'
                   ) : ai.status === 'unsupported' ? (
-                    'Ce navigateur ne peut pas faire tourner Maily sur l’appareil : Chrome ou Edge récents (ou un navigateur WebGPU) le permettent.'
+                    'Ce navigateur est trop ancien pour un modèle sur l’appareil : Maily répond quand même avec son guide intégré (mets ton navigateur à jour pour la version complète).'
                   ) : (
-                    'Maily n’est pas préparée pour le hors ligne : à ta prochaine connexion, ouvre un module, onglet Maily, puis « Préparer » dans le bandeau « Maily hors ligne » (une seule fois).'
+                    'Maily répond avec son guide intégré. Pour qu’elle rédige et crée des modules sans réseau : à ta prochaine connexion, ouvre un module, onglet Maily, puis « Préparer » dans le bandeau « Maily hors ligne » (une seule fois, tous les navigateurs récents).'
                   )}
                   {mailyReady && inEditor && (
                     <button

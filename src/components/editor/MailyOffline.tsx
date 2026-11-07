@@ -15,7 +15,7 @@ export function useOfflineAi(): OfflineAiState {
   return s
 }
 
-const size = (s: OfflineAiState) => (s.engine === 'nano' ? 'géré par le navigateur' : s.model?.includes('1B') ? 'environ 700 Mo' : 'environ 2 Go')
+const size = (s: OfflineAiState) => s.size ?? (s.engine === 'nano' ? 'géré par le navigateur' : 'environ 2 Go')
 
 // "Maily hors ligne" strip of the Maily panel: prepare (download once, online),
 // state of the on-device model, remove it.
@@ -37,7 +37,10 @@ export function MailyOffline({ offline }: { offline: boolean }) {
       <>
         <span className="min-w-0 flex-1">
           {offline ? (
-            <>Hors ligne : je réponds avec <strong className="text-white">{s.model}</strong> sur ton appareil, sans recherche web.</>
+            <>
+              Hors ligne : je réponds avec <strong className="text-white">{s.model}</strong> sur ton appareil, sans recherche web
+              {s.engine === 'cpu' ? ' (sur le processeur : la première réponse peut prendre une minute).' : '.'}
+            </>
           ) : (
             <>Maily hors ligne prête ({s.model}) : je prends le relais sur l'appareil si la connexion tombe.</>
           )}
@@ -69,17 +72,17 @@ export function MailyOffline({ offline }: { offline: boolean }) {
   } else if (s.status === 'unsupported') {
     body = (
       <span>
-        Maily hors ligne n'est pas disponible dans ce navigateur (ni Gemini Nano ni WebGPU) : ouvre l'application dans Chrome ou Edge récents pour la préparer.
+        Ce navigateur est trop ancien pour faire tourner un modèle sur l'appareil. Sans connexion, je réponds quand même avec mon guide intégré ; mets ton navigateur à jour pour la version complète.
       </span>
     )
   } else if (offline) {
-    body = <span>Pas de connexion. Prépare « Maily hors ligne » la prochaine fois que tu es en ligne pour me parler sans réseau.</span>
+    body = <span>Pas de connexion : je réponds avec mon guide intégré. Prépare « Maily hors ligne » la prochaine fois que tu es en ligne pour que je puisse aussi rédiger et créer des modules sans réseau.</span>
   } else {
     body = (
       <>
         <span className="min-w-0 flex-1">
           {s.status === 'error' && s.message ? `${s.message} ` : ''}
-          Maily hors ligne : télécharge {s.model} sur cet appareil ({size(s)}) pour me parler sans connexion.
+          Maily hors ligne : télécharge {s.model} sur cet appareil ({size(s)}){s.engine === 'cpu' ? ', fonctionne dans tous les navigateurs récents' : ''} pour me parler sans connexion.
         </span>
         <button type="button" className={btn} onClick={() => void prepareOfflineAi()}>
           {s.status === 'error' ? 'Réessayer' : 'Préparer'}

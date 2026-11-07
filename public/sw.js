@@ -10,8 +10,8 @@ const SHELL = VERSION + '-shell'
 const ASSETS = VERSION + '-assets'
 const RUNTIME = VERSION + '-runtime'
 
-// Caches of the offline Maily model (WebLLM): never touched by this worker.
-const isModelCache = (k) => k.startsWith('webllm/')
+// Caches of the offline Maily model (WebLLM models, llama.cpp runtime): never touched by this worker.
+const isModelCache = (k) => k.startsWith('webllm/') || k.startsWith('wllama/')
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

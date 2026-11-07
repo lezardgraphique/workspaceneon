@@ -6,17 +6,20 @@
 //  2. Otherwise Gemma 4 E2B (Google's open model built from Gemini research)
 //     through WebLLM on WebGPU, downloaded once (~2 GB) into the browser cache;
 //     Gemma 3 1B on devices with little memory.
+//  3. Everywhere else (Safari, Firefox, no usable GPU) or when 1/2 fail:
+//     Gemma 3 1B (270M on small devices) through llama.cpp in WebAssembly on
+//     the processor (offline-cpu.ts), ~800 Mo once.
 // Both get Maily's own instructions (maily-prompts.ts) and answer with the same
 // ```neon protocol, checked by the same engine as online answers.
 //
 // Nothing is downloaded or run until the user asks ("Préparer"); the Gemma
 // engine is unloaded after a few idle minutes or when the page is hidden.
 
-export type LocalEngine = 'nano' | 'gemma'
+export type LocalEngine = 'nano' | 'gemma' | 'cpu'
 
 export type OfflineAiStatus =
   | 'checking'
-  | 'unsupported' // no Prompt API, no usable WebGPU
+  | 'unsupported' // not even WebAssembly SIMD (very old browser)
   | 'available' // can be prepared (download needed or already on the device)
   | 'downloading'
   | 'ready' // prepared: used automatically without a connection
@@ -30,6 +33,8 @@ export interface OfflineAiState {
   // 0..1 while downloading
   progress: number | null
   message: string | null
+  // Download size shown before "Préparer"
+  size: string | null
 }
 
 export interface LocalMessage {
@@ -95,7 +100,7 @@ function readPref(): Pref | null {
   if (!browser()) return null
   try {
     const p = JSON.parse(localStorage.getItem(PREF_KEY) || 'null')
-    return p && (p.engine === 'nano' || p.engine === 'gemma') ? p : null
+    return p && (p.engine === 'nano' || p.engine === 'gemma' || p.engine === 'cpu') ? p : null
   } catch {
     return null
   }
@@ -111,7 +116,7 @@ function writePref(p: Pref | null) {
 
 // ---- state ----------------------------------------------------------------------
 
-let state: OfflineAiState = { status: 'checking', engine: null, model: null, progress: null, message: null }
+let state: OfflineAiState = { status: 'checking', engine: null, model: null, progress: null, message: null, size: null }
 const listeners = new Set<(s: OfflineAiState) => void>()
 
 function setState(patch: Partial<OfflineAiState>) {
@@ -180,6 +185,26 @@ async function gemmaCandidates(): Promise<GemmaModel[]> {
   return memory < 8 ? [...small, ...big] : [...big, ...small]
 }
 
+// WebAssembly with SIMD and exception handling (what llama.cpp's build needs).
+function wasmOk(): boolean {
+  try {
+    const simd = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11])
+    const exc = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 8, 1, 6, 0, 6, 64, 25, 11, 11])
+    return typeof WebAssembly === 'object' && WebAssembly.validate(simd) && WebAssembly.validate(exc) && typeof caches !== 'undefined' && !!navigator.storage?.getDirectory
+  } catch {
+    return false
+  }
+}
+
+const cpu = () => import('@/lib/offline-cpu')
+
+// Processor models this device can try, best first.
+async function cpuCandidates() {
+  const { CPU_MODELS } = await cpu()
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8
+  return memory < 4 ? [...CPU_MODELS].reverse() : CPU_MODELS
+}
+
 let checked: Promise<OfflineAiState> | null = null
 
 /** Looks (without downloading anything) at what this browser can run. */
@@ -188,28 +213,43 @@ export function checkOfflineAi(): Promise<OfflineAiState> {
   checked ??= (async () => {
     const pref = readPref()
     const nano = await nanoAvailability()
+    // A model prepared with the processor engine (also the fallback when the others fail).
+    if (pref?.engine === 'cpu' && pref.model && wasmOk()) {
+      const m = await cpu()
+      const chosen = m.CPU_MODELS.find((x) => x.id === pref.model)
+      if (chosen && (await m.cpuReady(chosen.id))) {
+        setState({ status: 'ready', engine: 'cpu', model: chosen.label, message: null, size: chosen.size })
+        return state
+      }
+      writePref(null)
+    }
     if (nano !== 'unavailable') {
-      if (pref?.engine === 'nano' && nano === 'available') setState({ status: 'ready', engine: 'nano', model: 'Gemini Nano', message: null })
-      else if (nano === 'downloading') setState({ status: 'downloading', engine: 'nano', model: 'Gemini Nano', message: null })
-      else setState({ status: 'available', engine: 'nano', model: 'Gemini Nano', message: null })
+      if (pref?.engine === 'nano' && nano === 'available') setState({ status: 'ready', engine: 'nano', model: 'Gemini Nano', message: null, size: null })
+      else if (nano === 'downloading') setState({ status: 'downloading', engine: 'nano', model: 'Gemini Nano', message: null, size: null })
+      else setState({ status: 'available', engine: 'nano', model: 'Gemini Nano', message: null, size: 'géré par le navigateur' })
       return state
     }
     const candidates = await gemmaCandidates()
     if (!candidates.length) {
+      if (wasmOk()) {
+        const [first] = await cpuCandidates()
+        setState({ status: 'available', engine: 'cpu', model: first.label, message: null, size: first.size })
+        return state
+      }
       if (pref) writePref(null)
-      setState({ status: 'unsupported', engine: null, model: null, message: null })
+      setState({ status: 'unsupported', engine: null, model: null, message: null, size: null })
       return state
     }
     if (pref?.engine === 'gemma' && pref.model) {
       const chosen = GEMMA.find((m) => m.id === pref.model)
       const { hasModelInCache } = await import('@mlc-ai/web-llm')
       if (chosen && (await hasModelInCache(chosen.id).catch(() => false))) {
-        setState({ status: 'ready', engine: 'gemma', model: chosen.label, message: null })
+        setState({ status: 'ready', engine: 'gemma', model: chosen.label, message: null, size: null })
         return state
       }
       writePref(null)
     }
-    setState({ status: 'available', engine: 'gemma', model: candidates[0].label, message: null })
+    setState({ status: 'available', engine: 'gemma', model: candidates[0].label, message: null, size: candidates[0].id.startsWith('gemma3') ? 'environ 700 Mo' : 'environ 2 Go' })
     return state
   })()
   return checked
@@ -262,11 +302,16 @@ async function loadGemma(models: GemmaModel[], report: boolean): Promise<{ model
 export async function releaseOfflineAi(): Promise<void> {
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = null
+  if (cpuLoaded) {
+    cpuLoaded = false
+    await (await cpu()).releaseCpu()
+  }
   const e = engine
   engine = null
   if (e) await e.engine.unload().catch(() => {})
 }
 
+let cpuLoaded = false
 let busy = false
 if (browser()) {
   document.addEventListener('visibilitychange', () => {
@@ -283,7 +328,25 @@ const errorText = (e: unknown) =>
       ? 'Pas assez de place sur l’appareil pour télécharger le modèle.'
       : 'Le modèle local n’a pas pu être préparé. Réessaie en ligne.'
 
-/** Downloads (once, online) and checks the on-device model. Call it from a click. */
+// Processor engine: works where the two others can't (or failed to load).
+async function prepareCpu(): Promise<boolean> {
+  if (!wasmOk()) throw new Error('unsupported')
+  const m = await cpu()
+  const model = await m.loadCpu(await cpuCandidates(), true, (progress, mod) =>
+    setState({ status: 'downloading', engine: 'cpu', model: mod.label, progress, message: null, size: mod.size }),
+  )
+  cpuLoaded = true
+  writePref({ engine: 'cpu', model: model.id })
+  setState({ status: 'ready', engine: 'cpu', model: model.label, progress: null, message: null, size: model.size })
+  armIdle()
+  return true
+}
+
+/**
+ * Downloads (once, online) and checks the on-device model. Call it from a click.
+ * When the browser's own model or the GPU one can't be set up, the processor
+ * engine takes over, so Maily can be prepared in every recent browser.
+ */
 export async function prepareOfflineAi(): Promise<boolean> {
   await checkOfflineAi()
   if (state.status === 'ready') return true
@@ -291,6 +354,7 @@ export async function prepareOfflineAi(): Promise<boolean> {
   // Keep the model even when the browser is short of space.
   void navigator.storage?.persist?.().catch(() => false)
   setState({ status: 'downloading', progress: null, message: null })
+  let first: unknown = null
   try {
     if (state.engine === 'nano') {
       const api = window.LanguageModel!
@@ -309,13 +373,21 @@ export async function prepareOfflineAi(): Promise<boolean> {
       setState({ status: 'ready', progress: null, message: null })
       return true
     }
-    const loaded = await loadGemma(await gemmaCandidates(), true)
-    writePref({ engine: 'gemma', model: loaded.model.id })
-    setState({ status: 'ready', engine: 'gemma', model: loaded.model.label, progress: null, message: null })
-    armIdle()
-    return true
+    if (state.engine === 'gemma') {
+      const loaded = await loadGemma(await gemmaCandidates(), true)
+      writePref({ engine: 'gemma', model: loaded.model.id })
+      setState({ status: 'ready', engine: 'gemma', model: loaded.model.label, progress: null, message: null, size: null })
+      armIdle()
+      return true
+    }
   } catch (e) {
-    setState({ status: 'error', progress: null, message: errorText(e) })
+    first = e
+    await releaseOfflineAi()
+  }
+  try {
+    return await prepareCpu()
+  } catch (e) {
+    setState({ status: 'error', progress: null, message: errorText(first ?? e) })
     return false
   }
 }
@@ -329,6 +401,7 @@ export async function removeOfflineAi(): Promise<void> {
     const { deleteModelAllInfoInCache } = await import('@mlc-ai/web-llm')
     await deleteModelAllInfoInCache(pref.model).catch(() => {})
   }
+  if (pref?.engine === 'cpu') await (await cpu()).removeCpu().catch(() => {})
   checked = null
   setState({ status: 'checking', message: null, progress: null })
   await checkOfflineAi()
@@ -339,6 +412,7 @@ export async function removeOfflineAi(): Promise<void> {
 /** Context window (tokens) of the prepared model, used to size the prompt. */
 export function localContextTokens(): number {
   if (state.engine === 'gemma') return (GEMMA.find((m) => m.id === readPref()?.model) ?? GEMMA[0]).context
+  if (state.engine === 'cpu') return 8192
   return nanoQuota
 }
 // Gemini Nano's window as last reported by a session (Chrome gives ~6-9k tokens).
@@ -421,9 +495,13 @@ export async function* streamOfflineMaily(system: string, messages: LocalMessage
   if (idleTimer) clearTimeout(idleTimer)
   try {
     if (state.engine === 'nano') yield* nanoStream(system, messages, signal)
-    else yield* gemmaStream(system, messages, maxTokens, signal)
+    else if (state.engine === 'cpu') {
+      const m = await cpu()
+      cpuLoaded = true
+      yield* m.cpuStream(readPref()?.model ?? m.CPU_MODELS[0].id, system, messages.map(({ role, content }) => ({ role, content })), maxTokens, signal)
+    } else yield* gemmaStream(system, messages, maxTokens, signal)
   } finally {
     busy = false
-    if (state.engine === 'gemma') armIdle()
+    if (state.engine === 'gemma' || state.engine === 'cpu') armIdle()
   }
 }

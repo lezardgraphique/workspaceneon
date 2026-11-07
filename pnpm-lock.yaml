@@ -53,6 +53,12 @@ importers:
       '@tanstack/store':
         specifier: 0.11.2
         version: 0.11.2
+      '@wllama/wllama':
+        specifier: 3.8.1
+        version: 3.8.1
+      '@wllama/wllama-compat':
+        specifier: 3.8.1
+        version: 3.8.1
       drizzle-orm:
         specifier: 1.0.0-beta.22
         version: 1.0.0-beta.22(@neondatabase/serverless@1.2.0)(@opentelemetry/api@1.9.1)(pg@8.23.1)(zod@4.6.7)
@@ -1764,6 +1770,12 @@ packages:
   '@whatwg-node/server@0.11.0':
     resolution: {integrity: sha512-VSdkwnJRr8Yv9UgB2aXB3VUPWwd6Oqnn0hycFwhg9pZgWxJXb7JmhsiXe9tmpMwjHFxli12PGcz9aI63YYloGQ==}
     engines: {node: '>=18.0.0'}
+
+  '@wllama/wllama-compat@3.8.1':
+    resolution: {integrity: sha512-IvmjrJ+JzDbt3w1FQq1yAmnFEiLGCceowK2Q80zW+k9ChFkPBM1ByX/9xm2xVxyd8MHC50VpuDo6SDE83k9kIQ==}
+
+  '@wllama/wllama@3.8.1':
+    resolution: {integrity: sha512-Pl7BEJhPU8OHnV/yhn3DFZYhLLOdSHh+4TND79WCftHnlUAdQPAsyc/CfIOY+4mVxvf5VW3Xw3Uf7BBfotS1gw==}
 
   abbrev@3.0.1:
     resolution: {integrity: sha512-AO2ac6pjRB3SJmGJo+v5/aK6Omggp6fsLrs6wN9bd35ulu4cCwaAU9+7ZhXjeqHVkaHThLuzH0nZr0YpCDhygg==}
@@ -6536,6 +6548,10 @@ snapshots:
       '@whatwg-node/fetch': 0.10.13
       '@whatwg-node/promise-helpers': 1.3.2
       tslib: 2.8.1
+
+  '@wllama/wllama-compat@3.8.1': {}
+
+  '@wllama/wllama@3.8.1': {}
 
   abbrev@3.0.1: {}
 
