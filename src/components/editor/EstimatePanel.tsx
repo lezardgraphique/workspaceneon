@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Lightbulb, MousePointerClick, MailOpen, TrendingDown, TrendingUp, Minus } from 'lucide-react'
 
 import { DEFAULT_SECTOR, SECTORS, estimateBlock, estimateModule } from '@/lib/estimate'
 import type { Estimate, Sector } from '@/lib/estimate'
 import type { Block, ModuleTree } from '@/lib/types'
+import { setPref, SETTINGS_EVENT } from '@/lib/settings-sync'
 
 const KEY = 'nsp-sector'
 const read = (): Sector => {
@@ -73,13 +74,16 @@ function Card({ e }: { e: Estimate }) {
 // with advice. `node` null = the module.
 export function EstimatePanel({ tree, node }: { tree: ModuleTree; node: Block | null }) {
   const [sector, setSector] = useState<Sector>(read)
+  useEffect(() => {
+    const on = (e: Event) => {
+      if (((e as CustomEvent<string[]>).detail ?? []).includes(KEY)) setSector(read())
+    }
+    window.addEventListener(SETTINGS_EVENT, on)
+    return () => window.removeEventListener(SETTINGS_EVENT, on)
+  }, [])
   const choose = (s: Sector) => {
     setSector(s)
-    try {
-      localStorage.setItem(KEY, s)
-    } catch {
-      /* ignore */
-    }
+    setPref(KEY, s) // follows the account to its other devices
   }
   const list: Estimate[] = node ? [estimateBlock(tree, node, sector)].filter((x): x is Estimate => !!x) : (() => {
     const m = estimateModule(tree, sector)

@@ -166,6 +166,25 @@ export async function loadModule(id: string): Promise<ModuleRecord | null> {
   return local && !local.deleted ? strip(local) : null
 }
 
+/**
+ * The server's copy when it was changed on another device since this one last
+ * saw it, and this device has nothing unsent for the module (null otherwise).
+ */
+export async function freshModule(id: string, shownAt: string): Promise<ModuleRecord | null> {
+  if (!browser() || isOffline()) return null
+  await ready()
+  try {
+    const local = await L.getLocalModule(id).catch(() => undefined)
+    if (local?.dirty || local?.deleted) return null
+    const remote = await withTimeout(getModule({ data: { id } }))
+    if (!remote || remote.updatedAt <= shownAt || (local?.base && remote.updatedAt <= local.base)) return null
+    await L.putModule({ ...remote, base: remote.updatedAt, dirty: false }).catch(() => {})
+    return remote
+  } catch {
+    return null
+  }
+}
+
 // Instant local write first, then a push when the connection allows it.
 // The home-screen widget (service worker) reloads the module list: at once after
 // a creation or a deletion, at most every 30 s while a module is being saved.

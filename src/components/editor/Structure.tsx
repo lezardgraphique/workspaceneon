@@ -30,6 +30,7 @@ import { BLOCK_LABELS, createBlock, createSection } from '@/lib/types'
 import { PRESETS } from '@/lib/presets'
 import type { Block, BlockType, Columns, ModuleTree, Section } from '@/lib/types'
 import { duplicateNode, findNode, findPath, insertInCell, moveNode, moveNodeTo, removeNode, updateNode } from '@/lib/tree'
+import { getPref, setPref, SETTINGS_EVENT } from '@/lib/settings-sync'
 
 export const BLOCK_ICONS: Record<BlockType, LucideIcon> = {
   heading: Heading,
@@ -385,22 +386,8 @@ function SectionTree({ s, depth, p, nested }: { s: Section; depth: number; p: Pr
   )
 }
 
-const store = {
-  get(key: string): string | null {
-    try {
-      return localStorage.getItem(key)
-    } catch {
-      return null
-    }
-  },
-  set(key: string, v: string) {
-    try {
-      localStorage.setItem(key, v)
-    } catch {
-      /* private window: not remembered */
-    }
-  },
-}
+// Synced with the account's other devices (settings-sync.ts).
+const store = { get: getPref, set: setPref }
 
 const sectionIds = (blocks: Block[]): string[] => blocks.flatMap((b) => (b.type === 'section' ? [b.id, ...b.cells.flatMap(sectionIds)] : []))
 
@@ -414,7 +401,17 @@ export function Structure(p: Props) {
   const dragging = useRef<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
 
-  // Remembered per module (and the « suivre la sélection » choice for all).
+  // Remembered per module (and the « suivre la sélection » choice for all),
+  // re-read when another device changed them.
+  const [synced, setSynced] = useState(0)
+  useEffect(() => {
+    const on = (e: Event) => {
+      const keys = (e as CustomEvent<string[]>).detail ?? []
+      if (keys.includes('nsp-structure-focus') || (key && keys.includes(key))) setSynced((n) => n + 1)
+    }
+    window.addEventListener(SETTINGS_EVENT, on)
+    return () => window.removeEventListener(SETTINGS_EVENT, on)
+  }, [key])
   useEffect(() => {
     if (key) {
       try {
@@ -424,7 +421,7 @@ export function Structure(p: Props) {
       }
     }
     setFocus(store.get('nsp-structure-focus') === '1')
-  }, [key])
+  }, [key, synced])
   const save = (next: Set<string>) => {
     setCollapsed(next)
     if (key) store.set(key, JSON.stringify([...next]))

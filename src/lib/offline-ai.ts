@@ -15,6 +15,9 @@
 // Nothing is downloaded or run until the user asks ("Préparer"); the Gemma
 // engine is unloaded after a few idle minutes or when the page is hidden.
 
+import { AI_WANTED_KEY } from '@/lib/settings-keys'
+import { getPref, setPref } from '@/lib/settings-sync'
+
 export type LocalEngine = 'nano' | 'gemma' | 'cpu'
 
 export type OfflineAiStatus =
@@ -87,6 +90,8 @@ const GEMMA: GemmaModel[] = [
 ]
 
 const PREF_KEY = 'nsp-local-ai'
+// "Not on this device" although the account has Maily hors ligne switched on.
+const SKIP_KEY = 'nsp-local-ai-skip'
 const IDLE_MS = 4 * 60_000
 
 interface Pref {
@@ -348,6 +353,38 @@ async function prepareCpu(): Promise<boolean> {
  * engine takes over, so Maily can be prepared in every recent browser.
  */
 export async function prepareOfflineAi(): Promise<boolean> {
+  const ok = await prepare()
+  if (ok) {
+    // The account's other devices offer (or start) the same preparation.
+    setPref(AI_WANTED_KEY, '1')
+    try {
+      localStorage.removeItem(SKIP_KEY)
+    } catch {
+      /* private mode */
+    }
+  }
+  return ok
+}
+
+/** A model was prepared on this device (read without waking the GPU or the model files). */
+export const offlineAiPreparedHere = () => !!readPref()
+
+/** Maily hors ligne is switched on for the account (on any of its devices). */
+export const offlineAiWanted = () => getPref(AI_WANTED_KEY) === '1'
+/** Switched on for the account and not declined on this device. */
+export const offlineAiWantedHere = () => offlineAiWanted() && getPref(SKIP_KEY) !== '1'
+
+/** "Pas sur cet appareil": the account keeps Maily hors ligne, this device doesn't download it. */
+export function skipOfflineAiHere() {
+  try {
+    localStorage.setItem(SKIP_KEY, '1')
+  } catch {
+    /* private mode */
+  }
+  setState({})
+}
+
+async function prepare(): Promise<boolean> {
   await checkOfflineAi()
   if (state.status === 'ready') return true
   if (state.status === 'unsupported') return false
@@ -392,10 +429,18 @@ export async function prepareOfflineAi(): Promise<boolean> {
   }
 }
 
-/** Stops using Maily offline and, for Gemma, frees the downloaded files. */
-export async function removeOfflineAi(): Promise<void> {
+/**
+ * Stops using Maily offline and frees the downloaded files.
+ * - 'here': this device only (the account keeps it, this device stops offering it);
+ * - 'everywhere': switched off for the account, the other devices remove theirs
+ *   the next time they open the app;
+ * - 'remote': switched off from another device (nothing to send back).
+ */
+export async function removeOfflineAi(scope: 'here' | 'everywhere' | 'remote' = 'here'): Promise<void> {
   const pref = readPref()
   writePref(null)
+  if (scope === 'everywhere') setPref(AI_WANTED_KEY, null)
+  else if (scope === 'here') skipOfflineAiHere()
   await releaseOfflineAi()
   if (pref?.engine === 'gemma' && pref.model) {
     const { deleteModelAllInfoInCache } = await import('@mlc-ai/web-llm')
