@@ -5,6 +5,7 @@ import { AuthLinkRedirect } from '@/components/AuthLinkRedirect'
 import { OfflineManager } from '@/components/OfflineManager'
 import { bindUser, isOffline } from '@/lib/data'
 import { cachedUser, rememberUser } from '@/lib/session-cache'
+import { bindSettingsUser } from '@/lib/settings-sync'
 import { getSession } from '@/server/session.functions'
 
 import '../styles.css'
@@ -52,7 +53,10 @@ export const Route = createRootRoute({
         user = known
       }
     }
-    if (browser) bindUser(user?.id)
+    if (browser) {
+      bindUser(user?.id)
+      bindSettingsUser(user?.id)
+    }
     if (!user && !location.pathname.startsWith('/connexion')) throw redirect({ to: '/connexion' })
     return { user }
   },

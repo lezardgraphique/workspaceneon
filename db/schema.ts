@@ -42,3 +42,13 @@ export const customBlocks = pgTable(
   },
   (t) => [unique('custom_blocks_user_slug_unique').on(t.userId, t.slug), unique('custom_blocks_user_signature_unique').on(t.userId, t.signature)],
 )
+
+// Preferences that follow the account from one device to another (Maily
+// hors ligne switched on, sector of the estimate, folded sections…). One row
+// per account; `prefs` maps a key to `{ v, t }` (value or null = removed, time
+// of the change in ms) so every device can merge, the latest change winning.
+export const userSettings = pgTable('user_settings', {
+  userId: text('user_id').primaryKey(),
+  prefs: jsonb().notNull().default({}),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})

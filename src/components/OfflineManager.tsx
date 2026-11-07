@@ -3,12 +3,55 @@ import { useRouter, useRouterState } from '@tanstack/react-router'
 import { Check, ChevronUp, CloudOff, Cpu, Loader2, RefreshCw, Sparkles, X } from 'lucide-react'
 
 import { dismissNotice, isOffline, markOnline, refreshPending, showNotice, syncAll, useDataStatus } from '@/lib/data'
-import { checkOfflineAi, getOfflineAiState, subscribeOfflineAi } from '@/lib/offline-ai'
+import { checkOfflineAi, getOfflineAiState, offlineAiPreparedHere, offlineAiWanted, offlineAiWantedHere, prepareOfflineAi, removeOfflineAi, subscribeOfflineAi } from '@/lib/offline-ai'
+import { AI_WANTED_KEY } from '@/lib/settings-keys'
+import { knowsPref, pullSettings, setPref, SETTINGS_EVENT } from '@/lib/settings-sync'
 import type { OfflineAiState } from '@/lib/offline-ai'
 
 /** Window event asking the editor to show Maily's panel. */
 export const OPEN_MAILY_EVENT = 'nsp:open-maily'
 const TIP_KEY = 'nsp-offline-ai-tip'
+const AI_NOTICE_KEY = 'nsp-ai-follow-notice'
+
+// A large download may start without a click only on a connection that isn't
+// metered: desktop without the Network Information API counts as unmetered,
+// phones and tablets without it don't (they may be on mobile data).
+function unmetered(): boolean {
+  const c = (navigator as Navigator & { connection?: { saveData?: boolean; type?: string; effectiveType?: string } }).connection
+  if (!c) return !matchMedia('(pointer: coarse)').matches
+  if (c.saveData) return false
+  if (c.type === 'cellular' || c.type === 'none') return false
+  return !/(^|-)2g|3g/.test(c.effectiveType ?? '')
+}
+
+let following: Promise<void> | null = null
+// Maily hors ligne follows the account: switched on on one device, the others
+// prepare their own model (each device needs its own copy: browser storage is
+// never shared between devices), switched off everywhere, they remove it.
+function followAccountAi(): Promise<void> {
+  following ??= (async () => {
+    // Prepared on this device before preferences were synced: tell the account.
+    if (offlineAiPreparedHere() && !knowsPref(AI_WANTED_KEY)) setPref(AI_WANTED_KEY, '1')
+    if (!offlineAiWantedHere() || offlineAiPreparedHere()) return
+    const s = await checkOfflineAi()
+    if (s.status !== 'available' && s.status !== 'error') return
+    // Gemini Nano is downloaded by the browser itself and needs a click.
+    if (s.status === 'available' && s.engine !== 'nano' && unmetered()) {
+      await prepareOfflineAi()
+      return
+    }
+    if (sessionStorage.getItem(AI_NOTICE_KEY)) return
+    sessionStorage.setItem(AI_NOTICE_KEY, '1')
+    showNotice(
+      `Maily hors ligne est activée sur ton compte. Pour l’avoir aussi sur cet appareil : ouvre un module, onglet Maily, puis « Préparer »${s.size ? ` (${s.size}, de préférence en Wi-Fi)` : ''}.`,
+    )
+  })()
+    .catch(() => {})
+    .finally(() => {
+      following = null
+    })
+  return following
+}
 
 // Registers the service worker, keeps the local copy in sync with the server
 // when the connection is there, and shows a small status pill when it isn't:
@@ -36,6 +79,18 @@ export function OfflineManager() {
     if (go && go.startsWith('/') && !go.startsWith('//')) void router.navigate({ to: go, replace: true })
     else if (isOffline()) void router.invalidate()
 
+    // Preferences of the account (and Maily hors ligne) from the other devices.
+    const pull = () => {
+      if (!isOffline() && document.visibilityState === 'visible') void pullSettings().then(followAccountAi)
+    }
+    const onSettings = (e: Event) => {
+      const keys = (e as CustomEvent<string[]>).detail ?? []
+      // Switched off on another device ("De tous mes appareils"): free this one too.
+      if (keys.includes(AI_WANTED_KEY) && !offlineAiWanted() && offlineAiPreparedHere()) void removeOfflineAi('remote')
+    }
+    window.addEventListener(SETTINGS_EVENT, onSettings)
+    pull()
+
     const sync = () => {
       if (document.visibilityState !== 'visible') return
       markOnline()
@@ -45,13 +100,18 @@ export function OfflineManager() {
     const onOffline = () => markOnline()
     const onOnline = () => {
       markOnline()
+      pull()
       void refreshPending().then((pending) => {
         if (!isOffline() && document.visibilityState === 'visible' && pending > 0) void syncAll()
       })
       void router.invalidate()
     }
     const onVisible = () => {
-      if (document.visibilityState === 'visible') sync()
+      if (document.visibilityState !== 'visible') return
+      sync()
+      pull()
+      // Back on this device: show what was changed on the others.
+      if (!isOffline() && pendingRef.current === 0 && /^\/(fichiers)?$/.test(location.pathname)) void router.invalidate()
     }
     window.addEventListener('online', onOnline)
     window.addEventListener('offline', onOffline)
@@ -65,6 +125,7 @@ export function OfflineManager() {
       window.removeEventListener('online', onOnline)
       window.removeEventListener('offline', onOffline)
       document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener(SETTINGS_EVENT, onSettings)
       clearInterval(timer)
     }
   }, [router])

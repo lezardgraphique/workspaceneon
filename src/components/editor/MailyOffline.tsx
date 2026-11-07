@@ -2,15 +2,22 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { CloudOff, Cpu, Loader2 } from 'lucide-react'
 
-import { checkOfflineAi, getOfflineAiState, prepareOfflineAi, removeOfflineAi, subscribeOfflineAi } from '@/lib/offline-ai'
+import { checkOfflineAi, getOfflineAiState, offlineAiWanted, offlineAiWantedHere, prepareOfflineAi, removeOfflineAi, skipOfflineAiHere, subscribeOfflineAi } from '@/lib/offline-ai'
 import type { OfflineAiState } from '@/lib/offline-ai'
+import { SETTINGS_EVENT } from '@/lib/settings-sync'
 
 export function useOfflineAi(): OfflineAiState {
   const [s, setS] = useState<OfflineAiState>(getOfflineAiState)
   useEffect(() => {
     const off = subscribeOfflineAi(setS)
+    // Switched on or off from another device: show it.
+    const on = () => setS({ ...getOfflineAiState() })
+    window.addEventListener(SETTINGS_EVENT, on)
     void checkOfflineAi()
-    return off
+    return () => {
+      off()
+      window.removeEventListener(SETTINGS_EVENT, on)
+    }
   }, [])
   return s
 }
@@ -47,9 +54,17 @@ export function MailyOffline({ offline }: { offline: boolean }) {
         </span>
         {!offline &&
           (confirm ? (
-            <button type="button" className={btn} onClick={() => void removeOfflineAi().finally(() => setConfirm(false))}>
-              Confirmer
-            </button>
+            <span role="group" aria-label="Retirer Maily hors ligne" className="flex shrink-0 flex-wrap justify-end gap-1">
+              <button type="button" className={btn} onClick={() => void removeOfflineAi('here').finally(() => setConfirm(false))}>
+                De cet appareil
+              </button>
+              <button type="button" className={btn} onClick={() => void removeOfflineAi('everywhere').finally(() => setConfirm(false))}>
+                De tous mes appareils
+              </button>
+              <button type="button" className={btn} onClick={() => setConfirm(false)}>
+                Annuler
+              </button>
+            </span>
           ) : (
             <button type="button" className={btn} onClick={() => setConfirm(true)}>
               Retirer
@@ -77,12 +92,31 @@ export function MailyOffline({ offline }: { offline: boolean }) {
     )
   } else if (offline) {
     body = <span>Pas de connexion : je réponds avec mon guide intégré. Prépare « Maily hors ligne » la prochaine fois que tu es en ligne pour que je puisse aussi rédiger et créer des modules sans réseau.</span>
+  } else if (offlineAiWantedHere()) {
+    // Switched on from another device: each device keeps its own copy of the model.
+    body = (
+      <>
+        <span className="min-w-0 flex-1">
+          {s.status === 'error' && s.message ? `${s.message} ` : ''}
+          Maily hors ligne est activée sur ton compte. Pour l'avoir aussi ici, cet appareil télécharge sa propre copie de {s.model} ({size(s)}, de préférence en Wi-Fi).
+        </span>
+        <span className="flex shrink-0 flex-wrap justify-end gap-1">
+          <button type="button" className={btn} onClick={() => void prepareOfflineAi()}>
+            {s.status === 'error' ? 'Réessayer' : 'Préparer'}
+          </button>
+          <button type="button" className={btn} onClick={skipOfflineAiHere}>
+            Pas ici
+          </button>
+        </span>
+      </>
+    )
   } else {
     body = (
       <>
         <span className="min-w-0 flex-1">
           {s.status === 'error' && s.message ? `${s.message} ` : ''}
-          Maily hors ligne : télécharge {s.model} sur cet appareil ({size(s)}){s.engine === 'cpu' ? ', fonctionne dans tous les navigateurs récents' : ''} pour me parler sans connexion.
+          {offlineAiWanted() ? 'Maily hors ligne est activée sur ton compte, pas sur cet appareil. ' : ''}
+          Maily hors ligne : télécharge {s.model} sur cet appareil ({size(s)}){s.engine === 'cpu' ? ', fonctionne dans tous les navigateurs récents' : ''} pour me parler sans connexion{offlineAiWanted() ? '' : ' (tes autres appareils te proposeront de la préparer aussi)'}.
         </span>
         <button type="button" className={btn} onClick={() => void prepareOfflineAi()}>
           {s.status === 'error' ? 'Réessayer' : 'Préparer'}

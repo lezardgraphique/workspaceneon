@@ -1,0 +1,19 @@
+// Preferences that follow the account across devices (shared by the browser
+// and the server). Anything tied to one screen or one device (VML window size,
+// touch hints, the on-device model files) stays local on purpose.
+
+export interface PrefEntry {
+  // Value as stored in localStorage; null = removed
+  v: string | null
+  // Time of the change (ms since epoch): the latest change wins
+  t: number
+}
+export type Prefs = Record<string, PrefEntry>
+
+/** Maily hors ligne switched on for the account ('1'). Each device downloads its own model. */
+export const AI_WANTED_KEY = 'nsp-ai-wanted'
+
+// nsp-sector (estimate), nsp-structure-focus, nsp-folded-<module id>, nsp-ai-wanted.
+export const SYNC_KEY_RE = /^nsp-(?:sector|structure-focus|ai-wanted|folded-[A-Za-z0-9_-]{1,80})$/
+
+export const isSyncedKey = (k: string) => SYNC_KEY_RE.test(k)

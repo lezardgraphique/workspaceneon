@@ -6,6 +6,7 @@ import { Loader2, LogOut, User } from 'lucide-react'
 import { isOffline, refreshPending, syncAll } from '@/lib/data'
 import { wipeLocal } from '@/lib/local-store'
 import { rememberUser } from '@/lib/session-cache'
+import { clearSyncedPrefs, pullSettings } from '@/lib/settings-sync'
 
 // Signed-in account (from the root route) and the sign-out button.
 export function AccountMenu() {
@@ -20,7 +21,7 @@ export function AccountMenu() {
     }
     setBusy(true)
     // Unsent offline changes are pushed first; if that fails, ask before wiping them.
-    await syncAll()
+    await Promise.all([syncAll(), pullSettings()])
     const left = await refreshPending()
     if (left > 0 && !confirm(`${left} modification${left > 1 ? 's' : ''} hors ligne ne ${left > 1 ? 'sont' : 'est'} pas encore synchronisée${left > 1 ? 's' : ''} et ${left > 1 ? 'seront perdues' : 'sera perdue'} à la déconnexion. Te déconnecter quand même ?`)) {
       setBusy(false)
@@ -31,6 +32,7 @@ export function AccountMenu() {
     } finally {
       // The local copy and the stored pages belong to this account only.
       rememberUser(null)
+      clearSyncedPrefs()
       await wipeLocal()
       navigator.serviceWorker?.controller?.postMessage('clear')
       navigator.serviceWorker?.controller?.postMessage('widgets')

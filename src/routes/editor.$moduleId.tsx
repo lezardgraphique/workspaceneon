@@ -54,7 +54,7 @@ import { HubSpotImport } from '@/components/editor/HubSpotImport'
 import { findNode, findPath, insertInCell, moveNode, moveNodeTo, removeNode, replaceNode, updateNode } from '@/lib/tree'
 import { BLOCK_LABELS, createBlock } from '@/lib/types'
 import type { Block, ImageBlock, ModuleRecord, ModuleTree, Section } from '@/lib/types'
-import { adoptServerModule, loadModule, persistModule } from '@/lib/data'
+import { adoptServerModule, freshModule, loadModule, persistModule, showNotice } from '@/lib/data'
 
 // Maily's panel (chat + Markdown renderer) is the heaviest part: loaded on demand.
 const MailyPanel = lazy(() => import('@/components/editor/MailyPanel').then((m) => ({ default: m.MailyPanel })))
@@ -108,10 +108,38 @@ function EditorGate() {
     void adoptServerModule(server).then(setLocal)
   }, [server])
   const initial = local ?? server
-  return <Editor key={`${initial.id}:${local ? 'local' : 'server'}`} initial={initial} />
+
+  // Changed on another device (phone, computer…) while this one was in the
+  // background: reopen the latest version, as long as nothing here is unsaved.
+  const idle = useRef(true)
+  const shown = useRef(initial.updatedAt)
+  shown.current = initial.updatedAt
+  useEffect(() => {
+    let alive = true
+    const check = () => {
+      if (document.visibilityState !== 'visible' || !idle.current) return
+      void freshModule(initial.id, shown.current).then((rec) => {
+        if (alive && rec && idle.current) {
+          setLocal(rec)
+          showNotice('Ce module a été modifié sur un autre appareil : voici sa dernière version.')
+        }
+      })
+    }
+    document.addEventListener('visibilitychange', check)
+    window.addEventListener('online', check)
+    const timer = setInterval(check, 60_000)
+    return () => {
+      alive = false
+      document.removeEventListener('visibilitychange', check)
+      window.removeEventListener('online', check)
+      clearInterval(timer)
+    }
+  }, [initial.id])
+
+  return <Editor key={`${initial.id}:${local ? `local:${local.updatedAt}` : 'server'}`} initial={initial} idle={idle} />
 }
 
-function Editor({ initial }: { initial: ModuleRecord }) {
+function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boolean } }) {
   const openMaily = !!Route.useSearch().maily
   const [name, setName] = useState(initial.name)
   const [tree, setTree] = useState<ModuleTree>(initial.tree)
@@ -262,6 +290,9 @@ function Editor({ initial }: { initial: ModuleRecord }) {
     const t = setTimeout(persist, 1000)
     return () => clearTimeout(t)
   }, [persist, pageHidden])
+
+  // Nothing unsaved (and not typing): the gate may swap in a newer version from another device.
+  idle.current = save === 'saved' && !typing
 
   useEffect(() => {
     if (save === 'saved' || save === 'local') return
