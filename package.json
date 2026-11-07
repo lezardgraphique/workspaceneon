@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.32.0",
+    "@mlc-ai/web-llm": "0.2.87",
     "@netlify/blobs": "11.1.7",
     "@netlify/database": "^2.0.1",
     "@netlify/identity": "^2.0.0",

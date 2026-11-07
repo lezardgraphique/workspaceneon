@@ -6,7 +6,21 @@ import { eq } from 'drizzle-orm'
 import { sessionUser, unauthorized } from '@/server/auth.server'
 import { db } from '../../db/index.js'
 import { customBlocks, modules } from '../../db/schema.js'
-import { APP_GUIDE, FIELDS_SPEC, MAILY_PERSONA, SCOPE_SPEC, MODEL, MODULE_REPLY_SPEC, RESEARCH_SPEC, ai } from '@/lib/gemini.server'
+import { MODEL, ai } from '@/lib/gemini.server'
+import {
+  APP_GUIDE,
+  FIELDS_SPEC,
+  GUIDE_INTRO,
+  MAILY_PERSONA,
+  MODULE_REPLY_SPEC,
+  RESEARCH_SPEC,
+  SCOPE_SPEC,
+  codeNote,
+  fieldsNote,
+  libraryNote,
+  requestNote,
+  todayFr,
+} from '@/lib/maily-prompts'
 
 // Screenshots or mockups the user wants Maily to recreate (base64, no data: prefix).
 const Image = z.object({
@@ -60,33 +74,17 @@ export const Route = createFileRoute('/api/maily')({
         if (!parsed.success) return Response.json({ error: 'Requête invalide' }, { status: 400 })
         const { messages, mode, code, moduleName, imported, issue, fields, fieldSpecs } = parsed.data
 
-        const context = code
-          ? `\n\nModule actuellement dans l'éditeur « ${moduleName ?? 'Sans titre'} » :\n${code.slice(0, 120_000)}`
-          : ''
-        const fieldsContext =
-          (fields ? `\n\nChamps actuels du module ouvert (nom HuBL exact, libellé, type) :\n${fields}` : '') +
-          (fieldSpecs ? `\n\nfields.json joint par l'utilisateur (noms exacts à respecter) :\n${fieldSpecs}` : '')
-        const modeNote =
-          mode === 'build'
-            ? `\n\nL'utilisateur est en mode « Modifier le module » : chacun de ses messages est une demande de création ou de modification. Réponds toujours avec le bloc neon complet.`
-            : `\n\nL'utilisateur est en mode « Conseil ». S'il te demande de créer, recréer, refaire, reproduire ou modifier le module (ou s'il t'envoie une capture ou du code à recréer), fais-le avec le bloc neon. Sinon réponds sans bloc neon.`
-
-        const importNote = imported
-          ? `\n\nLe code joint au dernier message a déjà été reconnu, converti et appliqué dans l'éditeur : c'est le module actuel ci-dessous. S'il demande seulement de le transformer ou de l'afficher, ne renvoie PAS de bloc neon : fais un bilan court (type de code reconnu, ce qui est resté en Bloc HTML et pourquoi, 2 ou 3 améliorations concrètes de compatibilité, d'accessibilité ou de modernité). S'il demande aussi des changements, applique-les à ce module avec le bloc neon.`
-          : issue
-            ? `\n\nAnalyse automatique du code joint au dernier message : ${issue}. Recrée-le fidèlement en blocs éditables avec le bloc neon (si des variables {{ module.… }} apparaissent, remplace-les par la valeur par défaut d'un fields.json joint ou par un contenu plausible, et donne le nom du champ en data-field).`
-            : ''
+        const context = codeNote(code, moduleName)
+        const fieldsContext = fieldsNote(fields, fieldSpecs)
+        const notes = requestNote({ mode, imported, issue })
         // What already exists, so Maily reuses it instead of creating a twin.
         const library = await Promise.all([
           db.select({ name: modules.name }).from(modules).where(eq(modules.userId, user.id)).limit(60),
           db.select({ name: customBlocks.name, description: customBlocks.description }).from(customBlocks).where(eq(customBlocks.userId, user.id)).limit(60),
         ])
-          .then(
-            ([m, b]) =>
-              `\n\nBIBLIOTHÈQUE ACTUELLE (ne crée jamais un doublon de ces éléments) :\nModules : ${m.map((x) => x.name).join(' ; ') || 'aucun'}\nBlocs personnalisés : ${b.map((x) => (x.description ? `${x.name} (${x.description})` : x.name)).join(' ; ') || 'aucun'}`,
-          )
+          .then(([m, b]) => libraryNote(m.map((x) => x.name), b))
           .catch(() => '')
-        const today = new Date().toLocaleDateString('fr-FR', { dateStyle: 'full', timeZone: 'Europe/Paris' })
+        const today = todayFr()
 
         const generate = (withTools: boolean) =>
           ai.models.generateContentStream({
@@ -101,7 +99,7 @@ export const Route = createFileRoute('/api/maily')({
             config: {
               temperature: 0.4,
               ...(withTools ? { tools: TOOLS } : {}),
-              systemInstruction: `${MAILY_PERSONA}\nNous sommes le ${today}.\nTu connais parfaitement l'application. Pour toute question sur son fonctionnement ou sur ce que l'utilisateur peut faire, appuie-toi d'abord sur le GUIDE DE L'APPLICATION : explique le chemin dans l'interface avec les noms exacts des boutons et panneaux, et privilégie les fonctions intégrées (Téléverser, Clients, Aperçu, Exporter…) plutôt que des outils externes. Ne parle pas de HubSpot ni d'une plateforme précise sauf si l'utilisateur le fait.\n\n${APP_GUIDE}\n\n${RESEARCH_SPEC}\n\n${SCOPE_SPEC}\n\n${MODULE_REPLY_SPEC}\n\n${FIELDS_SPEC}${importNote || modeNote}${library}${context}${fieldsContext}`,
+              systemInstruction: `${MAILY_PERSONA}\nNous sommes le ${today}.\n${GUIDE_INTRO}\n\n${APP_GUIDE}\n\n${RESEARCH_SPEC}\n\n${SCOPE_SPEC}\n\n${MODULE_REPLY_SPEC}\n\n${FIELDS_SPEC}${notes}${library}${context}${fieldsContext}`,
             },
           })
 

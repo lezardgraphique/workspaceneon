@@ -16,10 +16,12 @@ import { extractCode, looksLikeCode, recognizeCode, wantsConversion } from '@/li
 import type { ModuleTree, Section } from '@/lib/types'
 import { slugify } from '@/lib/custom-blocks'
 import type { CustomBlock } from '@/lib/custom-blocks'
-import { saveCustomBlock } from '@/server/custom-blocks.functions'
-import { isNetworkError, isOffline } from '@/lib/data'
-import { createModule, listModules } from '@/server/modules.functions'
+import { createLocalFirst, isNetworkError, isOffline, loadBlocks, loadModules, saveBlock, useDataStatus } from '@/lib/data'
+import { libraryNote, localSystemPrompt } from '@/lib/maily-prompts'
+import { localAiEnabled, localContextTokens, streamOfflineMaily } from '@/lib/offline-ai'
+import type { LocalMessage } from '@/lib/offline-ai'
 import { refreshCustomBlocks } from './useCustomBlocks'
+import { MailyOffline, useOfflineAi } from './MailyOffline'
 
 // A screenshot/mockup or an HTML file sent to Maily, usually to recreate it.
 interface Attachment {
@@ -132,6 +134,34 @@ function toPayload(m: Msg, withImages: boolean) {
   return { role: m.role, content, ...(images.length ? { images } : {}) }
 }
 
+async function* readText(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) return
+    yield decoder.decode(value, { stream: true })
+  }
+}
+
+// Fits the conversation into the on-device model's window (~3 characters per
+// token): the last message first, then the most recent ones; turns alternate.
+function localTurns(payload: ReturnType<typeof toPayload>[], budget: number): LocalMessage[] {
+  const out: LocalMessage[] = []
+  let left = budget
+  for (let i = payload.length - 1; i >= 0 && left > 200; i--) {
+    const m = payload[i]
+    const max = i === payload.length - 1 ? left : Math.min(left, 2500)
+    const content = m.content.length > max ? `${m.content.slice(0, max - 40)}\n[… coupé pour le mode hors ligne]` : m.content
+    const prev = out[0]
+    if (prev && prev.role === m.role) prev.content = `${content}\n\n${prev.content}`
+    else out.unshift({ role: m.role, content, ...(i === payload.length - 1 && m.images ? { images: m.images } : {}) })
+    left -= content.length
+  }
+  while (out.length && out[0].role !== 'user') out.shift()
+  return out
+}
+
 const TIPS = [
   'Un objet de moins de 45 caractères s\'affiche en entier sur la plupart des mobiles.',
   'Un seul appel à l\'action principal par email : il est cliqué jusqu\'à 2× plus.',
@@ -183,6 +213,9 @@ export function MailyPanel({
   const abortRef = useRef<AbortController | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const { online } = useDataStatus()
+  const localAi = useOfflineAi()
+  const onDevice = !online && localAi.status === 'ready'
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
@@ -214,7 +247,8 @@ export function MailyPanel({
   // (twice at most) instead of reaching the editor.
   const converse = async (
     history: Msg[],
-    ctx: { requestCode: string; imported: boolean; issue?: string; specs: FieldSpec[] },
+    // `local`: answered by the on-device model (no connection)
+    ctx: { requestCode: string; imported: boolean; issue?: string; specs: FieldSpec[]; local?: boolean },
     attempt: number,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -229,33 +263,59 @@ export function MailyPanel({
       .map((f) => `- ${f.name} (${f.label}) : ${f.block.type}`)
       .join('\n')
 
-    const res = await guardedFetch('/api/maily', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: history.slice(-40).map((m, i, arr) => toPayload(m, withImages.has(i + history.length - arr.length))),
-        mode,
-        code: ctx.requestCode,
-        moduleName,
-        imported: ctx.imported,
-        issue: ctx.issue,
-        fields,
-        fieldSpecs: ctx.specs.length ? JSON.stringify(ctx.specs).slice(0, 20_000) : undefined,
-      }),
-      signal,
-    })
-    if (!res.ok || !res.body) {
-      const data = await res.json().catch(() => ({}))
-      throw new Error(data.error ?? 'Maily est indisponible.')
+    let source: AsyncIterable<string>
+    if (ctx.local) {
+      // Same instructions and protocol as online, sized for the small model.
+      const tokens = localContextTokens()
+      const reserve = Math.round(mode === 'build' || ctx.issue || ctx.imported ? Math.min(3000, tokens * 0.4) : Math.min(1000, tokens * 0.2))
+      const chars = (tokens - reserve) * 3
+      const payload = history.map((m, i) => toPayload(m, i === history.length - 1))
+      const turns = localTurns(payload, Math.round(chars * 0.35))
+      const used = turns.reduce((n, t) => n + t.content.length, 0)
+      const library = await Promise.all([loadModules(), loadBlocks()])
+        .then(([m, b]) => libraryNote(m.slice(0, 60).map((x) => x.name), b.slice(0, 60)))
+        .catch(() => '')
+      const system = localSystemPrompt(
+        {
+          mode,
+          code: ctx.requestCode,
+          moduleName,
+          imported: ctx.imported,
+          issue: ctx.issue,
+          fields: fields || undefined,
+          fieldSpecs: ctx.specs.length ? JSON.stringify(ctx.specs) : undefined,
+          library,
+          query: turns[turns.length - 1]?.content ?? '',
+        },
+        chars - used,
+      )
+      source = streamOfflineMaily(system, turns, reserve, signal)
+    } else {
+      const res = await guardedFetch('/api/maily', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: history.slice(-40).map((m, i, arr) => toPayload(m, withImages.has(i + history.length - arr.length))),
+          mode,
+          code: ctx.requestCode,
+          moduleName,
+          imported: ctx.imported,
+          issue: ctx.issue,
+          fields,
+          fieldSpecs: ctx.specs.length ? JSON.stringify(ctx.specs).slice(0, 20_000) : undefined,
+        }),
+        signal,
+      })
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? 'Maily est indisponible.')
+      }
+      source = readText(res.body)
     }
     push({ role: 'assistant', content: '' })
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
     let acc = ''
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      acc += decoder.decode(value, { stream: true })
+    for await (const chunk of source) {
+      acc += chunk
       const part = splitReply(acc)
       // Hide a ```neon fence that is still arriving.
       const visible = part.building || part.blocks.length ? part.text : part.text.replace(/`{1,3}(n(e(on?)?)?)?$/, '')
@@ -292,9 +352,17 @@ export function MailyPanel({
           continue
         }
         try {
-          const res = await saveCustomBlock({ data: { name: block.name!.slice(0, 80), description: '', section: check.tree.sections[0] as never } })
-          savedBlocks.push(res.block)
+          const name = block.name!.slice(0, 80)
+          const section = check.tree.sections[0]
+          const res = await saveBlock(name, '', section)
           refreshCustomBlocks()
+          if (!res.block) {
+            // Offline: kept on this device, sent to the library later.
+            savedBlocks.push({ id: crypto.randomUUID(), name, description: '', section, createdAt: new Date().toISOString() })
+            notes.push(`Bloc « ${name} » enregistré sur cet appareil : il rejoint Mes blocs au retour de la connexion`)
+            continue
+          }
+          savedBlocks.push(res.block)
           notes.push(
             res.status === 'created'
               ? `Bloc « ${res.block.name} » ajouté à ta bibliothèque (Structure > Ajouter > Mes blocs)`
@@ -309,14 +377,14 @@ export function MailyPanel({
       }
       if (block.kind === 'new') {
         try {
-          library ??= (await listModules()).map((m) => ({ id: m.id, name: m.name }))
+          library ??= (await loadModules()).map((m) => ({ id: m.id, name: m.name }))
           const twin = library.find((m) => slugify(m.name) === slugify(block.name!))
           if (twin) {
             created.push({ id: twin.id, name: twin.name, existing: true })
             notes.push(`Le module « ${twin.name} » existe déjà : je ne l'ai pas dupliqué (choisis un autre nom pour en créer une variante)`)
             continue
           }
-          const rec = await createModule({ data: { name: block.name!.slice(0, 120), tree: check.tree } })
+          const rec = await createLocalFirst(block.name!.slice(0, 120), check.tree)
           library.push({ id: rec.id, name: rec.name })
           created.push({ id: rec.id, name: rec.name })
         } catch {
@@ -412,13 +480,25 @@ export function MailyPanel({
     const ctrl = new AbortController()
     abortRef.current = ctrl
 
+    const ctx = { requestCode, imported: !!imported, issue, specs }
     try {
-      await converse(history, { requestCode, imported: !!imported, issue, specs }, 0, ctrl.signal)
+      try {
+        await converse(history, { ...ctx, local: isOffline() && localAiEnabled() }, 0, ctrl.signal)
+      } catch (e) {
+        // The connection dropped before Maily answered: the on-device model takes over.
+        if (ctrl.signal.aborted || !(isOffline() || isNetworkError(e)) || !localAiEnabled()) throw e
+        await converse(history, { ...ctx, local: true }, 0, ctrl.signal)
+      }
     } catch (e) {
-      if ((e as Error).name === 'AbortError') {
+      if ((e as Error).name === 'AbortError' || ctrl.signal.aborted) {
         setMessages((prev) => prev.map((m) => (m.building ? { ...m, building: false, content: m.content || 'Génération arrêtée.' } : m)))
       } else if (isOffline() || isNetworkError(e)) {
-        push({ role: 'assistant', content: '⚠️ Je n’ai pas de connexion pour réfléchir. Réessaie dès que tu es en ligne : l’éditeur, lui, continue de fonctionner hors ligne.' })
+        push({
+          role: 'assistant',
+          content: localAiEnabled()
+            ? '⚠️ Mon modèle hors ligne n’a pas pu répondre. Réessaie, ou attends le retour de la connexion : l’éditeur, lui, continue de fonctionner.'
+            : '⚠️ Je n’ai pas de connexion pour réfléchir. Pour me parler sans réseau, prépare « Maily hors ligne » (en haut de ce panneau) la prochaine fois que tu es en ligne. L’éditeur, lui, continue de fonctionner hors ligne.',
+        })
       } else {
         push({ role: 'assistant', content: `⚠️ ${(e as Error).message}` })
       }
@@ -456,9 +536,10 @@ export function MailyPanel({
         <Maily size={48} mood={mood} />
         <div className="min-w-0">
           <p className="font-display font-semibold tracking-wide">NEON AI CHAT</p>
-          <p className="text-xs text-mute">{loading ? 'Maily réfléchit…' : 'Maily · Gemini Flash · recherche web'}</p>
+          <p className="text-xs text-mute">{loading ? 'Maily réfléchit…' : onDevice ? `Maily · hors ligne · ${localAi.model}` : 'Maily · Gemini Flash · recherche web'}</p>
         </div>
       </div>
+      <MailyOffline offline={!online} />
 
       <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         <button

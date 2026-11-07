@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { HeadContent, Scripts, createRootRoute, redirect } from '@tanstack/react-router'
 
 import { AuthLinkRedirect } from '@/components/AuthLinkRedirect'
-import { LocalAiPanel } from '@/components/LocalAiPanel'
 import { OfflineManager } from '@/components/OfflineManager'
 import { bindUser, isOffline } from '@/lib/data'
 import { cachedUser, rememberUser } from '@/lib/session-cache'
@@ -94,7 +93,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <ReducedMotionGuard />
         <AuthLinkRedirect />
         <OfflineManager />
-        <LocalAiPanel />
         {children}
         <Scripts />
       </body>

@@ -10,6 +10,9 @@ const SHELL = VERSION + '-shell'
 const ASSETS = VERSION + '-assets'
 const RUNTIME = VERSION + '-runtime'
 
+// Caches of the offline Maily model (WebLLM): never touched by this worker.
+const isModelCache = (k) => k.startsWith('webllm/')
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
@@ -33,7 +36,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
-      for (const k of await caches.keys()) if (!k.startsWith(VERSION)) await caches.delete(k)
+      for (const k of await caches.keys()) if (!k.startsWith(VERSION) && !isModelCache(k)) await caches.delete(k)
       await self.clients.claim()
     })(),
   )
@@ -41,7 +44,8 @@ self.addEventListener('activate', (event) => {
 
 // Signing out wipes what was stored for the account.
 self.addEventListener('message', (event) => {
-  if (event.data === 'clear') event.waitUntil(caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k)))))
+  // The on-device Maily model (no account data, ~2 GB) stays: removed from the Maily panel.
+  if (event.data === 'clear') event.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => !isModelCache(k)).map((k) => caches.delete(k)))))
   // The first visit isn't controlled by the worker yet: the page asks it to keep
   // the app shell (the home page) once, then at most once a day.
   if (event.data === 'prime') {

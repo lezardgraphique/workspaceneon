@@ -12,12 +12,15 @@ import { RULES, hit } from '@/server/rate-limit'
 // img/style/font sources: emails load remote images and web fonts).
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  // 'wasm-unsafe-eval': WebAssembly of the on-device Maily model (WebLLM), no JS eval.
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data: blob: https:",
   "media-src 'self'",
-  "connect-src 'self'",
+  // Offline Maily (Gemma through WebLLM): model files downloaded once from
+  // Hugging Face and the GPU kernels from the MLC repository, on the user's request.
+  "connect-src 'self' https://huggingface.co https://*.hf.co https://*.huggingface.co https://raw.githubusercontent.com",
   "frame-src 'self' about: data: blob:",
   // Only Netlify's dashboard may show the app in a frame (deploy previews);
   // any other site still can't frame it (clickjacking).
