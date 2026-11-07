@@ -22,6 +22,7 @@ Réglages Netlify à connaître (tableau de bord, *Identity*) : **Registration**
 | Abus des API payantes ou de stockage | Limitation Netlify au niveau plateforme (`/api/maily` 20/min, `/api/*` 120/min par IP) + limitation applicative par IP (IA 20/min, envois 30/min, écritures 240/min), tailles bornées | `netlify.toml`, `src/server/rate-limit.ts` |
 | Fichiers déguisés | Extensions en liste blanche, signature (octets magiques) vérifiée, pas de SVG ni de scripts, téléchargement forcé hors images/PDF, CSP `sandbox` | `api.files*.ts`, `api.images*.ts`, `upload-check.ts` |
 | Sortie de l'IA | Réponses de réécriture assainies ; modules créés par Maily validés puis assainis au stockage ; rendu Markdown filtré (Streamdown) | `api.generate.ts` |
+| IA sur l'appareil (Maily hors ligne) | Activée seulement à la demande ; sa sortie suit le même chemin que celle de Gemini (blocs `neon` validés par `validateModuleCode`, puis `sanitizeTree` au stockage, Markdown filtré) ; la CSP n'ouvre en plus que `wasm-unsafe-eval` (WebAssembly, pas d'`eval` JS) et, en `connect-src`, Hugging Face et `raw.githubusercontent.com` pour le téléchargement du modèle Gemma | `src/lib/offline-ai.ts`, `src/start.ts` |
 | Dépendances vulnérables | `pnpm audit --prod` propre (surcharges `seroval`, `katex`) | `package.json` |
 | Secrets | Aucune clé dans le dépôt ; la clé Gemini est injectée par Netlify AI Gateway | — |
 
