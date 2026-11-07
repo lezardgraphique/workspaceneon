@@ -27,7 +27,10 @@ export function LocalAiPanel() {
   const listRef = useRef<HTMLDivElement>(null)
   const supported = supportsOfflineAi()
 
-  useEffect(() => subscribeOfflineAi(setState), [])
+  useEffect(() => {
+    const unsubscribe = subscribeOfflineAi(setState)
+    return () => { unsubscribe() }
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -73,7 +76,7 @@ export function LocalAiPanel() {
     try {
       const context = history.map((m) => `${m.role === 'user' ? 'Utilisateur' : 'Maily'} : ${m.content}`).join('\n\n')
       const reply = await generateOfflineText(
-        `Tu es Maily, une assistante en français qui tutoie la personne. Tu aides avec le copywriting email, l'accessibilité et la création de modules HTML email. Tu fonctionnes hors ligne : ne prétends pas chercher sur le Web et indique tes limites si une information récente est demandée. Réponds de façon concise.\n\n${context}\n\nMaily :`,
+        `Tu es Maily, une assistante en français qui tutoie la personne. Tu aides avec le copywriting email et des conseils simples sur les modules email. Tu fonctionnes hors ligne : ne prétends pas chercher sur le Web ni connaître les nouveautés récentes. Réponds de façon concise.\n\n${context}\n\nMaily :`,
         ctrl.signal,
       )
       if (!ctrl.signal.aborted) {
@@ -104,7 +107,7 @@ export function LocalAiPanel() {
           className={`${buttonClass} bottom-[calc(6rem+env(safe-area-inset-bottom))] lg:bottom-14 disabled:opacity-60`}
         >
           {busy || state.status === 'loading' ? <Loader2 className="size-4 animate-spin" /> : <Bot className="size-4 text-cyan" />}
-          {state.status === 'ready' ? 'IA locale' : 'Préparer l’IA locale'}
+          {state.status === 'ready' ? 'IA locale' : state.status === 'error' ? 'IA locale indisponible' : 'Préparer l’IA locale'}
         </button>
       )}
 

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { HeadContent, Scripts, createRootRoute, redirect } from '@tanstack/react-router'
 
 import { AuthLinkRedirect } from '@/components/AuthLinkRedirect'
+import { LocalAiPanel } from '@/components/LocalAiPanel'
 import { OfflineManager } from '@/components/OfflineManager'
 import { bindUser, isOffline } from '@/lib/data'
 import { cachedUser, rememberUser } from '@/lib/session-cache'
@@ -11,7 +12,7 @@ import '../styles.css'
 
 const siteName = 'Neon Sandbox Pro'
 const siteDescription =
-  "L'éditeur de modules email et web avec synchronisation code ↔ visuel en temps réel, conversion de HTML en blocs modifiables, layouts multi-colonnes, cards imbriquées et Maily, l'assistante IA qui aide à créer, modifier et optimiser des modules marketing."
+  "L'éditeur de modules email et web avec synchronisation code ↔ visuel en temps réel, conversion de HTML en blocs modifiables, layouts multi-colonnes, cards imbriquées et Maily, l'assistante IA spécialisée en marketing, accessibilité et intégration email."
 
 function ReducedMotionGuard() {
   useEffect(() => {
@@ -93,6 +94,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <ReducedMotionGuard />
         <AuthLinkRedirect />
         <OfflineManager />
+        <LocalAiPanel />
         {children}
         <Scripts />
       </body>
