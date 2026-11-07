@@ -3,8 +3,21 @@ import { useRouter, useRouterState } from '@tanstack/react-router'
 import { Check, ChevronUp, CloudOff, Cpu, Loader2, RefreshCw, Sparkles, X } from 'lucide-react'
 
 import { dismissNotice, isOffline, markOnline, refreshPending, showNotice, syncAll, useDataStatus } from '@/lib/data'
-import { checkOfflineAi, getOfflineAiState, offlineAiPreparedHere, offlineAiWanted, offlineAiWantedHere, prepareOfflineAi, removeOfflineAi, subscribeOfflineAi } from '@/lib/offline-ai'
-import { AI_WANTED_KEY } from '@/lib/settings-keys'
+import {
+  canShareOfflineAi,
+  checkOfflineAi,
+  getOfflineAiState,
+  offlineAiPreparedHere,
+  offlineAiWanted,
+  offlineAiWantedHere,
+  prepareOfflineAi,
+  removeOfflineAi,
+  saveData,
+  shareOfflineAi,
+  subscribeOfflineAi,
+  unmetered,
+} from '@/lib/offline-ai'
+import { AI_SHARED_KEY, AI_WANTED_KEY } from '@/lib/settings-keys'
 import { knowsPref, pullSettings, setPref, SETTINGS_EVENT } from '@/lib/settings-sync'
 import type { OfflineAiState } from '@/lib/offline-ai'
 
@@ -12,17 +25,6 @@ import type { OfflineAiState } from '@/lib/offline-ai'
 export const OPEN_MAILY_EVENT = 'nsp:open-maily'
 const TIP_KEY = 'nsp-offline-ai-tip'
 const AI_NOTICE_KEY = 'nsp-ai-follow-notice'
-
-// A large download may start without a click only on a connection that isn't
-// metered: desktop without the Network Information API counts as unmetered,
-// phones and tablets without it don't (they may be on mobile data).
-function unmetered(): boolean {
-  const c = (navigator as Navigator & { connection?: { saveData?: boolean; type?: string; effectiveType?: string } }).connection
-  if (!c) return !matchMedia('(pointer: coarse)').matches
-  if (c.saveData) return false
-  if (c.type === 'cellular' || c.type === 'none') return false
-  return !/(^|-)2g|3g/.test(c.effectiveType ?? '')
-}
 
 let following: Promise<void> | null = null
 // Maily hors ligne follows the account: switched on on one device, the others
@@ -32,9 +34,17 @@ function followAccountAi(): Promise<void> {
   following ??= (async () => {
     // Prepared on this device before preferences were synced: tell the account.
     if (offlineAiPreparedHere() && !knowsPref(AI_WANTED_KEY)) setPref(AI_WANTED_KEY, '1')
+    // Gemma 3 prepared here (e.g. on the computer): keep a copy on the account for the other devices.
+    if (canShareOfflineAi() && unmetered()) void shareOfflineAi()
     if (!offlineAiWantedHere() || offlineAiPreparedHere()) return
     const s = await checkOfflineAi()
     if (s.status !== 'available' && s.status !== 'error') return
+    // A copy is waiting on the account: fetched at once, on any connection (except
+    // data saver), so Maily is ready here before the network drops.
+    if (s.status === 'available' && s.fromAccount && !saveData()) {
+      await prepareOfflineAi()
+      return
+    }
     // Gemini Nano is downloaded by the browser itself and needs a click.
     if (s.status === 'available' && s.engine !== 'nano' && unmetered()) {
       await prepareOfflineAi()
@@ -87,6 +97,8 @@ export function OfflineManager() {
       const keys = (e as CustomEvent<string[]>).detail ?? []
       // Switched off on another device ("De tous mes appareils"): free this one too.
       if (keys.includes(AI_WANTED_KEY) && !offlineAiWanted() && offlineAiPreparedHere()) void removeOfflineAi('remote')
+      // The copy sent from another device is on the account: take it now.
+      else if (keys.includes(AI_SHARED_KEY)) void followAccountAi()
     }
     window.addEventListener(SETTINGS_EVENT, onSettings)
     pull()
@@ -197,6 +209,7 @@ export function OfflineManager() {
   const mailyReady = ai.status === 'ready'
   const pendingText = st.pending ? `${st.pending} modification${st.pending > 1 ? 's' : ''} en attente` : null
   const pct = ai.status === 'downloading' && ai.progress !== null ? Math.round(ai.progress * 100) : null
+  const sharePct = typeof ai.sharing === 'number' ? Math.round(ai.sharing * 100) : null
 
   const pill = 'fixed right-3 bottom-20 z-40 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full border px-3 py-1.5 text-xs shadow-lg lg:bottom-3'
   return (
@@ -302,7 +315,11 @@ export function OfflineManager() {
         </button>
       ) : pct !== null ? (
         <div role="status" className={`${pill} border-cyan/50 bg-night/95 text-white`}>
-          <Loader2 className="size-3.5 animate-spin text-cyan" aria-hidden /> Préparation de Maily hors ligne : {pct} %
+          <Loader2 className="size-3.5 animate-spin text-cyan" aria-hidden /> Préparation de Maily hors ligne{ai.fromAccount ? ' (copie de ton compte)' : ''} : {pct} %
+        </div>
+      ) : sharePct !== null ? (
+        <div role="status" className={`${pill} border-cyan/50 bg-night/95 text-white`}>
+          <Loader2 className="size-3.5 animate-spin text-cyan" aria-hidden /> Copie de Maily hors ligne sur ton compte : {sharePct} %
         </div>
       ) : null}
     </div>

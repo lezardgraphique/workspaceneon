@@ -13,7 +13,13 @@ export type Prefs = Record<string, PrefEntry>
 /** Maily hors ligne switched on for the account ('1'). Each device downloads its own model. */
 export const AI_WANTED_KEY = 'nsp-ai-wanted'
 
-// nsp-sector (estimate), nsp-structure-focus, nsp-folded-<module id>, nsp-ai-wanted.
-export const SYNC_KEY_RE = /^nsp-(?:sector|structure-focus|ai-wanted|folded-[A-Za-z0-9_-]{1,80})$/
+/**
+ * Id of the offline model (Gemma 3 on the processor) a device sent to the account
+ * (shared-model.ts): the other devices fetch this copy from the app and use it.
+ */
+export const AI_SHARED_KEY = 'nsp-ai-shared'
+
+// nsp-sector (estimate), nsp-structure-focus, nsp-folded-<module id>, nsp-ai-wanted, nsp-ai-shared.
+export const SYNC_KEY_RE = /^nsp-(?:sector|structure-focus|ai-wanted|ai-shared|folded-[A-Za-z0-9_-]{1,80})$/
 
 export const isSyncedKey = (k: string) => SYNC_KEY_RE.test(k)
