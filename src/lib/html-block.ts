@@ -36,11 +36,13 @@ const elementsOf = (el: Element) => Array.from(el.children)
 
 function withoutComments(src: string): string {
   let plain = src
-  let previous: string
-  do {
-    previous = plain
-    plain = plain.replace(/<!--[\s\S]*?-->/g, '')
-  } while (plain !== previous)
+  let start = plain.indexOf('<!--')
+  while (start !== -1) {
+    const end = plain.indexOf('-->', start + 4)
+    if (end === -1) return plain.slice(0, start)
+    plain = plain.slice(0, start) + plain.slice(end + 3)
+    start = plain.indexOf('<!--', Math.max(0, start - 3))
+  }
   return plain
 }
 
