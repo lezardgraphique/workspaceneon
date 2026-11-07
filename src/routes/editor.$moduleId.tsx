@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 
 import { NeonLogo } from '@/components/Maily'
+import { OPEN_MAILY_EVENT } from '@/components/OfflineManager'
 import { CodeEditor } from '@/components/editor/CodeEditor'
 import { ValidatorPanel } from '@/components/editor/ValidatorPanel'
 import { ClientsDialog } from '@/components/editor/ClientsDialog'
@@ -135,6 +136,16 @@ function Editor({ initial }: { initial: ModuleRecord }) {
   const [future, setFuture] = useState<ModuleTree[]>([])
   const [typing, setTyping] = useState(false)
   const [pageHidden, setPageHidden] = useState(() => document.visibilityState === 'hidden')
+
+  // "Parler à Maily" from the offline status panel (OfflineManager).
+  useEffect(() => {
+    const open = () => {
+      setLeftTab('maily')
+      setPane('maily')
+    }
+    window.addEventListener(OPEN_MAILY_EVENT, open)
+    return () => window.removeEventListener(OPEN_MAILY_EVENT, open)
+  }, [])
 
   const lastPush = useRef(0)
   const codeTyped = useRef(false)

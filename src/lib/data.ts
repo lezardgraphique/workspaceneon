@@ -52,6 +52,7 @@ export const useDataStatus = () =>
   )
 
 export const dismissNotice = () => setStatus({ notice: null })
+export const showNotice = (notice: string) => setStatus({ notice })
 export const markOnline = () => setStatus({ online: !isOffline() })
 
 export async function refreshPending(): Promise<number> {
