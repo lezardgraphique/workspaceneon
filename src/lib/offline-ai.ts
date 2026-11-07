@@ -35,6 +35,10 @@ function setState(patch: Partial<OfflineAiState>) {
   for (const listener of listeners) listener(state)
 }
 
+export function getOfflineAiState(): OfflineAiState {
+  return state
+}
+
 export function subscribeOfflineAi(listener: (next: OfflineAiState) => void) {
   listeners.add(listener)
   listener(state)
@@ -47,40 +51,49 @@ export function supportsOfflineAi(): boolean {
 
 export async function getOfflineAiStatus(): Promise<OfflineAiState> {
   if (!supportsOfflineAi()) {
-    return { status: 'idle', message: 'Aucune IA locale disponible dans ce navigateur.' }
+    const next = { status: 'idle' as const, message: 'Aucune IA locale disponible dans ce navigateur.' }
+    setState(next)
+    return next
   }
 
   try {
     const availability = await window.LanguageModel!.availability()
     if (availability === 'downloadable') {
-      setState({ status: 'downloadable', message: 'Modèle local disponible pour téléchargement.' })
-      return state
+      const next = { status: 'downloadable' as const, message: 'Modèle local disponible pour téléchargement.' }
+      setState(next)
+      return next
     }
     if (availability === 'downloading') {
-      setState({ status: 'loading', message: 'Téléchargement du modèle local…' })
-      return state
+      const next = { status: 'loading' as const, message: 'Téléchargement du modèle local…' }
+      setState(next)
+      return next
     }
     if (availability === 'available') {
-      setState({ status: 'ready', message: 'IA locale prête.' })
-      return state
+      const next = { status: 'ready' as const, message: 'IA locale prête.' }
+      setState(next)
+      return next
     }
-    setState({ status: 'idle', message: 'IA locale indisponible sur cet appareil.' })
-    return state
+    const next = { status: 'idle' as const, message: 'IA locale indisponible sur cet appareil.' }
+    setState(next)
+    return next
   } catch (error) {
     const message = error instanceof Error ? error.message : 'L’IA locale n’a pas pu être vérifiée.'
-    setState({ status: 'error', message })
-    return state
+    const next = { status: 'error' as const, message }
+    setState(next)
+    return next
   }
 }
 
 export async function prepareOfflineAi(): Promise<boolean> {
   if (!supportsOfflineAi()) {
-    setState({ status: 'error', message: 'Ce navigateur ne prend pas en charge l’IA native de Chrome.' })
+    const next = { status: 'error' as const, message: 'Ce navigateur ne prend pas en charge l’IA native de Chrome.' }
+    setState(next)
     return false
   }
 
   if (session) {
-    setState({ status: 'ready', message: 'IA locale prête.' })
+    const next = { status: 'ready' as const, message: 'IA locale prête.' }
+    setState(next)
     return true
   }
 
@@ -89,7 +102,8 @@ export async function prepareOfflineAi(): Promise<boolean> {
   try {
     const availability = await window.LanguageModel!.availability()
     if (availability === 'unavailable') {
-      setState({ status: 'idle', message: 'Le modèle local n’est pas disponible sur cet appareil.' })
+      const next = { status: 'idle' as const, message: 'Le modèle local n’est pas disponible sur cet appareil.' }
+      setState(next)
       return false
     }
 
@@ -99,7 +113,7 @@ export async function prepareOfflineAi(): Promise<boolean> {
 
     session = await window.LanguageModel!.create({
       monitor: (monitor) => {
-        monitor.addEventListener('downloadprogress', (event) => {
+        monitor.addEventListener('downloadprogress', (event: any) => {
           const loaded = Number(event?.loaded ?? 0)
           const total = Number(event?.total ?? 0)
           if (total > 0) {
@@ -110,7 +124,8 @@ export async function prepareOfflineAi(): Promise<boolean> {
       },
     })
 
-    setState({ status: 'ready', message: 'IA locale prête pour fonctionner hors ligne.' })
+    const next = { status: 'ready' as const, message: 'IA locale prête pour fonctionner hors ligne.' }
+    setState(next)
     return true
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Le modèle local n’a pas pu démarrer.'
@@ -140,11 +155,19 @@ export async function generateOfflineText(prompt: string, signal?: AbortSignal):
 }
 
 export async function disposeOfflineAi(): Promise<void> {
-  if (!session) return
+  if (!session) {
+    setState({ status: 'idle', message: 'IA locale mise hors tension.' })
+    return
+  }
+
   try {
     await session.destroy()
   } finally {
     session = null
     setState({ status: 'idle', message: 'IA locale mise hors tension.' })
   }
+}
+
+export function offlineAiEnabled(): boolean {
+  return supportsOfflineAi()
 }
