@@ -621,10 +621,10 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
                   </button>
                   <button
                     onClick={() => setHsImport(true)}
-                    title="Importer un module HubSpot (module.html + fields.json) avec ses champs exacts"
+                    title="Importer un module existant (code, champs et styles) avec ses champs exacts"
                     className="inline-flex shrink-0 items-center gap-1 rounded border border-line px-2 py-1.5 text-mute hover:border-violet hover:text-white lg:py-1"
                   >
-                    <Braces className="size-3" /> HubSpot
+                    <Braces className="size-3" /> Importer
                   </button>
                 </div>
                 <CodeEditor value={code} onChange={onCodeChange} jump={codeJump} />
