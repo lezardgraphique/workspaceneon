@@ -24,6 +24,11 @@ export function isNetworkError(e: unknown): boolean {
 }
 const withTimeout = <T,>(p: Promise<T>): Promise<T> =>
   Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error('timeout')), TIMEOUT))])
+// No local copy to fall back on: wait for the server however slow it is (a
+// phone on a mobile network, a server waking up), with a far higher ceiling.
+const SLOW = 30000
+const withPatience = <T,>(p: Promise<T>, hasFallback: boolean): Promise<T> =>
+  hasFallback ? withTimeout(p) : Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error('timeout')), SLOW))])
 
 // ---- sync status (for the header badge) ------------------------------------
 
@@ -135,7 +140,8 @@ export async function loadModules(): Promise<ModuleRecord[]> {
   await ready()
   if (!isOffline()) {
     try {
-      return await mirrorList(await withTimeout(listModules()))
+      const known = (await L.allModules().catch(() => [])).length > 0
+      return await mirrorList(await withPatience(listModules(), known))
     } catch (e) {
       if (!isNetworkError(e)) throw e
     }
@@ -149,7 +155,7 @@ export async function loadModule(id: string): Promise<ModuleRecord | null> {
   const local = await L.getLocalModule(id).catch(() => undefined)
   if (!isOffline()) {
     try {
-      const remote = await withTimeout(getModule({ data: { id } }))
+      const remote = await withPatience(getModule({ data: { id } }), !!local && !local.deleted)
       if (local?.deleted) return null
       if (local?.dirty) return strip(local)
       if (!remote) {

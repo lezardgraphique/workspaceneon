@@ -164,6 +164,10 @@ async function navigate(req, url) {
     const net = fetch(req)
     const res = await (cached ? Promise.race([net, timeout(5000)]) : net)
     if (home && res.ok && !res.redirected && !url.search) shell.put('/', res.clone())
+    // Safari refuses a page a service worker answers with a followed redirect
+    // ("Response served by service worker has redirections"): let the browser
+    // follow it itself.
+    if (res.redirected) return Response.redirect(res.url, 302)
     return res
   } catch (e) {
     if (cached) {
