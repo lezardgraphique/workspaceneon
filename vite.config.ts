@@ -58,6 +58,9 @@ function safariRegex(): Plugin {
 
 const config = defineConfig({
   resolve: { tsconfigPaths: true },
+  // Code written for Safari 15 too (iPads stuck on iPadOS 15): newer syntax is
+  // rewritten at build time (the default stops at Safari 16).
+  build: { target: ['es2021', 'chrome107', 'edge107', 'firefox104', 'safari15'] },
   plugins: [
     safariRegex(),
     tailwindcss(),
