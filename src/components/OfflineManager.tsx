@@ -273,7 +273,7 @@ export function OfflineManager() {
                 <span className="min-w-0 flex-1">
                   {mailyReady ? (
                     <>
-                      Maily répond avec <strong className="text-white">{ai.model}</strong> sur ton appareil : elle crée et modifie tes modules, sans recherche web.
+                      Maily répond directement depuis ton appareil : elle crée et modifie tes modules, sans recherche web.
                     </>
                   ) : ai.status === 'checking' ? (
                     'Vérification de Maily hors ligne…'

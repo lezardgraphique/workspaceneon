@@ -163,7 +163,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
   const [past, setPast] = useState<ModuleTree[]>([])
   const [future, setFuture] = useState<ModuleTree[]>([])
   const [typing, setTyping] = useState(false)
-  const [pageHidden, setPageHidden] = useState(() => document.visibilityState === 'hidden')
+  const [pageHidden, setPageHidden] = useState(() => typeof document !== 'undefined' && document.visibilityState === 'hidden')
 
   // "Parler à Maily" from the offline status panel (OfflineManager).
   useEffect(() => {

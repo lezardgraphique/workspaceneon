@@ -57,12 +57,12 @@ export function MailyOffline({ offline }: { offline: boolean }) {
         <span className="min-w-0 flex-1">
           {offline ? (
             <>
-              Hors ligne : je réponds avec <strong className="text-white">{s.model}</strong> sur ton appareil, sans recherche web
+              Hors ligne : je réponds directement depuis ton appareil, sans recherche web
               {s.engine === 'cpu' ? ' (sur le processeur : la première réponse peut prendre une minute).' : '.'}
             </>
           ) : (
             <>
-              Maily hors ligne prête ({s.model}) : je prends le relais sur l'appareil si la connexion tombe.
+              Maily hors ligne prête : je prends le relais sur l'appareil si la connexion tombe.
               {typeof s.sharing === 'number'
                 ? ` Copie sur ton compte pour tes autres appareils : ${Math.round(s.sharing * 100)} %.`
                 : s.engine === 'cpu' && accountModelId()
@@ -124,8 +124,8 @@ export function MailyOffline({ offline }: { offline: boolean }) {
         <span className="min-w-0 flex-1">
           {s.status === 'error' && s.message ? `${s.message} ` : ''}
           {s.fromAccount
-            ? `Une copie de ${s.model} est gardée sur ton compte : cet appareil la récupère depuis l'application (${size(s)}) et je suis prête dès que le réseau tombe.`
-            : `Maily hors ligne est activée sur ton compte. Pour l'avoir aussi ici, cet appareil télécharge sa propre copie de ${s.model} (${size(s)}, de préférence en Wi-Fi).`}
+            ? `Une copie de Maily hors ligne est gardée sur ton compte : cet appareil la récupère depuis l'application (${size(s)}) et je suis prête dès que le réseau tombe.`
+            : `Maily hors ligne est activée sur ton compte. Pour l'avoir aussi ici, cet appareil télécharge sa propre copie de Maily hors ligne (${size(s)}, de préférence en Wi-Fi).`}
         </span>
         <span className="flex shrink-0 flex-wrap justify-end gap-1">
           <button type="button" className={btn} onClick={() => void prepareOfflineAi()}>
@@ -143,7 +143,7 @@ export function MailyOffline({ offline }: { offline: boolean }) {
         <span className="min-w-0 flex-1">
           {s.status === 'error' && s.message ? `${s.message} ` : ''}
           {offlineAiWanted() ? 'Maily hors ligne est activée sur ton compte, pas sur cet appareil. ' : ''}
-          Maily hors ligne : télécharge {s.model} sur cet appareil ({size(s)}){s.engine === 'cpu' ? ', fonctionne dans tous les navigateurs récents' : ''} pour me parler sans connexion{offlineAiWanted() ? '' : ' (tes autres appareils te proposeront de la préparer aussi)'}.
+          Maily hors ligne : télécharge Maily sur cet appareil ({size(s)}){s.engine === 'cpu' ? ', fonctionne dans tous les navigateurs récents' : ''} pour me parler sans connexion{offlineAiWanted() ? '' : ' (tes autres appareils te proposeront de la préparer aussi)'}.
         </span>
         <button type="button" className={btn} onClick={() => void prepareOfflineAi()}>
           {s.status === 'error' ? 'Réessayer' : 'Préparer'}

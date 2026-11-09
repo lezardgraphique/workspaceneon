@@ -18,6 +18,7 @@ import { slugify } from '@/lib/custom-blocks'
 import type { CustomBlock } from '@/lib/custom-blocks'
 import { createLocalFirst, isNetworkError, isOffline, loadBlocks, loadModules, saveBlock, useDataStatus } from '@/lib/data'
 import { guideAnswer, libraryNote, localSystemPrompt } from '@/lib/maily-prompts'
+import { formatReport, runSelfTests } from '@/lib/self-test'
 import { localAiEnabled, localContextTokens, streamOfflineMaily } from '@/lib/offline-ai'
 import type { LocalMessage } from '@/lib/offline-ai'
 import { refreshCustomBlocks } from './useCustomBlocks'
@@ -43,6 +44,8 @@ interface Msg {
   // this summary instead of the code, which is now the editor's module.
   imported?: string
   // Sent to the model but not shown (automatic checks)
+  /** Holds an internal test report. */
+  tests?: boolean
   hidden?: boolean
   // Modules Maily created in the library from this answer
   created?: { id: string; name: string; existing?: boolean }[]
@@ -84,8 +87,9 @@ async function toAttachment(file: File): Promise<Attachment | null> {
 }
 
 interface NeonBlock {
-  // `new`: a new module for the library; `block`: a reusable custom block
-  kind: 'current' | 'new' | 'block'
+  // `new`: a new module for the library; `block`: a reusable custom block;
+  // `test`: run the tool's internal tests (src/lib/self-test.ts)
+  kind: 'current' | 'new' | 'block' | 'test'
   name?: string
   code: string
 }
@@ -104,17 +108,19 @@ function splitReply(acc: string): { text: string; blocks: NeonBlock[]; building:
     }
     const head = rest.slice(start).match(/```neon([^\n]*)\n?/)!
     const after = rest.slice(start + head[0].length)
-    const end = after.search(/\n```/)
+    // The closing fence (an empty block, ```neon test, closes right away).
+    const close = /(^|\n)```/.exec(after)
     text += rest.slice(0, start)
-    if (end < 0) return { text: text.trim(), blocks, building: true }
-    const m = /^\s*(new|block)\b\s*(.*)$/i.exec(head[1])
-    const kind = m ? (m[1].toLowerCase() as 'new' | 'block') : 'current'
+    if (!close) return { text: text.trim(), blocks, building: true }
+    const end = close.index
+    const m = /^\s*(new|block|test)\b\s*(.*)$/i.exec(head[1])
+    const kind = m ? (m[1].toLowerCase() as 'new' | 'block' | 'test') : 'current'
     blocks.push({
       kind,
-      name: m ? m[2].trim().replace(/^["«']|["»']$/g, '') || (kind === 'new' ? 'Nouveau module' : 'Nouveau bloc') : undefined,
+      name: m && kind !== 'test' ? m[2].trim().replace(/^["«']|["»']$/g, '') || (kind === 'new' ? 'Nouveau module' : 'Nouveau bloc') : undefined,
       code: after.slice(0, end),
     })
-    rest = after.slice(end + 4)
+    rest = after.slice(end + close[0].length)
   }
 }
 
@@ -171,8 +177,13 @@ const TIPS = [
   'Sur mobile, empile les colonnes : la lecture se fait au pouce, de haut en bas.',
 ]
 
+// A request for the internal tests (also answered without any model).
+const TEST_ASK = /\b(teste|tester|test|tests|diagnostic|v[ée]rifie (que )?(tout|l['’]outil|l['’]appli))/i
+
 const SUGGESTIONS: Record<Mode, string[]> = {
   chat: [
+    'Lance les tests internes de l\'outil',
+    'Complète ma bibliothèque avec les modules qui manquent',
     'Propose 5 objets d\'email pour ce module',
     'Vérifie l\'accessibilité de ce module',
     'Comment tester le rendu dans Outlook ?',
@@ -213,7 +224,12 @@ export function MailyPanel({
   const abortRef = useRef<AbortController | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-  const { online } = useDataStatus()
+  const { online, pending } = useDataStatus()
+  // The tool's internal tests on the open module, the templates, the library and this device.
+  const testTool = async () => {
+    const [mods, blks] = await Promise.all([loadModules().catch(() => []), loadBlocks().catch(() => [])])
+    return runSelfTests({ tree, name: moduleName, modules: mods.map((m) => m.name), blocks: blks.map((b) => b.name), pending })
+  }
   const localAi = useOfflineAi()
   const onDevice = !online && localAi.status === 'ready'
 
@@ -248,7 +264,8 @@ export function MailyPanel({
   const converse = async (
     history: Msg[],
     // `local`: answered by the on-device model (no connection)
-    ctx: { requestCode: string; imported: boolean; issue?: string; specs: FieldSpec[]; local?: boolean },
+    // `tested`: the internal tests already ran for this request (never twice in a row)
+    ctx: { requestCode: string; imported: boolean; issue?: string; specs: FieldSpec[]; local?: boolean; tested?: boolean },
     attempt: number,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -323,6 +340,24 @@ export function MailyPanel({
     }
 
     const reply = splitReply(acc)
+    // Internal tests asked by Maily (```neon test): run here, shown in the chat,
+    // then handed back to her so she explains them and acts on them.
+    if (reply.blocks.some((b) => b.kind === 'test')) {
+      const results = await testTool()
+      const report = formatReport(results)
+      setLast({ role: 'assistant', content: `${reply.text || 'Je lance les tests internes…'}\n\n${report}`, tests: true })
+      if (ctx.tested) {
+        setMood('happy')
+        return
+      }
+      const past: Msg = { role: 'assistant', content: `${reply.text}\n\n[Tests internes lancés]`, hidden: true }
+      const back: Msg = {
+        role: 'user',
+        hidden: true,
+        content: `Résultats des tests internes (déjà affichés à l'utilisateur, ne les recopie pas) :\n${report}\n\nRésume en 2 à 4 lignes ce qui va et ce qui demande une action, en langage simple. Puis agis selon la DEMANDE de l'utilisateur : s'il t'a demandé de corriger, corrige le module ouvert (bloc neon) ; s'il t'a demandé de compléter la bibliothèque ou de créer ce qui manque, crée les modules ou blocs manquants (3 au plus, \`neon new\` ou \`neon block\`, cohérents avec le style du module ouvert, jamais de doublon). Sinon, propose ces actions sans les faire. Ne relance pas de test.`,
+      }
+      return converse([...history, past, back], { ...ctx, tested: true }, attempt, signal)
+    }
     if (!reply.blocks.length) {
       setLast({
         role: 'assistant',
@@ -340,6 +375,7 @@ export function MailyPanel({
     // Modules already in the library, to never create the same one twice.
     let library: { id: string; name: string }[] | null = null
     for (const block of reply.blocks) {
+      if (block.kind === 'test') continue
       const label = block.kind === 'block' ? `le bloc « ${block.name} »` : block.name ? `« ${block.name} »` : 'le module ouvert'
       const check = validateModuleCode(block.code, tree, ctx.specs)
       if (!check.ok || !check.tree) {
@@ -497,8 +533,11 @@ export function MailyPanel({
           role: 'assistant',
           content: localAiEnabled()
             ? '⚠️ Mon modèle hors ligne n’a pas pu répondre. Réessaie, ou attends le retour de la connexion : l’éditeur, lui, continue de fonctionner.'
-            : // No model on the device: Maily still answers, from her built-in guide.
-              guideAnswer(userMsg.content),
+            : // No model on the device: Maily still answers, from her built-in guide
+              // (and still runs the internal tests when they are asked for).
+              TEST_ASK.test(userMsg.content)
+              ? formatReport(await testTool())
+              : guideAnswer(userMsg.content),
         })
       } else {
         push({ role: 'assistant', content: `⚠️ ${(e as Error).message}` })
@@ -537,7 +576,7 @@ export function MailyPanel({
         <Maily size={48} mood={mood} />
         <div className="min-w-0">
           <p className="font-display font-semibold tracking-wide">NEON AI CHAT</p>
-          <p className="text-xs text-mute">{loading ? 'Maily réfléchit…' : onDevice ? `Maily · hors ligne · ${localAi.model}` : !online ? 'Maily · hors ligne · guide intégré' : 'Maily · Gemini Flash · recherche web'}</p>
+          <p className="text-xs text-mute">{loading ? 'Maily réfléchit…' : onDevice ? 'Maily · hors ligne · sur l’appareil' : !online ? 'Maily · hors ligne · guide intégré' : 'Maily · en ligne · recherche web'}</p>
         </div>
       </div>
       <MailyOffline offline={!online} />

@@ -613,7 +613,7 @@ async function* readNano(stream: ReadableStream<string>): AsyncGenerator<string>
 
 async function* nanoStream(system: string, messages: LocalMessage[], signal: AbortSignal): AsyncGenerator<string> {
   const api = window.LanguageModel
-  if (!api) throw new Error('Gemini Nano n’est plus disponible dans ce navigateur.')
+  if (!api) throw new Error('Le modèle intégré à ce navigateur n’est plus disponible.')
   const last = messages[messages.length - 1]
   const initialPrompts = [{ role: 'system' as const, content: system }, ...messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content }))]
   const images = last.images ?? []
