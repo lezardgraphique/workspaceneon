@@ -994,7 +994,7 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
       if (!active) continue
       const done = block(b, sc)
       // A text whose variables print nothing ({{ SP("after_title", L) }} without spacer) takes no room.
-      if (done.type === 'text' && b.type === 'text' && b.id !== keepId && hasHubl(b.html) && !done.html.replace(/<[^>]*>|&nbsp;|\s/g, '') && !/<(img|table|hr|br)\b/i.test(done.html)) continue
+      if (done.type === 'text' && b.type === 'text' && b.id !== keepId && hasHubl(b.html) && !stripTags(done.html).replace(/\s/g, '') && !/<(img|table|hr|br)\b/i.test(done.html)) continue
       out.push(done)
     }
     return out
