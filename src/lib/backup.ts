@@ -39,7 +39,7 @@ export async function downloadBackup(): Promise<{ modules: number; blocks: numbe
   document.body.appendChild(a)
   a.click()
   a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 2000)
+  setTimeout(() => URL.revokeObjectURL(url), 60_000) // Safari downloads after the click
   return { modules: data.modules.length, blocks: data.blocks.length }
 }
 

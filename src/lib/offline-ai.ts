@@ -20,6 +20,7 @@
 // account's other devices then fetch that copy from the app and use it first,
 // so they are ready before the network drops.
 
+import { appleMobile } from '@/lib/apple'
 import { AI_SHARED_KEY, AI_WANTED_KEY } from '@/lib/settings-keys'
 import { getPref, setPref, SETTINGS_EVENT } from '@/lib/settings-sync'
 import { deleteSharedModel, isSharedModelId, sharedManifest, sharedModelStream, uploadSharedModel } from '@/lib/shared-model'
@@ -190,13 +191,22 @@ function webgpu(): Promise<{ f16: boolean } | null> {
   return gpuInfo
 }
 
+// Memory to plan for. Safari doesn't tell (no navigator.deviceMemory): an
+// iPhone or iPad tab is killed far below the device's RAM, so plan small there.
+function deviceMemory(): number {
+  const known = (navigator as Navigator & { deviceMemory?: number }).deviceMemory
+  return known ?? (appleMobile() ? 4 : 8)
+}
+
 // Gemma models this device can try, best first.
 async function gemmaCandidates(): Promise<GemmaModel[]> {
   const gpu = await webgpu()
   if (!gpu) return []
-  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8
+  const memory = deviceMemory()
   const big = GEMMA.filter((m) => m.id.startsWith('gemma-4') && m.f16 === gpu.f16)
   const small = GEMMA.filter((m) => m.id.startsWith('gemma3') && (!m.f16 || gpu.f16))
+  // The 2 GB model doesn't fit in an iPhone/iPad tab: the small ones only.
+  if (appleMobile()) return small
   return memory < 8 ? [...small, ...big] : [...big, ...small]
 }
 
@@ -216,7 +226,7 @@ const cpu = () => import('@/lib/offline-cpu')
 // Processor models this device can try, best first.
 async function cpuCandidates() {
   const { CPU_MODELS } = await cpu()
-  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8
+  const memory = deviceMemory()
   return memory < 4 ? [...CPU_MODELS].reverse() : CPU_MODELS
 }
 

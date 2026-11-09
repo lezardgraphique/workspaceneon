@@ -3,6 +3,7 @@ import { HeadContent, Scripts, createRootRoute, redirect } from '@tanstack/react
 
 import { AuthLinkRedirect } from '@/components/AuthLinkRedirect'
 import { OfflineManager } from '@/components/OfflineManager'
+import { applyAppleFixes } from '@/lib/apple'
 import { bindUser, isOffline } from '@/lib/data'
 import { cachedUser, rememberUser } from '@/lib/session-cache'
 import { bindSettingsUser } from '@/lib/settings-sync'
@@ -13,6 +14,11 @@ import '../styles.css'
 const siteName = 'Neon Sandbox Pro'
 const siteDescription =
   "L'éditeur de modules email et web avec synchronisation code ↔ visuel en temps réel, conversion de HTML en blocs modifiables, layouts multi-colonnes, cards imbriquées et Maily, l'assistante IA spécialisée en marketing, accessibilité et intégration email."
+
+function AppleFixes() {
+  useEffect(() => applyAppleFixes(), [])
+  return null
+}
 
 function ReducedMotionGuard() {
   useEffect(() => {
@@ -71,6 +77,10 @@ export const Route = createRootRoute({
       { property: 'og:type', content: 'website' },
       { name: 'twitter:card', content: 'summary_large_image' },
       { name: 'theme-color', content: '#0a0a12' },
+      // Installed on an iPhone/iPad home screen: dark status bar, short name.
+      { name: 'apple-mobile-web-app-capable', content: 'yes' },
+      { name: 'apple-mobile-web-app-status-bar-style', content: 'black' },
+      { name: 'apple-mobile-web-app-title', content: 'Neon Sandbox' },
     ],
     links: [
       { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
@@ -95,6 +105,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <ReducedMotionGuard />
+        <AppleFixes />
         <AuthLinkRedirect />
         <OfflineManager />
         {children}

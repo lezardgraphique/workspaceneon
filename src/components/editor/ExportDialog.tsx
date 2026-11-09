@@ -34,8 +34,12 @@ export function ExportDialog({ tree, name, onClose }: { tree: ModuleTree; name: 
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
     a.download = file === 'page.html' ? `${slug(name)}.html` : file
+    // Safari starts the download after the click returns: the link must be in
+    // the page and its address still valid at that moment.
+    document.body.appendChild(a)
     a.click()
-    URL.revokeObjectURL(a.href)
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(a.href), 60_000)
   }
 
   return (

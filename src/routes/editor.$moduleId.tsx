@@ -396,7 +396,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
   const showSelectionBar = !!selected && (pane === 'preview' || pane === 'structure') && !typing
 
   return (
-    <div className="flex h-dvh flex-col bg-void">
+    <div className="flex h-[var(--app-h,100dvh)] flex-col bg-void">
       <header className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line bg-space px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:flex-nowrap sm:gap-2 sm:px-3">
         <Link to="/" title="Mes modules" aria-label="Mes modules" className="flex items-center gap-2 rounded-md p-1 hover:bg-white/5">
           <NeonLogo size={28} />

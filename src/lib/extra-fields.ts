@@ -51,7 +51,8 @@ const child = (n: UseNode, key: string): UseNode => {
 const LOOP_PROPS = new Set(['length', 'items', 'keys', 'values'])
 
 // A reference: name, then .props or ['props'], then filters.
-const REF = /(?<![\w.'"])([A-Za-z_]\w*)((?:\.[A-Za-z_]\w*|\[\s*(?:'[^']*'|"[^"]*")\s*\])*)((?:\s*\|\s*[A-Za-z_]\w*(?:\([^)]*\))?)*)/g
+// No lookbehind (Safari before 16.4 refuses the whole file): the character before the name is group 1.
+const REF = /(^|[^\w.'"])([A-Za-z_]\w*)((?:\.[A-Za-z_]\w*|\[\s*(?:'[^']*'|"[^"]*")\s*\])*)((?:\s*\|\s*[A-Za-z_]\w*(?:\([^)]*\))?)*)/g
 const STRING = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g
 
 const DATE_FILTERS = new Set(['datetimeformat', 'format_date', 'format_datetime', 'format_time', 'between_times', 'unixtimestamp', 'pretty_relative_time', 'todate'])
@@ -113,7 +114,8 @@ class Analyzer {
   refs(text: string, kind: 'out' | 'cond', ctx?: string, tag?: string): { path: Path; filters: string[] }[] {
     const found: { path: Path; filters: string[] }[] = []
     const plain = text.replace(STRING, (s) => ' '.repeat(s.length))
-    for (const m of plain.matchAll(REF)) {
+    for (const r of plain.matchAll(REF)) {
+      const m = Object.assign([r[0], r[2], r[3], r[4]], { index: (r.index ?? 0) + r[1].length })
       const base = this.resolve(m[1])
       if (!base) continue
       const props = [...text.slice((m.index ?? 0) + m[1].length, (m.index ?? 0) + m[1].length + m[2].length).matchAll(/\.([A-Za-z_]\w*)|\[\s*['"]([^'"]+)['"]\s*\]/g)].map((x) => x[1] ?? x[2])
