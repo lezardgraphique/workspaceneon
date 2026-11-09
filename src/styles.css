@@ -270,10 +270,19 @@ body {
   opacity: 0.18;
 }
 .auth-rise { animation: auth-rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+/* Phones: presentation → form (connexion.tsx). */
+@keyframes auth-intro-out { to { opacity: 0; transform: translateX(-28%) scale(0.96); } }
+@keyframes auth-form-in { from { opacity: 0; transform: translateX(28%); } to { opacity: 1; transform: none; } }
+.auth-intro-out { animation: auth-intro-out 0.38s cubic-bezier(0.5, 0, 0.75, 0) both; pointer-events: none; }
+@media (width < 64rem) { .auth-form-in { animation: auth-form-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; } }
+/* The illustration keeps its desktop proportions and shrinks to the room left. */
+@media (max-width: 420px) { .auth-intro-art { zoom: 0.86; } }
+@media (max-height: 640px) { .auth-intro-art { zoom: 0.78; } }
+@media (max-height: 500px) { .auth-intro-art { zoom: 0.62; padding-bottom: 4.5rem; } }
 .auth-rise-2 { animation-delay: 0.12s; }
 .auth-rise-3 { animation-delay: 0.24s; }
 @media (prefers-reduced-motion: reduce) {
-  .auth-tile, .auth-rise { animation: none; }
+  .auth-tile, .auth-rise, .auth-intro-out, .auth-form-in { animation: none; }
 }
 
 /* In the base layer so Tailwind utilities (hidden, min-h-14…) still win. */

@@ -100,10 +100,10 @@ export function AuthIllustration() {
       <div className="auth-float-2 absolute -right-2 bottom-6 inline-flex items-center gap-1.5 rounded-full border border-pink/40 bg-night/95 px-3 py-1.5 text-xs text-white shadow-lg sm:-right-6">
         <MailCheck className="size-3.5 text-pink" /> Test multi-clients
       </div>
-      <div className="auth-float-3 absolute -left-3 top-24 hidden items-center gap-1.5 rounded-full border border-violet/50 bg-night/95 px-3 py-1.5 text-xs text-white shadow-lg sm:inline-flex sm:-left-8">
+      <div className="auth-float-3 absolute -left-2 top-24 inline-flex items-center gap-1.5 rounded-full border border-violet/50 bg-night/95 px-3 py-1.5 text-xs text-white shadow-lg sm:-left-8">
         <Layers className="size-3.5 text-violet" /> Cards imbriquées
       </div>
-      <div className="auth-float-2 absolute -bottom-12 left-32 hidden items-center gap-1.5 rounded-full border border-line bg-night/95 px-3 py-1.5 text-xs text-white shadow-lg sm:inline-flex">
+      <div className="auth-float-2 absolute -bottom-12 left-28 inline-flex items-center gap-1.5 rounded-full border border-line bg-night/95 px-3 py-1.5 text-xs text-white shadow-lg sm:left-32">
         <Sparkles className="size-3.5 text-[#ffd479]" /> Maily, ton IA
       </div>
     </div>

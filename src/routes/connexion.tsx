@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { AuthError, acceptInvite, getUser, handleAuthCallback, login, refreshSession, requestPasswordRecovery, signup, updateUser } from '@netlify/identity'
-import { Loader2, LogIn } from 'lucide-react'
+import { ArrowRight, Loader2, LogIn } from 'lucide-react'
 
 import { AuthIllustration } from '@/components/AuthIllustration'
 import { Maily, NeonLogo } from '@/components/Maily'
@@ -59,6 +59,16 @@ function Connexion() {
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const [inviteToken, setInviteToken] = useState('')
+  // Phones and tablets first see the presentation (the side shown next to the
+  // form on wide screens), then slide to the form. 'leaving' = transition running.
+  const [intro, setIntro] = useState<'on' | 'leaving' | 'off'>('on')
+  const enter = (m: Mode) => {
+    setMode(m)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduce) return setIntro('off')
+    setIntro('leaving')
+    window.setTimeout(() => setIntro('off'), 380)
+  }
 
   // The sign-in screen never scrolls: lock the page behind it.
   useEffect(() => {
@@ -79,10 +89,12 @@ function Connexion() {
           return
         }
         if (res.type === 'recovery') {
+          setIntro('off')
           setMode('reset')
           setInfo('Choisis ton nouveau mot de passe.')
         } else if (res.type === 'invite') {
           setInviteToken(res.token ?? '')
+          setIntro('off')
           setMode('invite')
           setInfo('Bienvenue ! Choisis un mot de passe pour créer ton compte.')
         } else window.location.replace('/')
@@ -146,7 +158,34 @@ function Connexion() {
         <span className="auth-tile bottom-[16%] right-[6%] size-16" style={{ '--tile': '#ff007f', '--r': '-4deg', animationDelay: '0.6s' } as React.CSSProperties} />
       </div>
       <div className="relative mx-auto grid h-full max-w-6xl items-center gap-6 px-4 py-4 lg:grid-cols-[1fr_1.1fr] lg:gap-16 lg:px-8">
-        <div className="auth-rise mx-auto w-full max-w-sm">
+        {intro !== 'off' && (
+          <div
+            className={`relative mx-auto flex h-full w-full max-w-md flex-col justify-center gap-6 lg:hidden [@media(max-height:500px)]:max-w-3xl [@media(max-height:500px)]:flex-row [@media(max-height:500px)]:items-center ${intro === 'leaving' ? 'auth-intro-out' : ''}`}
+          >
+            <div className="auth-rise [@media(max-height:500px)]:w-[44%] [@media(max-height:500px)]:shrink-0">
+              <div className="mb-4 flex items-center gap-3 [@media(max-height:600px)]:mb-2">
+                <NeonLogo size={30} />
+                <span className="font-display text-base font-semibold tracking-wide">
+                  Neon Sandbox <span className="text-pink">Pro</span>
+                </span>
+              </div>
+              <h1 className="font-display text-[1.75rem] leading-tight font-bold [@media(max-height:600px)]:text-2xl">
+                Tes modules, <span className="neon-text">à la vitesse de la lumière.</span>
+              </h1>
+              <div className="mt-5 hidden gap-2 [@media(max-height:500px)]:grid">
+                <IntroButtons onEnter={enter} />
+              </div>
+            </div>
+            <div className="auth-rise auth-rise-2 auth-intro-art px-3 pb-14 [@media(max-height:500px)]:min-w-0 [@media(max-height:500px)]:flex-1">
+              <AuthIllustration />
+            </div>
+            <div className="auth-rise auth-rise-3 grid gap-2 [@media(max-height:500px)]:hidden">
+              <IntroButtons onEnter={enter} />
+            </div>
+          </div>
+        )}
+
+        <div className={`auth-rise mx-auto w-full max-w-sm ${intro === 'off' ? 'auth-form-in' : 'max-lg:hidden'}`}>
           <div className="mb-3 flex items-center justify-center gap-3 [@media(max-height:600px)]:hidden">
             <NeonLogo size={34} />
             <span className="font-display text-lg font-semibold tracking-wide">
@@ -233,5 +272,22 @@ function Connexion() {
         </div>
       </div>
     </main>
+  )
+}
+
+function IntroButtons({ onEnter }: { onEnter: (m: Mode) => void }) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => onEnter('login')}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-pink-fill px-4 py-3 text-sm font-semibold text-white hover:brightness-110"
+      >
+        Se connecter <ArrowRight className="size-4" />
+      </button>
+      <button type="button" onClick={() => onEnter('signup')} className="w-full rounded-md border border-line bg-void/80 px-4 py-2.5 text-sm text-mute hover:border-cyan hover:text-white">
+        Créer un compte
+      </button>
+    </>
   )
 }
