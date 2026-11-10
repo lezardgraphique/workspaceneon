@@ -527,7 +527,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
       <div className="flex min-h-0 flex-1 flex-col [@media(max-height:500px)]:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1">
-            <aside aria-label="Structure, champs et Maily" className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-72 lg:shrink-0 lg:border-r xl:w-80">
+            <aside aria-label="Structure, champs et Maily" className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-72 lg:shrink-0 lg:border-r xl:w-80 tablet:!w-60">
               <div className="hidden border-b border-line lg:flex">
                 <button className={tabBtn(leftTab === 'structure')} onClick={() => setLeftTab('structure')}>
                   <Layers className="size-3.5" /> Structure
@@ -553,7 +553,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
             </aside>
 
             <main className={`${vis('preview', true)} neon-grid min-h-0 min-w-0 flex-1 flex-col`}>
-              <div className={`min-h-0 flex-1 overflow-auto overscroll-contain p-3 sm:p-6 ${showSelectionBar ? 'max-lg:pb-24' : ''}`}>
+              <div className={`min-h-0 flex-1 overflow-auto overscroll-contain p-3 sm:p-6 tablet:!p-3 ${showSelectionBar ? 'max-lg:pb-24' : ''}`}>
                 <div className="mx-auto overflow-hidden rounded-xl shadow-[0_0_0_1px_#262642,0_20px_60px_-20px_rgba(188,19,254,0.35)]" style={{ maxWidth: mobile ? 420 : tree.width + 80 }}>
                   <Preview
                     tree={previewTree}
@@ -574,7 +574,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
               </div>
             </main>
 
-            <aside aria-label="Réglages et code" className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-[400px] lg:shrink-0 lg:border-l xl:w-[460px]">
+            <aside aria-label="Réglages et code" className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-[400px] lg:shrink-0 lg:border-l xl:w-[460px] tablet:!w-80">
               <div className="hidden border-b border-line lg:flex">
                 <button className={tabBtn(rightTab === 'inspector')} onClick={() => setRightTab('inspector')}>
                   <Settings2 className="size-3.5" /> Réglages
