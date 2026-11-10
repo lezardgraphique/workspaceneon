@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
-import { ArrowRight, Columns3, Code2, Eye, FolderOpen, Heart, Layers, Loader2, MailCheck, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { ArrowRight, BookOpen, ChevronDown, Columns3, Code2, Download, Eye, FolderOpen, Heart, Layers, LayoutTemplate, Loader2, MailCheck, MousePointerClick, Sparkles, Trash2, Wand2, X } from 'lucide-react'
 
 import { AccountMenu } from '@/components/AccountMenu'
 import { BackupPanel } from '@/components/BackupPanel'
@@ -12,6 +12,8 @@ import { KOFI_URL } from '@/lib/links'
 import { STARTERS } from '@/lib/templates'
 import { countBlocks } from '@/lib/tree'
 import { adoptServerList, createLocalFirst, loadModules, removeModule } from '@/lib/data'
+import { GUIDE_HIDDEN_KEY } from '@/lib/settings-keys'
+import { SETTINGS_EVENT, getPref, setPref } from '@/lib/settings-sync'
 
 export const Route = createFileRoute('/')({
   loader: () => loadModules(),
@@ -19,11 +21,62 @@ export const Route = createFileRoute('/')({
 })
 
 const FEATURES = [
-  { icon: Code2, title: 'Sync bidirectionnelle', text: 'Édite le code ou clique dans l\'aperçu : les deux restent alignés, et ton HTML collé devient des blocs modifiables.' },
-  { icon: Columns3, title: '1, 2 ou 3 colonnes', text: 'Côte à côte ou empilées sur mobile, au choix pour chaque section.' },
-  { icon: Layers, title: 'Cards imbriquées', text: 'Des sections dans des sections, pour les structures les plus riches.' },
-  { icon: MailCheck, title: 'Test multi-clients', text: 'Vérifie le rendu dans Outlook, Gmail, Apple Mail et les modes sombres avant l\'envoi.' },
-  { icon: Sparkles, title: 'Maily, ton IA', text: 'Génère un module, réécris un texte, demande un conseil marketing.' },
+  { icon: Code2, title: 'Visuel et code liés', text: 'Clique dans l\'aperçu ou écris le code : les deux restent identiques. Un HTML collé devient des blocs que tu modifies à la souris.' },
+  { icon: Columns3, title: '1, 2 ou 3 colonnes', text: 'Les colonnes se placent côte à côte sur ordinateur et s\'empilent sur téléphone, section par section.' },
+  { icon: Layers, title: 'Cartes imbriquées', text: 'Une carte peut en contenir d\'autres : catalogues, grilles de formations, blocs produits.' },
+  { icon: MailCheck, title: 'Test des messageries', text: 'Vois le rendu dans Outlook, Gmail, Apple Mail, en mode sombre ou images bloquées, avant l\'envoi.' },
+  { icon: Sparkles, title: 'Maily, ton assistante', text: 'Elle crée un module à partir d\'une phrase ou d\'une capture, réécrit tes textes et te conseille.' },
+]
+
+// « Premiers pas »: what a newcomer does, in order, and where it is in the editor.
+const STEPS = [
+  {
+    icon: LayoutTemplate,
+    title: 'Pars d\'un modèle ou d\'une idée',
+    text: 'Choisis un modèle plus bas, ou décris ton besoin à Maily (« une carte produit avec image, prix et bouton ») : le module s\'ouvre dans l\'éditeur.',
+  },
+  {
+    icon: MousePointerClick,
+    title: 'Modifie en cliquant',
+    text: 'Au centre, l\'aperçu : clique sur un titre ou un texte pour l\'écrire directement. À droite, les Réglages de l\'élément choisi (couleurs, tailles, liens, images). À gauche, la Structure pour ajouter, déplacer ou supprimer des blocs. Sur téléphone, ces panneaux sont des onglets en bas de l\'écran.',
+  },
+  {
+    icon: MailCheck,
+    title: 'Vérifie le rendu',
+    text: '« Aperçu » montre la version ordinateur et téléphone, en clair et en sombre. « Clients » simule les messageries et liste ce qui pourrait mal s\'afficher, bloc par bloc.',
+  },
+  {
+    icon: Download,
+    title: 'Exporte',
+    text: '« Exporter » donne le code du module, ses styles, la liste de ses champs et une page HTML de test, à copier ou télécharger pour ton outil d\'envoi ou ton site.',
+  },
+]
+
+const FAQ = [
+  {
+    q: 'C\'est quoi, un module ?',
+    a: 'Un morceau d\'e-mail ou de page web prêt à réutiliser : un bandeau, une carte, un bouton, un pied de page… Ses textes, images et liens deviennent des champs que l\'on remplit ensuite à chaque envoi, sans toucher au code.',
+  },
+  {
+    q: 'Faut-il savoir coder ?',
+    a: 'Non. Tout se fait en cliquant dans l\'aperçu et dans les Réglages, ou en demandant à Maily. Le code reste visible dans l\'onglet Code pour celles et ceux qui préfèrent l\'écrire : les deux restent synchronisés.',
+  },
+  {
+    q: 'J\'ai déjà un module : comment le reprendre ?',
+    a: 'Ouvre un module vide, puis dans l\'onglet Code choisis « Importer » : colle ou dépose ton code et son fichier de champs (fields.json). Les champs sont reconnus et le module devient modifiable comme les autres. Tu peux aussi simplement le coller à Maily.',
+  },
+  {
+    q: 'Où sont enregistrés mes modules ?',
+    a: 'Sur ton compte, automatiquement, une seconde après chaque modification. Tu les retrouves sur tous tes appareils, et même sans connexion : ils se synchronisent au retour du réseau. Une sauvegarde complète se télécharge en bas de cette page.',
+  },
+  {
+    q: 'Comment l\'utiliser dans mon outil d\'envoi ?',
+    a: '« Exporter » dans l\'éditeur : copie le code du module et de ses styles dans ton outil, et importe le fichier de champs si ton outil en utilise. La page HTML de test sert à vérifier ou à envoyer un essai.',
+  },
+  {
+    q: 'Je suis bloqué·e, que faire ?',
+    a: 'Demande à Maily : elle connaît chaque écran et chaque bouton de l\'application, et peut lancer des tests internes pour vérifier que tout fonctionne. Tu peux aussi m\'écrire via « Laisser un commentaire ».',
+  },
 ]
 
 function Library() {
@@ -38,6 +91,20 @@ function Library() {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // « Premiers pas »: shown until hidden (choice kept on the account). Undecided
+  // until the page runs in the browser, so a hidden guide never flashes.
+  const [guide, setGuide] = useState<boolean | null>(null)
+  useEffect(() => {
+    const read = () => setGuide(getPref(GUIDE_HIDDEN_KEY) !== '1')
+    read()
+    window.addEventListener(SETTINGS_EVENT, read)
+    return () => window.removeEventListener(SETTINGS_EVENT, read)
+  }, [])
+  const showGuide = (on: boolean) => {
+    setPref(GUIDE_HIDDEN_KEY, on ? null : '1')
+    setGuide(on)
+    if (on) requestAnimationFrame(() => document.getElementById('premiers-pas')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
 
   const start = async (key: string, withMaily = false) => {
     const starter = STARTERS.find((s) => s.key === key)!
@@ -99,9 +166,11 @@ function Library() {
               Construis tes modules email &amp; web <span className="neon-text">à la vitesse de la lumière.</span>
             </h1>
             <p className="mt-6 max-w-xl text-lg text-mute">
-              Un éditeur visuel et un éditeur de code synchronisés en temps réel, des layouts responsives et un export prêt
-              à intégrer dans tes emails comme sur le web.
+              Un <strong className="font-semibold text-white">module</strong>, c'est un morceau d'e-mail ou de page web prêt à
+              réutiliser : bandeau, carte produit, bouton, pied de page. Ici, tu le construis en cliquant dans l'aperçu ou en
+              écrivant le code, les deux restent synchronisés, puis tu l'exportes vers ton outil d'envoi ou ton site.
             </p>
+            <p className="mt-3 max-w-xl text-sm text-mute">Pas besoin de savoir coder : Maily, ton assistante, peut tout faire avec toi.</p>
             {error && (
               <p role="alert" className="mt-6 max-w-xl rounded-lg border border-pink/50 bg-pink/10 px-4 py-3 text-sm text-pink">
                 {error}
@@ -124,6 +193,15 @@ function Library() {
                 {busy === 'blank' ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                 Parler à Maily
               </button>
+              {guide === false && (
+                <button
+                  type="button"
+                  onClick={() => showGuide(true)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold hover:border-cyan"
+                >
+                  <BookOpen className="size-4 text-cyan" /> Guide de démarrage
+                </button>
+              )}
               {modules.length > 0 && (
                 <a href="#mes-modules" className="inline-flex items-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold hover:border-cyan">
                   Mes modules ({modules.length})
@@ -159,8 +237,67 @@ function Library() {
           ))}
         </section>
 
+        {guide && (
+          <section id="premiers-pas" aria-labelledby="premiers-pas-titre" className="mt-20 scroll-mt-24">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="font-mono text-xs uppercase tracking-[0.25em] text-cyan">Nouveau ici ?</p>
+                <h2 id="premiers-pas-titre" className="mt-2 font-display text-2xl font-semibold">
+                  Premiers pas, en 4 étapes
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => showGuide(false)}
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-mute hover:text-white"
+              >
+                <X className="size-4" /> Masquer le guide
+              </button>
+            </div>
+            <ol className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {STEPS.map((step, i) => (
+                <li key={step.title} className="relative rounded-xl border border-line bg-night/70 p-5">
+                  <span className="flex items-center gap-3">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-pink-fill font-display text-sm font-bold text-white">
+                      {i + 1}
+                    </span>
+                    <step.icon className="size-5 text-cyan" aria-hidden />
+                  </span>
+                  <h3 className="mt-3 font-display font-semibold">{step.title}</h3>
+                  <p className="mt-1 text-sm text-mute">{step.text}</p>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+              <button
+                type="button"
+                onClick={() => start('newsletter')}
+                disabled={!!busy}
+                className="inline-flex items-center gap-2 rounded-lg border border-pink/60 px-4 py-2 font-semibold text-pink hover:bg-pink/10 disabled:opacity-60"
+              >
+                <Wand2 className="size-4" /> Essayer avec un exemple
+              </button>
+              <span className="text-mute">Rien n'est perdu : chaque modification s'enregistre seule, et « Annuler » revient en arrière.</span>
+            </div>
+
+            <h3 className="mt-10 font-display text-lg font-semibold">Questions fréquentes</h3>
+            <div className="mt-3 divide-y divide-line rounded-xl border border-line bg-night/70">
+              {FAQ.map((f) => (
+                <details key={f.q} className="group px-5 py-1">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 font-semibold [&::-webkit-details-marker]:hidden">
+                    {f.q}
+                    <ChevronDown className="size-4 shrink-0 text-mute transition group-open:rotate-180 motion-reduce:transition-none" aria-hidden />
+                  </summary>
+                  <p className="pb-4 text-sm text-mute">{f.a}</p>
+                </details>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section className="mt-20">
           <h2 className="font-display text-2xl font-semibold">Partir d'un modèle</h2>
+          <p className="mt-2 text-sm text-mute">Un clic crée une copie à ton nom et l'ouvre dans l'éditeur : tout se modifie ensuite.</p>
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {STARTERS.map((s) => (
               <button
@@ -188,7 +325,10 @@ function Library() {
           {modules.length === 0 ? (
             <div className="mt-5 flex items-center gap-4 rounded-xl border border-dashed border-line p-6 text-mute">
               <Maily size={56} mood="thinking" decorative />
-              <p>Aucun module pour l'instant. Choisis un modèle ci-dessus pour commencer.</p>
+              <p>
+                Aucun module pour l'instant. Choisis un modèle ci-dessus, ou touche « Parler à Maily » et décris ce que tu
+                veux : ton premier module apparaîtra ici, enregistré sur ton compte.
+              </p>
             </div>
           ) : (
             <ul className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
