@@ -1,3 +1,4 @@
+import { parseJsonLoose } from './json-repair'
 import { toFieldName } from './fields'
 import { normalizeHubl } from './hubl-legacy'
 import type { Block, ButtonBlock, FieldDef, ImageBlock, ModuleTree } from './types'
@@ -51,12 +52,9 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 // A fields.json (array of fields, or { fields: [...] }). Groups are flattened
 // as `group.child`.
 export function parseFieldsJson(text: string): FieldSpec[] | null {
-  let data: unknown
-  try {
-    data = JSON.parse(text)
-  } catch {
-    return null
-  }
+  // Almost-JSON is repaired (trailing commas, comments, missing closers…).
+  const data = parseJsonLoose(text)
+  if (data === undefined) return null
   const list = Array.isArray(data) ? data : isObj(data) && Array.isArray(data.fields) ? data.fields : null
   if (!list) return null
   const out: FieldSpec[] = []

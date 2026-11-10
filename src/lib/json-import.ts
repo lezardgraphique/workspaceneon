@@ -1,3 +1,4 @@
+import { parseJsonLoose } from './json-repair'
 import { humanize } from './module-fields'
 import { extractFieldRefs } from './module-fields'
 import { withLegacySpecs } from './hubl-legacy'
@@ -393,12 +394,8 @@ function cleanValue(x: unknown, depth: number): unknown {
 
 // Finds what the JSON carries, wherever it sits (a few levels deep).
 export function parseForeignJson(text: string): ForeignJson | null {
-  let data: unknown
-  try {
-    data = JSON.parse(text)
-  } catch {
-    return null
-  }
+  const data = parseJsonLoose(text)
+  if (data === undefined) return null
   let html: string | undefined
   let css: string | undefined
   let defs: Obj[] | null = null

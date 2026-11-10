@@ -5,10 +5,9 @@
 import { auditModule } from '@/lib/clients'
 import { collectFields } from '@/lib/fields'
 import { syncExtraFields, treeToCode, treeToHubSpot } from '@/lib/hubl'
-import { applyValues, importSpecs, parseForeignJson } from '@/lib/json-import'
 import { validateModuleCode } from '@/lib/module-agent'
 import { parseFieldsJson } from '@/lib/module-fields'
-import { recognizeCode } from '@/lib/recognize'
+import { prepareImport } from '@/lib/import-repair'
 import { sanitizeTree } from '@/lib/sanitize-tree'
 import { STARTERS } from '@/lib/templates'
 import type { ModuleTree } from '@/lib/types'
@@ -58,13 +57,12 @@ const MAX_CODE = 400_000
  * like the « Importer » dialog, with its fields.json and/or other JSON.
  */
 export function parseCode(code: string, opts: { current?: ModuleTree; fieldsJson?: string; otherJson?: string } = {}): Parsed {
-  if (!code.trim()) return { ok: false, summary: 'Code vide.', issues: ['Code vide.'], warnings: [] }
+  if (!code.trim() && !opts.fieldsJson?.trim() && !opts.otherJson?.trim()) return { ok: false, summary: 'Code vide.', issues: ['Code vide.'], warnings: [] }
   if (code.length > MAX_CODE) return { ok: false, summary: 'Code trop long (400 000 caractères au plus).', issues: ['Code trop long.'], warnings: [] }
   return withDom(() => {
     const current = opts.current ?? blankTree()
     const fj = opts.fieldsJson?.trim() ? parseFieldsJson(opts.fieldsJson) : null
     if (opts.fieldsJson?.trim() && !fj) return { ok: false, summary: 'fields_json illisible : il faut le tableau JSON des champs.', issues: ['fields.json illisible.'], warnings: [] }
-    const foreign = opts.otherJson?.trim() ? parseForeignJson(opts.otherJson) : null
     const neon = /data-neon=["'](module|section)/.test(code)
     if (neon) {
       const check = validateModuleCode(code, current, fj ?? undefined)
@@ -72,11 +70,13 @@ export function parseCode(code: string, opts: { current?: ModuleTree; fieldsJson
       const tree = sanitizeTree(syncExtraFields(check.tree, fj ?? undefined, code))
       return { ok: true, tree, summary: check.summary, issues: [], warnings: check.warnings }
     }
-    const specs = importSpecs(code, fj, foreign)
-    const rec = recognizeCode(code, current, specs)
-    if (!rec.ok) return { ok: false, summary: rec.error, issues: [rec.error], warnings: [] }
-    const { tree: valued } = applyValues(rec.tree, foreign?.values ?? null)
-    return { ok: true, tree: sanitizeTree(valued), summary: rec.summary, issues: [], warnings: rec.issue ? [rec.issue] : [] }
+    // Any other HTML/HuBL (or only a fields.json / module JSON): the repairing
+    // import of the « Importer » dialog (cleaned code, module from the fields).
+    const prep = prepareImport({ html: code, fieldsJson: opts.fieldsJson, other: opts.otherJson }, current)
+    if (!prep.ok) return { ok: false, summary: prep.error, issues: [prep.error], warnings: [] }
+    const n = collectFields(prep.tree).length + (prep.tree.fields?.length ?? 0)
+    const summary = `${prep.fromFields ? 'Module construit à partir des champs' : 'Code importé'} : ${prep.tree.sections.length} section${prep.tree.sections.length > 1 ? 's' : ''}, ${n} champ${n > 1 ? 's' : ''}.${prep.repairs.length ? ` Corrigé avant l'import : ${prep.repairs.join(' ; ')}.` : ''}`
+    return { ok: true, tree: sanitizeTree(prep.tree), summary, issues: [], warnings: [] }
   })
 }
 

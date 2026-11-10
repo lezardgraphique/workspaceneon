@@ -45,7 +45,7 @@ import { BLOCK_ICONS, Structure } from '@/components/editor/Structure'
 import { codeToTree, reconcileIds, syncExtraFields, treeToCode } from '@/lib/hubl'
 import { uploadImage } from '@/lib/images'
 import { signature, withNewIds } from '@/lib/custom-blocks'
-import { interpretTree, previewScope } from '@/lib/hubl-render'
+import { interpretForPreview } from '@/lib/hubl-render'
 import type { SampleContact } from '@/lib/hubl-render'
 import { KOFI_URL } from '@/lib/links'
 import type { FieldSpec } from '@/lib/module-fields'
@@ -385,9 +385,11 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     `flex flex-1 items-center justify-center gap-1.5 border-b-2 py-2.5 text-xs font-semibold ${
       active ? 'border-pink text-white' : 'border-transparent text-mute hover:text-white'
     }`
-  const previewTree = useMemo(() => {
-    if (pageHidden) return tree
-    return interpretTree(tree, previewScope(tree, contact), selectedId)
+  // Interpreted tree for the preview; `forced` = options switched on only to
+  // show content they would otherwise hide entirely.
+  const { tree: previewTree, forced } = useMemo(() => {
+    if (pageHidden) return { tree, forced: [] as string[] }
+    return interpretForPreview(tree, contact, selectedId)
   }, [tree, contact, selectedId, pageHidden])
   const treeProps = { tree, selectedId, onSelect: select, commit }
   const selected = selectedId ? findNode(tree, selectedId) : null
@@ -554,6 +556,11 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
 
             <main className={`${vis('preview', true)} neon-grid min-h-0 min-w-0 flex-1 flex-col`}>
               <div className={`min-h-0 flex-1 overflow-auto overscroll-contain p-3 sm:p-6 tablet:!p-3 ${showSelectionBar ? 'max-lg:pb-24' : ''}`}>
+                {forced.length > 0 && (
+                  <p role="status" className="mx-auto mb-3 max-w-[600px] rounded-lg border border-violet/50 bg-violet/10 px-3 py-2 text-xs text-[#e3a6ff]">
+                    Tout le contenu dépend {forced.length > 1 ? 'des options' : 'de l’option'} « {forced.join(' », « ')} », désactivée{forced.length > 1 ? 's' : ''} dans le module : l’aperçu {forced.length > 1 ? 'les' : 'l’'}active pour te le montrer. Change sa valeur dans l’onglet Champs.
+                  </p>
+                )}
                 <div className="mx-auto overflow-hidden rounded-xl shadow-[0_0_0_1px_#262642,0_20px_60px_-20px_rgba(188,19,254,0.35)]" style={{ maxWidth: mobile ? 420 : tree.width + 80 }}>
                   <Preview
                     tree={previewTree}

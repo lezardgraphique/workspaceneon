@@ -3,7 +3,7 @@ import { Check, Copy, Minus, Plus, Shapes, X } from 'lucide-react'
 
 import { EmailFrame } from '@/components/EmailFrame'
 import { CLIENTS, renderForClient } from '@/lib/clients'
-import { interpretTree, previewScope } from '@/lib/hubl-render'
+import { interpretForPreview } from '@/lib/hubl-render'
 import { standaloneEmail } from '@/lib/hubl'
 import { BLOCK_LABELS } from '@/lib/types'
 
@@ -199,7 +199,7 @@ function OutlookPreview({
   const docRef = useRef<Document | null>(null)
 
   const { html, ids } = useMemo(() => {
-    const interp = interpretTree({ ...tree, vml: mode === 'avec' }, previewScope(tree, 'known'))
+    const interp = interpretForPreview({ ...tree, vml: mode === 'avec' }, 'known').tree
     const client = CLIENTS.find((c) => c.id === (mode === 'normal' ? 'apple-mail' : 'outlook-win'))!
     return { html: renderForClient(standaloneEmail(interp, name), client, { imagesOff: false }), ids: orderedIds(interp.sections) }
   }, [tree, name, mode])

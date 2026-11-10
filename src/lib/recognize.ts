@@ -2,6 +2,7 @@ import { codeToTree, syncExtraFields } from '@/lib/hubl'
 import { isLogicBlock } from '@/lib/hubl-render'
 import { withLegacySpecs } from '@/lib/hubl-legacy'
 import { validateSyntax } from '@/lib/validator'
+import { cleanSource } from '@/lib/import-repair'
 import type { FieldBinding, FieldSpec } from '@/lib/module-fields'
 import type { Block, ModuleTree } from '@/lib/types'
 
@@ -48,12 +49,17 @@ function kindOf(code: string): string {
 const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`
 
 export type Recognition =
-  | { ok: true; tree: ModuleTree; kind: string; complete: boolean; summary: string; issue?: string; binding?: FieldBinding }
+  | { ok: true; tree: ModuleTree; kind: string; complete: boolean; summary: string; issue?: string; binding?: FieldBinding; source: string }
   | { ok: false; kind: string; error: string }
 
-export function recognizeCode(code: string, current: ModuleTree, given?: FieldSpec[]): Recognition {
+export function recognizeCode(input: string, current: ModuleTree, given?: FieldSpec[]): Recognition {
+  // Pasted code is cleaned and repaired first (escaped HTML, JSON string,
+  // unfinished HuBL, unclosed blocks…): see import-repair.ts.
+  const clean = /data-neon=["']section/.test(input) ? { code: input, repairs: [] as string[], specs: [] as FieldSpec[] } : cleanSource(input)
+  const code = clean.code
+  const withTags = clean.specs.length ? [...(given ?? []), ...clean.specs.filter((s) => !(given ?? []).some((g) => g.name === s.name))] : given
   // Fields declared by old template tags ({% text "titre" … %}) count like a fields.json.
-  const specs = withLegacySpecs(code, given)
+  const specs = withLegacySpecs(code, withTags)
   const kind = kindOf(code)
   const res = codeToTree(code, current, specs)
   if (!res.ok) return { ok: false, kind, error: res.error }
@@ -110,6 +116,7 @@ export function recognizeCode(code: string, current: ModuleTree, given?: FieldSp
     binding,
     complete: !issue,
     issue,
-    summary: `J'ai reconnu **${kind}** et je l'ai transformé en rendu : ${parts.join(', ')}${raw}.${fields}${extra}`,
+    summary: `J'ai reconnu **${kind}** et je l'ai transformé en rendu : ${parts.join(', ')}${raw}.${fields}${extra}${clean.repairs.length ? ` Corrigé avant l'import : ${clean.repairs.join(' ; ')}.` : ''}`,
+    source: code,
   }
 }

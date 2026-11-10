@@ -19,6 +19,7 @@ import type { CustomBlock } from '@/lib/custom-blocks'
 import { createLocalFirst, isNetworkError, isOffline, loadBlocks, loadModules, saveBlock, useDataStatus } from '@/lib/data'
 import { guideAnswer, libraryNote, localSystemPrompt } from '@/lib/maily-prompts'
 import { formatReport, runSelfTests } from '@/lib/self-test'
+import { codeFromFields } from '@/lib/import-repair'
 import { localAiEnabled, localContextTokens, streamOfflineMaily } from '@/lib/offline-ai'
 import type { LocalMessage } from '@/lib/offline-ai'
 import { refreshCustomBlocks } from './useCustomBlocks'
@@ -485,7 +486,9 @@ export function MailyPanel({
       .filter((f) => f.kind === 'code' && !/\.json$/i.test(f.name))
       .map((f) => f.text)
       .join('\n')
-    const source = pasted || foreign?.html || ''
+    // No code but a fields.json / module JSON: a module is built from the fields.
+    const fieldDefs = fieldsJson ?? (foreign?.specs.length ? foreign.specs : null)
+    const source = pasted || foreign?.html || (fieldDefs ? codeFromFields(fieldDefs) : '')
     const specs = source ? (importSpecs(source, fieldsJson, foreign) ?? []) : fieldsJson
 
     // Recognised code is rendered right away; Maily then reviews it (or
@@ -495,7 +498,7 @@ export function MailyPanel({
     let issue: string | undefined
     if (source && wantsConversion(instruction, mode)) {
       const rec = recognizeCode(source, tree, specs)
-      if (rec.ok && rec.complete && !applyCode(source, specs, foreign?.values)) {
+      if (rec.ok && rec.complete && !applyCode(rec.source, specs, foreign?.values)) {
         imported = rec.summary
         requestCode = treeToCode(rec.tree, moduleName)
       } else {

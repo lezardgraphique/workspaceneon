@@ -1,7 +1,7 @@
 import { collectFields } from './fields'
 import type { FieldBlock, ModuleField } from './fields'
 import { Parser } from 'htmlparser2'
-import { interpretTree, previewScope } from './hubl-render'
+import { interpretForPreview } from './hubl-render'
 import type { SampleContact } from './hubl-render'
 import { analyzeFieldRefs, exposedNames, hubspotField } from './extra-fields'
 import { bindFieldsFromCode } from './module-fields'
@@ -1182,5 +1182,5 @@ ${renderModule(tree, new Ctx('sync', tree))}
 // ({% if %} branches resolved, variables replaced). For previews only; the
 // exported files keep the HuBL.
 export function previewEmail(tree: ModuleTree, name: string, contact: SampleContact = 'known'): string {
-  return standaloneEmail(interpretTree(tree, previewScope(tree, contact)), name)
+  return standaloneEmail(interpretForPreview(tree, contact).tree, name)
 }

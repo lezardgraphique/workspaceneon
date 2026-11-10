@@ -134,17 +134,20 @@ export const TOOLS: Tool[] = [
       type: 'object',
       properties: {
         nom: { type: 'string', description: 'Nom du module (court, 120 caractères au plus).' },
-        code: { type: 'string', description: CODE_HELP },
-        fields_json: { type: 'string', description: 'Facultatif : contenu du fields.json du module importé (noms et types exacts des champs).' },
+        code: { type: 'string', description: `${CODE_HELP} Peut rester vide si fields_json ou autre_json est donné : le module est alors construit à partir des champs.` },
+        fields_json: { type: 'string', description: 'Facultatif : contenu du fields.json du module importé (noms et types exacts des champs). Un JSON imparfait (virgules en trop, commentaires, fin coupée) est réparé.' },
         autre_json: { type: 'string', description: 'Facultatif : JSON d\'un autre outil (valeurs du module, schéma Contentful, Strapi, Sanity…).' },
       },
-      required: ['nom', 'code'],
+      required: ['nom'],
       additionalProperties: false,
     },
     annotations: W,
     run: async (args, ctx) => {
       const moduleName = name(args, 'nom', 120, 'Sans titre')
-      const parsed = parseCode(str(args, 'code', 400_000), { fieldsJson: str(args, 'fields_json', 200_000, false), otherJson: str(args, 'autre_json', 200_000, false) })
+      const fieldsJson = str(args, 'fields_json', 200_000, false)
+      const otherJson = str(args, 'autre_json', 200_000, false)
+      // The code may be left empty when a fields.json / module JSON is given: the module is built from the fields.
+      const parsed = parseCode(str(args, 'code', 400_000, !fieldsJson && !otherJson), { fieldsJson, otherJson })
       if (!parsed.ok || !parsed.tree) return fail(`Module refusé : ${parsed.summary}${parsed.issues.length ? `\n- ${parsed.issues.join('\n- ')}` : ''}`)
       if (JSON.stringify(parsed.tree).length > TOO_BIG) return fail('Module trop volumineux.')
       const [row] = await db.insert(modules).values({ userId: ctx.userId, name: moduleName, tree: parsed.tree }).returning()

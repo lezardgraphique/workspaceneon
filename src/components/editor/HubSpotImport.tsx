@@ -1,13 +1,13 @@
 import { legacySpecs } from '@/lib/hubl-legacy'
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Braces, Check, FileUp, X } from 'lucide-react'
+import { AlertTriangle, Braces, Check, FileUp, Wrench, X } from 'lucide-react'
 
 import { useEscape } from '@/hooks/use-escape'
 import { collectFields } from '@/lib/fields'
-import { applyValues, importSpecs, parseForeignJson } from '@/lib/json-import'
+import { parseForeignJson } from '@/lib/json-import'
 import { parseFieldsJson } from '@/lib/module-fields'
 import type { FieldSpec } from '@/lib/module-fields'
-import { recognizeCode } from '@/lib/recognize'
+import { prepareImport } from '@/lib/import-repair'
 import type { ExtraField, ModuleTree } from '@/lib/types'
 
 // Import of a HubSpot module as it is downloaded (module.html + fields.json,
@@ -58,23 +58,23 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
 
   const fieldsJson = useMemo(() => (json.trim() ? parseFieldsJson(json) : null), [json])
   const foreign = useMemo(() => (other.trim() ? parseForeignJson(other) : null), [other])
-  // The JSON may carry the code itself (HubSpot API module JSON: source, css).
-  const code = html.trim() ? html : (foreign?.html ?? '')
-  const style = css.trim() ? css : (foreign?.css ?? '')
-  const source = style.trim() ? `<style>\n${style}\n</style>\n${code}` : code
-  const specs = useMemo(() => (code.trim() ? importSpecs(source, fieldsJson, foreign) : undefined), [code, source, fieldsJson, foreign])
+  // Everything goes through the repairing import: cleaned code (or a module
+  // built from the fields when there is no code), repairs listed.
+  const prep = useMemo(
+    () => (html.trim() || json.trim() || other.trim() ? prepareImport({ html, css, fieldsJson: json, other }, tree) : null),
+    [html, css, json, other, tree],
+  )
 
   const report = useMemo((): Report | null => {
-    if (!code.trim()) return null
-    const rec = recognizeCode(source, tree, specs)
-    if (!rec.ok) return { error: rec.error }
-    const { tree: valued, applied } = applyValues(rec.tree, foreign?.values ?? null)
+    if (!prep) return null
+    if (!prep.ok) return { error: prep.error }
+    const { tree: valued, source, specs } = prep
     const fromFj = new Set((fieldsJson ?? []).map((s) => s.name))
     // Fields declared by old template tags come from the code, not from a JSON.
     const tags = new Set(legacySpecs(source).map((s) => s.name))
     const fromJson = new Set((specs ?? []).filter((s) => !fromFj.has(s.name) && !tags.has(s.name)).map((s) => s.name))
     const origin = (n: string): Origin => (fromFj.has(n) ? 'fields.json' : fromJson.has(n) ? 'JSON' : tags.has(n) ? 'balise' : 'code')
-    const got = new Set(applied)
+    const got = new Set(prep.applied)
     const rows = (f: ExtraField, depth = 0, prefix = ''): Row[] => {
       const full = prefix ? `${prefix}.${f.name}` : f.name
       return [
@@ -110,7 +110,7 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
     const missing = (fieldsJson ?? []).filter((s) => !s.name.includes('.') && !used.has(s.name)).map((s) => s.name)
     const unknown = fieldsJson ? [...used].filter((n) => !fromFj.has(n) && !fromJson.has(n)) : []
     return { rows: [...blockRows, ...extra], missing, unknown }
-  }, [code, source, specs, tree, foreign, fieldsJson])
+  }, [prep, fieldsJson])
 
   const load = async (files: FileList | null) => {
     for (const f of Array.from(files ?? [])) {
@@ -162,7 +162,7 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
             <label className="block">
               <span className={caption}>fields.json (facultatif, recommandé)</span>
               <textarea className={`${input} min-h-28`} value={json} onChange={(e) => setJson(e.target.value)} placeholder='[{ "name": "titre", "label": "Titre", "type": "text", … }]' />
-              {json.trim() && !fieldsJson && <span className="mt-1 block text-xs text-pink">Ce fields.json n'est pas lisible (JSON invalide ou sans liste de champs).</span>}
+              {json.trim() && !fieldsJson && <span className="mt-1 block text-xs text-pink">Ce fields.json n'est pas lisible, même après réparation (pas de liste de champs).</span>}
             </label>
             <label className="block">
               <span className={caption}>JSON d'un autre outil (facultatif)</span>
@@ -196,8 +196,20 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
 
           <section aria-label="Champs reconnus" className="min-w-0">
             <h2 className="mb-2 font-display font-semibold">Champs reconnus</h2>
-            {!report && <p className="text-sm text-mute">Le détail des champs s'affiche ici dès que le code est collé (ou repris d'un JSON).</p>}
+            {!report && <p className="text-sm text-mute">Le détail des champs s'affiche ici dès que le code, le fields.json ou un JSON est collé : un JSON seul suffit, le module est alors construit à partir de ses champs.</p>}
             {report && 'error' in report && <p className="text-sm text-pink">{report.error}</p>}
+            {prep && prep.repairs.length > 0 && (
+              <div className="mb-3 rounded-md border border-cyan/40 bg-cyan/5 p-2.5 text-xs">
+                <p className="mb-1 flex items-center gap-1.5 font-semibold text-cyan">
+                  <Wrench className="size-3.5" /> Corrigé automatiquement avant l’import
+                </p>
+                <ul className="list-disc space-y-0.5 pl-5 text-mute">
+                  {prep.repairs.map((r) => (
+                    <li key={r}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {report && 'rows' in report && (
               <>
                 <p className="mb-2 text-xs text-mute">
@@ -247,9 +259,10 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
             Annuler
           </button>
           <button
-            disabled={!report || 'error' in report}
+            disabled={!prep || !prep.ok}
             onClick={() => {
-              const err = onImport({ source, specs, values: foreign?.values ?? null })
+              if (!prep?.ok) return
+              const err = onImport({ source: prep.source, specs: prep.specs, values: prep.values })
               if (err) setError(err)
               else onClose()
             }}

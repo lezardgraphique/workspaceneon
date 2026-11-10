@@ -1030,3 +1030,38 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
     sections: tree.sections.map((s) => ({ ...s, bg: text(s.bg, scope), ...(s.css ? { css: text(s.css, scope) } : {}), cells: s.cells.map((c) => list(c, scope)) })).filter((_s, i) => !onlyLogic(tree.sections[i]) || tree.sections[i].id === keepId),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Preview that never ends empty: when every piece of content sits behind an
+// option switched off ({% if module.afficher %} with « false »), the preview
+// shows it with those options on, and says which ones (`forced`). The module
+// itself (and its export) keeps its real values.
+
+const visible = (blocks: Block[]): boolean =>
+  blocks.some((b) => {
+    if (b.type === 'section') return b.cells.some(visible)
+    if (b.type === 'heading') return !!stripTags(b.text).trim()
+    if (b.type === 'text') return !!stripTags(b.html).trim()
+    if (b.type === 'image') return !!b.src
+    if (b.type === 'button') return !!b.label.trim()
+    if (b.type === 'raw') return !isLogicBlock(b) && (/<img\b/i.test(b.html) || !!stripTags(b.html.replace(/\{[%#][\s\S]*?[%#]\}/g, '')).trim())
+    return false
+  })
+
+export const hasVisibleContent = (tree: ModuleTree) => tree.sections.some((s) => visible([s]))
+
+export interface PreviewResult {
+  tree: ModuleTree
+  /** Labels of the options switched on for the preview only. */
+  forced: string[]
+}
+
+export function interpretForPreview(tree: ModuleTree, contact: SampleContact = 'known', keepId?: string | null): PreviewResult {
+  const out = interpretTree(tree, previewScope(tree, contact), keepId)
+  if (hasVisibleContent(out) || !hasVisibleContent({ ...tree, sections: tree.sections })) return { tree: out, forced: [] }
+  const off = (tree.fields ?? []).filter((f) => (f.hsType ?? f.type) === 'boolean' && !f.default)
+  if (!off.length) return { tree: out, forced: [] }
+  const on = { ...tree, fields: (tree.fields ?? []).map((f) => (off.includes(f) ? { ...f, default: true } : f)) }
+  const shown = interpretTree(tree, previewScope(on, contact), keepId)
+  return hasVisibleContent(shown) ? { tree: shown, forced: off.map((f) => f.label || f.name) } : { tree: out, forced: [] }
+}
