@@ -20,7 +20,8 @@ const CSP = [
   "media-src 'self'",
   // Offline Maily (Gemma through WebLLM): model files downloaded once from
   // Hugging Face and the GPU kernels from the MLC repository, on the user's request.
-  "connect-src 'self' https://huggingface.co https://*.hf.co https://*.huggingface.co https://raw.githubusercontent.com",
+  // + Have I Been Pwned (new passwords: only 5 characters of a hash are sent).
+  "connect-src 'self' https://huggingface.co https://*.hf.co https://*.huggingface.co https://raw.githubusercontent.com https://api.pwnedpasswords.com",
   "frame-src 'self' about: data: blob:",
   // Offline Maily on the processor (llama.cpp in WebAssembly) runs in workers built from blob: URLs.
   "worker-src 'self' blob:",
@@ -74,6 +75,9 @@ const securityHeaders = createMiddleware({ type: 'request' }).server(async ({ re
       if (!res.headers.has(k)) res.headers.set(k, v)
     }
     if (PUBLIC.test(url.pathname) && method === 'GET') res.headers.set('Cross-Origin-Resource-Policy', 'cross-origin')
+    // Pages and server functions carry an account's data: never kept by a
+    // shared cache (CDN, proxy); the browser checks again before reusing them.
+    else if (!res.headers.has('Cache-Control')) res.headers.set('Cache-Control', 'private, no-cache')
   }
   return result
 })

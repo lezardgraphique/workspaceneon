@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { AuthError, acceptInvite, getUser, handleAuthCallback, login, refreshSession, requestPasswordRecovery, signup, updateUser } from '@netlify/identity'
+import { acceptInvite, getUser, handleAuthCallback, login, refreshSession, requestPasswordRecovery, signup, updateUser } from '@netlify/identity'
 import { ArrowRight, Loader2, LogIn } from 'lucide-react'
 
 import { AuthIllustration } from '@/components/AuthIllustration'
 import { Maily, NeonLogo } from '@/components/Maily'
+import { MIN_PASSWORD, checkPassword, leakCount } from '@/lib/password'
 import { getSession } from '@/server/session.functions'
 
 export const Route = createFileRoute('/connexion')({
@@ -15,20 +16,58 @@ export const Route = createFileRoute('/connexion')({
 
 type Mode = 'login' | 'signup' | 'forgot' | 'reset' | 'invite'
 
-const MIN_PASSWORD = 8
+
+// HTTP status of an Identity error. In the browser the library wraps GoTrue's
+// error without its status: it is on `cause`.
+function statusOf(err: unknown): number | undefined {
+  const e = err as { status?: number; cause?: { status?: number } } | null
+  return e?.status ?? e?.cause?.status
+}
 
 // Netlify's messages come in English; the common cases are translated.
 function message(err: unknown): string {
+  if (statusOf(err) === 429) return 'Trop de tentatives, réessaie dans un instant.'
   const raw = err instanceof Error ? err.message.toLowerCase() : ''
   if (raw.includes('invalid') && (raw.includes('grant') || raw.includes('credential') || raw.includes('password'))) return 'E-mail ou mot de passe incorrect.'
   if (raw.includes('not confirmed') || raw.includes('confirm')) return 'Confirme ton adresse avec le lien reçu par e-mail avant de te connecter.'
   if (raw.includes('already') || raw.includes('registered') || raw.includes('exists')) return 'Un compte existe déjà avec cette adresse.'
   if (raw.includes('signup') && raw.includes('disabled')) return 'Les inscriptions sont fermées : demande une invitation.'
-  if (raw.includes('weak') || raw.includes('password')) return `Mot de passe refusé : ${MIN_PASSWORD} caractères minimum.`
+  if (raw.includes('weak') || raw.includes('password')) return `Mot de passe refusé : choisis-en un plus long (${MIN_PASSWORD} caractères minimum).`
   if (raw.includes('expired') || raw.includes('token')) return 'Ce lien a expiré : recommence la demande.'
-  if (err instanceof AuthError && err.status === 429) return 'Trop de tentatives, réessaie dans un instant.'
   return 'Opération impossible pour le moment. Réessaie dans un instant.'
 }
+
+// Repeated wrong passwords on this device: from the 5th failure, wait 30 s,
+// then twice as long each time (15 min at most). Netlify Identity limits
+// attempts on its side too; this stops a guessing script run in the page and
+// tells the person why nothing happens.
+const FAILS = 'nsp-login-fails'
+function lockedFor(): number {
+  try {
+    const { until = 0 } = JSON.parse(localStorage.getItem(FAILS) ?? '{}') as { until?: number }
+    return Math.max(0, Math.ceil((until - Date.now()) / 1000))
+  } catch {
+    return 0
+  }
+}
+function noteFailure() {
+  try {
+    const { n = 0 } = JSON.parse(localStorage.getItem(FAILS) ?? '{}') as { n?: number }
+    const count = n + 1
+    const until = count >= 5 ? Date.now() + Math.min(30_000 * 2 ** (count - 5), 15 * 60_000) : 0
+    localStorage.setItem(FAILS, JSON.stringify({ n: count, until }))
+  } catch {
+    /* private mode: Identity's own limit still applies */
+  }
+}
+function clearFailures() {
+  try {
+    localStorage.removeItem(FAILS)
+  } catch {
+    /* nothing to clear */
+  }
+}
+const wait = (s: number) => (s >= 60 ? `${Math.ceil(s / 60)} min` : `${s} s`)
 
 // The access token lasts about an hour; the refresh token kept by the browser
 // lasts much longer. Coming back later, the server only sees an expired token
@@ -88,6 +127,8 @@ function Connexion() {
           else await restoreSession()
           return
         }
+        // The token stays out of the address bar and the history.
+        history.replaceState(null, '', location.pathname)
         if (res.type === 'recovery') {
           setIntro('off')
           setMode('reset')
@@ -106,14 +147,35 @@ function Connexion() {
     e.preventDefault()
     setError('')
     setInfo('')
-    if ((mode === 'signup' || mode === 'reset' || mode === 'invite') && password.length < MIN_PASSWORD) {
-      setError(`Choisis un mot de passe d'au moins ${MIN_PASSWORD} caractères.`)
-      return
+    const fresh = mode === 'signup' || mode === 'reset' || mode === 'invite'
+    if (fresh) {
+      const check = checkPassword(password, email)
+      if (!check.ok) return setError(check.reason)
     }
+    if (mode === 'login' && lockedFor()) return setError(`Trop d'essais : réessaie dans ${wait(lockedFor())}.`)
     setBusy(true)
     try {
+      if (fresh) {
+        // Known leaks: refused (the check gives up after 4 s or offline).
+        const ctl = new AbortController()
+        const timer = setTimeout(() => ctl.abort(), 4000)
+        const leaks = await leakCount(password, ctl.signal)
+        clearTimeout(timer)
+        if (leaks) {
+          setError(`Ce mot de passe figure dans ${leaks.toLocaleString('fr-FR')} fuite${leaks > 1 ? 's' : ''} de données connue${leaks > 1 ? 's' : ''} : choisis-en un autre.`)
+          return
+        }
+      }
       if (mode === 'login') {
-        await login(email.trim(), password)
+        try {
+          await login(email.trim(), password)
+        } catch (err) {
+          // Only a refused password counts (not a network error or the server's own limit).
+          const status = statusOf(err)
+          if (status === 400 || status === 401) noteFailure()
+          throw err
+        }
+        clearFailures()
         window.location.replace('/')
       } else if (mode === 'signup') {
         const user = await signup(email.trim(), password)
@@ -124,7 +186,12 @@ function Connexion() {
           setInfo('Compte créé ! Clique sur le lien envoyé par e-mail pour le confirmer, puis connecte-toi.')
         }
       } else if (mode === 'forgot') {
-        await requestPasswordRecovery(email.trim())
+        // Same answer whether the address has an account or not (no way to test addresses).
+        try {
+          await requestPasswordRecovery(email.trim())
+        } catch (err) {
+          if (statusOf(err) === 429) throw err
+        }
         setInfo('Si un compte existe pour cette adresse, un lien de réinitialisation vient d\'être envoyé.')
       } else if (mode === 'reset') {
         await updateUser({ password })
@@ -207,7 +274,7 @@ function Connexion() {
             )}
             {needsPassword && (
               <label className="block text-sm">
-                <span className="mb-1 block text-mute">{mode === 'login' ? 'Mot de passe' : `Mot de passe (${MIN_PASSWORD} caractères minimum)`}</span>
+                <span className="mb-1 block text-mute">{mode === 'login' ? 'Mot de passe' : `Nouveau mot de passe (${MIN_PASSWORD} caractères minimum)`}</span>
                 <input
                   type="password"
                   name="password"
@@ -216,10 +283,13 @@ function Connexion() {
                   autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  maxLength={128}
+                  aria-describedby={mode === 'login' ? undefined : 'password-meter'}
                   className={field}
                 />
               </label>
             )}
+            {needsPassword && mode !== 'login' && <PasswordMeter id="password-meter" password={password} email={email} />}
 
             {error && (
               <p role="alert" className="rounded-md border border-pink/40 bg-pink/10 px-3 py-2 text-sm text-pink">
@@ -289,5 +359,27 @@ function IntroButtons({ onEnter }: { onEnter: (m: Mode) => void }) {
         Créer un compte
       </button>
     </>
+  )
+}
+
+const LEVELS = ['Très faible', 'Faible', 'Correct', 'Bon', 'Excellent']
+const COLORS = ['bg-pink-fill', 'bg-pink-fill', 'bg-violet', 'bg-cyan', 'bg-cyan']
+
+function PasswordMeter({ id, password, email }: { id: string; password: string; email: string }) {
+  const check = checkPassword(password, email)
+  const level = password ? check.score : -1
+  return (
+    <div id={id} className="-mt-1 text-xs text-mute" aria-live="polite">
+      <div className="mb-1 flex gap-1" aria-hidden="true">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <span key={i} className={`h-1 flex-1 rounded-full ${i <= level ? COLORS[Math.max(level, 0)] : 'bg-line'}`} />
+        ))}
+      </div>
+      {password
+        ? check.ok
+          ? `Solidité : ${LEVELS[check.score]}.`
+          : check.reason
+        : 'Une phrase de quelques mots est plus sûre et plus facile à retenir. Vérifié contre les fuites de données connues.'}
+    </div>
   )
 }

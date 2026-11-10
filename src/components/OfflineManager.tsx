@@ -86,7 +86,8 @@ export function OfflineManager() {
     // Opened offline through the app shell: go to the page that was asked for,
     // and reload data from the local copy rather than from the cached HTML.
     const go = new URLSearchParams(location.search).get('offline-go')
-    if (go && go.startsWith('/') && !go.startsWith('//')) void router.navigate({ to: go, replace: true })
+    // Only a path of this site (`//host` and `/\host` would mean another site).
+    if (go && /^\/(?![/\\])/.test(go)) void router.navigate({ to: go, replace: true })
     else if (isOffline()) void router.invalidate()
 
     // Preferences of the account (and Maily hors ligne) from the other devices.

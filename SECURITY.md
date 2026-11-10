@@ -10,6 +10,17 @@ L'accès se fait par **compte** (Netlify Identity : e-mail et mot de passe, conf
 
 Réglages Netlify à connaître (tableau de bord, *Identity*) : **Registration** en *Invite only* pour réserver l'application à des personnes invitées (sinon n'importe qui peut créer un compte, mais il n'accède qu'à son propre espace) ; *Confirmation* des e-mails activée.
 
+## Connexion et mots de passe
+
+- **Nouveaux mots de passe** (création de compte, invitation, réinitialisation) : 12 caractères minimum, 72 octets maximum (au-delà, le hachage bcrypt de Netlify Identity ignorerait la fin), pas trop répétitif, pas l'adresse e-mail, pas un mot de passe courant ; indicateur de solidité. Recommandations ANSSI et NIST SP 800-63B : la longueur compte, pas de règles de composition imposées.
+- **Fuites connues** : le mot de passe est comparé à la base *Have I Been Pwned* par k-anonymat : seuls les 5 premiers caractères de son empreinte SHA-1 quittent le navigateur, jamais le mot de passe. Refusé s'il apparaît dans une fuite ; si le service ne répond pas (4 s, hors ligne), le mot de passe passe.
+- **Essais répétés** : sur un appareil, à partir du 5ᵉ mot de passe refusé, attente de 30 s, doublée à chaque nouvel échec (15 min au plus). Netlify Identity applique aussi sa propre limite côté serveur.
+- **Pas d'énumération des comptes** : « Mot de passe oublié » donne la même réponse que l'adresse ait un compte ou non.
+- **Liens reçus par e-mail** : le jeton est retiré de la barre d'adresse et de l'historique dès qu'il est lu.
+- **Session** : le jeton (cookie `nf_jwt`, environ une heure, renouvelé) est vérifié côté serveur à chaque appel ; la déconnexion efface aussi la copie locale.
+- **Cache** : les pages et les réponses des fonctions serveur sont marquées `Cache-Control: private, no-cache` : aucun cache partagé (CDN, proxy) ne garde les données d'un compte.
+- **Données d'avant les comptes** : attribuées uniquement au compte `LEGACY_OWNER_EMAIL` (sans cette variable, à personne).
+
 ## Mesures en place
 
 | Risque | Mesure | Où |
@@ -18,6 +29,8 @@ Réglages Netlify à connaître (tableau de bord, *Identity*) : **Registration**
 | XSS via le HTML des modules (texte, code libre, import) | Assainisseur à liste blanche (balises, attributs, URL, styles) appliqué à l'import, à l'affichage et avant stockage ; les variables HuBL (`{{ }}`, `{% %}`) sont préservées | `src/lib/sanitize.ts`, `hubl.ts`, `Preview.tsx` |
 | Données stockées forgées (appel direct des serveurs de fonctions) | L'arbre d'un module ou d'un bloc est reconstruit bloc par bloc (types connus, valeurs bornées, couleurs/polices filtrées, URL sûres) | `src/lib/sanitize-tree.ts`, `src/server/*.functions.ts` |
 | CSRF | Toute requête d'écriture doit venir du même site (`Sec-Fetch-Site`/`Origin`/`Referer`) | `src/start.ts` |
+| Mots de passe faibles ou divulgués, essais en série | Règles de longueur, vérification *Have I Been Pwned* (k-anonymat), attente croissante après 5 échecs, réponse identique pour « mot de passe oublié » | `src/lib/password.ts`, `src/routes/connexion.tsx` |
+| Redirection vers un autre site | Les adresses internes passées en paramètre (`offline-go`) doivent être un chemin du site (`//` et `/\` refusés) | `src/components/OfflineManager.tsx` |
 | Injection de scripts, clickjacking, MIME sniffing | `Content-Security-Policy`, `X-Frame-Options`, `nosniff`, HSTS, `Referrer-Policy`, `Permissions-Policy` | `src/start.ts`, `netlify.toml` |
 | Abus des API payantes ou de stockage | Limitation Netlify au niveau plateforme (`/api/maily` 20/min, `/api/*` 120/min par IP) + limitation applicative par IP (IA 20/min, envois 30/min, écritures 240/min), tailles bornées | `netlify.toml`, `src/server/rate-limit.ts` |
 | Fichiers déguisés | Extensions en liste blanche, signature (octets magiques) vérifiée, pas de SVG ni de scripts, téléchargement forcé hors images/PDF, CSP `sandbox` | `api.files*.ts`, `api.images*.ts`, `upload-check.ts` |
@@ -38,13 +51,16 @@ Les modules, blocs et pages de l'application sont copiés dans le navigateur (In
 - La limitation de débit est en mémoire, par instance serveur : c'est un frein, pas un pare-feu. Pour une protection complète, ajoute une règle de limitation Netlify.
 - Les commentaires HTML (dont les conditionnels Outlook `<!--[if mso]>`) sont retirés des blocs texte et code libre par l'assainisseur.
 - Les fichiers et images téléversés sont servis sans connexion à qui connaît leur adresse (nécessaire pour qu'ils s'affichent dans les e-mails) ; les adresses sont aléatoires et la liste des fichiers est privée.
-- Les données créées avant l'arrivée des comptes sont attribuées une seule fois à un compte : celui de `LEGACY_OWNER_EMAIL` si cette variable d'environnement est définie, sinon le premier compte qui ouvre l'application.
+- Les données créées avant l'arrivée des comptes sont attribuées une seule fois, au compte de `LEGACY_OWNER_EMAIL` uniquement (déjà fait si l'attribution a eu lieu avant ce changement).
+- Le cookie de session est posé par la bibliothèque Netlify Identity dans le navigateur, donc lisible par un script de la page : l'assainisseur et la CSP sont ce qui empêche un script étranger d'y accéder.
+- Changer de mot de passe ne déconnecte pas les autres appareils déjà connectés (limite de Netlify Identity) : leur session expire au plus tard au prochain renouvellement refusé.
+- L'attente après des échecs de connexion est propre à l'appareil ; contre un robot, c'est la limite de Netlify Identity qui protège. L'authentification à deux facteurs n'est pas proposée par Netlify Identity.
 - Une session ouverte reste valide environ une heure avant renouvellement ; supprimer un compte dans Netlify Identity ne coupe pas instantanément une session déjà émise.
 - La CSP autorise `'unsafe-inline'` pour les scripts (amorçage du rendu serveur) ; elle sert de seconde barrière derrière l'assainisseur.
 
 ## Garder le projet à jour
 
 - Dependabot (`.github/dependabot.yml`) ouvre chaque lundi une demande de mise à jour groupée des dépendances.
-- Le workflow `.github/workflows/securite.yml` lance `pnpm audit --audit-level=high`, le typage et le build à chaque envoi, sur chaque demande de fusion et chaque lundi ; il échoue dès qu'une faille haute ou critique est connue.
+- Le workflow `.github/workflows/securite.yml` lance `pnpm audit --audit-level=high`, le typage et le build à chaque envoi, sur chaque demande de fusion et chaque jour, avec une recherche de secrets (gitleaks) et le contrôle des dépendances ajoutées par une demande de fusion ; il échoue dès qu'une faille haute ou critique est connue.
 - Les alertes restantes de gravité faible viennent d'outils de développement (`@netlify/dev`) sans correctif publié ; elles ne sont pas embarquées dans l'application en ligne.
 - Avant une mise en production, lance aussi `pnpm audit` à la main.

@@ -43,8 +43,9 @@ export const unauthorized = () => Response.json({ error: LOGIN_REQUIRED }, { sta
 // ---------------------------------------------------------------------------
 
 // Modules, blocks and files from the single-user era have no owner. They go to
-// one account, once: LEGACY_OWNER_EMAIL when set, otherwise the first account
-// that opens the app. Atomic: the claim row can only be inserted once.
+// one account, once, and only to LEGACY_OWNER_EMAIL: without that variable
+// nobody gets them (before, the first account to open the app did — with open
+// sign-ups, a stranger could have). Atomic: the claim row is inserted once.
 let owner: string | null | undefined
 
 export async function legacyOwner(user?: SessionUser): Promise<string | null> {
@@ -53,7 +54,7 @@ export async function legacyOwner(user?: SessionUser): Promise<string | null> {
   if (row) return (owner = row.userId)
   if (!user) return null
   const expected = process.env.LEGACY_OWNER_EMAIL?.trim().toLowerCase()
-  if (expected && user.email.toLowerCase() !== expected) return null
+  if (!expected || user.email.toLowerCase() !== expected) return null
   const [won] = await db.insert(legacyClaim).values({ id: 1, userId: user.id }).onConflictDoNothing().returning()
   if (!won) return legacyOwner()
   await db.update(modules).set({ userId: user.id }).where(isNull(modules.userId))
