@@ -3,6 +3,8 @@ import { guardedFetch } from '@/lib/session-guard'
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, BookmarkPlus, Check, Copy, Loader2, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { BoxModel } from './BoxModel'
+import type { BoxLayer } from './BoxModel'
 import { ConvertPanel } from './ConvertPanel'
 import { EstimatePanel } from './EstimatePanel'
 import { ImageUpload } from './ImageUpload'
@@ -110,16 +112,67 @@ export function OptRange(props: { label: string; value: number | undefined; base
   )
 }
 
-// Margins above / below and visibility: the same block of settings for every element.
+// Margins (4 sides), inner margins (sections, buttons) and visibility: the
+// same block of settings for every element, gathered in one box.
+const MKEY = { t: 'mt', b: 'mb', l: 'ml', r: 'mr' } as const
+const PKEY = { t: 'pt', b: 'pb', l: 'pl', r: 'pr' } as const
+
 function SpacingFields({ b, set, nested }: { b: Block; set: (patch: Partial<Block>) => void; nested?: boolean }) {
   if (b.type === 'raw') return null
-  const def = spacingOf({ ...b, mt: undefined, mb: undefined } as Block, nested)
-  const hide = (b as Spacing).hide
+  const sp = b as Spacing
+  const def = spacingOf({ ...b, mt: undefined, mb: undefined, ml: undefined, mr: undefined } as Block, nested)
+  const hide = sp.hide
+  const isSection = b.type === 'section'
+  const margin: BoxLayer = {
+    values: { t: sp.mt, b: sp.mb, l: sp.ml, r: sp.mr },
+    base: { t: def.t, b: def.b, l: 0, r: 0 },
+    locked: isSection
+      ? { l: 'une section remplit toujours sa colonne : règle la marge intérieure de la section qui la contient', r: 'une section remplit toujours sa colonne : règle la marge intérieure de la section qui la contient' }
+      : undefined,
+    max: 200,
+    onChange: (side, v) => set({ [MKEY[side]]: v } as Partial<Block>),
+    onAll: (v) => set((isSection ? { mt: v, mb: v } : { mt: v, mb: v, ml: v, mr: v }) as Partial<Block>),
+  }
+  let padding: BoxLayer | undefined
+  if (b.type === 'section') {
+    const y = b.padY ?? b.padding
+    const x = b.padX ?? b.padding
+    // A section's inner margin always has a value: shown as typed, not greyed.
+    padding = {
+      values: { t: b.pt ?? y, r: b.pr ?? x, b: b.pb ?? y, l: b.pl ?? x },
+      base: { t: y, b: y, l: x, r: x },
+      custom: [b.pt, b.pr, b.pb, b.pl].some((v) => v != null),
+      max: 200,
+      onChange: (side, v) => set({ [PKEY[side]]: v } as Partial<Block>),
+      onAll: (v) =>
+        set(
+          v == null
+            ? { pt: undefined, pr: undefined, pb: undefined, pl: undefined }
+            : { padding: v, padY: undefined, padX: undefined, pt: undefined, pr: undefined, pb: undefined, pl: undefined },
+        ),
+    }
+  } else if (b.type === 'button') {
+    const why = b.fullWidth ? 'bouton en pleine largeur' : undefined
+    padding = {
+      values: { t: undefined, b: undefined, l: b.padX, r: b.padX },
+      base: { t: 0, b: 0, l: 26, r: 26 },
+      locked: { t: 'réglée par la hauteur du bouton', b: 'réglée par la hauteur du bouton', ...(why ? { l: why, r: why } : {}) },
+      max: 70,
+      onChange: (_side, v) => set({ padX: v == null ? undefined : Math.max(6, v) } as Partial<Block>),
+      onAll: (v) => set({ padX: v == null ? undefined : Math.max(6, v) } as Partial<Block>),
+    }
+  }
+  const note =
+    b.type === 'section'
+      ? 'Gauche et droite de la marge intérieure : bords extérieurs de la première et de la dernière colonne.'
+      : b.type === 'button'
+        ? 'Marge intérieure gauche / droite : la même des deux côtés du texte.'
+        : undefined
   return (
     <div className="space-y-3 rounded-lg border border-line p-3">
-      <p className="font-mono text-[10px] tracking-wider text-mute uppercase">Espacements et visibilité</p>
-      <OptRange label="Marge au-dessus" value={(b as Spacing).mt} base={def.t} min={0} max={80} onChange={(mt) => set({ mt } as Partial<Block>)} />
-      <OptRange label="Marge en dessous" value={(b as Spacing).mb} base={def.b} min={0} max={80} onChange={(mb) => set({ mb } as Partial<Block>)} />
+      <p className="font-mono text-[10px] tracking-wider text-mute uppercase">Marges et visibilité</p>
+      <BoxModel margin={margin} padding={padding} label={isSection ? (nested ? 'Card' : 'Section') : BLOCK_LABELS[b.type]} note={note} />
+      <p className="text-[11px] text-mute">Pour Outlook seulement : onglet Outlook de la fenêtre VML.</p>
       <Segmented
         label="Affichage"
         value={hide ?? 'all'}
@@ -177,7 +230,8 @@ function Segmented<T extends string | number>({
 }
 
 // Height, text and border of a button: same fields in the editor panel and in the VML window.
-export function ButtonLookFields({ b, onChange }: { b: ButtonBlock; onChange: (patch: Partial<ButtonBlock>) => void }) {
+// `inBox`: in the Réglages the side margins are in the « Marges » box, not here.
+export function ButtonLookFields({ b, onChange, inBox }: { b: ButtonBlock; onChange: (patch: Partial<ButtonBlock>) => void; inBox?: boolean }) {
   const bw = buttonBorder(b)
   return (
     <div className="space-y-3">
@@ -190,7 +244,7 @@ export function ButtonLookFields({ b, onChange }: { b: ButtonBlock; onChange: (p
           { value: 'full', label: 'Pleine largeur' },
         ]}
       />
-      {!b.fullWidth && <OptRange label="Marges latérales" value={b.padX} base={26} min={6} max={70} onChange={(padX) => onChange({ padX })} />}
+      {!b.fullWidth && !inBox && <OptRange label="Marges latérales" value={b.padX} base={26} min={6} max={70} onChange={(padX) => onChange({ padX })} />}
       <RangeField label="Hauteur" value={buttonHeight(b)} min={28} max={80} onChange={(height) => onChange({ height })} />
       <RangeField label="Taille du texte" value={buttonFontSize(b)} min={11} max={28} onChange={(fontSize) => onChange({ fontSize })} />
       <Group label="Style du texte">
@@ -456,7 +510,7 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
           <ColorField label="Texte" value={b.color} onChange={(color) => set({ color })} />
           <RangeField label="Arrondi" value={b.radius} min={0} max={40} onChange={(radius) => set({ radius })} />
           <AlignField value={b.align} onChange={(align) => set({ align })} />
-          <ButtonLookFields b={b} onChange={set} />
+          <ButtonLookFields b={b} onChange={set} inBox />
         </>
       )
     case 'image':
@@ -602,9 +656,9 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
           </Field>
           {!b.bgImage && <ImageUpload compact onUploaded={(bgImage) => set({ bgImage })} />}
           {b.bgImage && <p className="-mt-2 text-xs text-mute">La couleur de fond reste affichée là où l'image ne l'est pas (Outlook, images bloquées) : choisis-la proche de l'image.</p>}
-          <RangeField label="Marge interne" value={b.padding} min={0} max={64} onChange={(padding) => set({ padding, padY: undefined, padX: undefined })} />
-          <OptRange label="Marge interne haut / bas" value={b.padY} base={b.padding} min={0} max={96} onChange={(padY) => set({ padY })} />
-          <OptRange label="Marge interne gauche / droite" value={b.padX} base={b.padding} min={0} max={96} onChange={(padX) => set({ padX })} />
+          {b.columns > 1 && (
+            <OptRange label="Espace entre les colonnes" value={b.padX} base={b.padding} min={0} max={96} onChange={(padX) => set({ padX })} />
+          )}
           <RangeField label="Arrondi" value={b.radius} min={0} max={40} onChange={(radius) => set({ radius })} />
           <RangeField label="Bordure" value={b.borderWidth ?? 0} min={0} max={8} onChange={(w) => set(w ? { borderWidth: w, borderColor: b.borderColor ?? '#e3e3ee' } : { borderWidth: undefined, borderColor: undefined })} />
           {!!b.borderWidth && <ColorField label="Couleur de la bordure" value={b.borderColor ?? '#e3e3ee'} onChange={(borderColor) => set({ borderColor })} />}

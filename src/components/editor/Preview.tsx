@@ -166,7 +166,7 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
       label={`${b.type !== 'section' && 'field' in b && b.field?.label ? b.field.label : BLOCK_LABELS[b.type]}${hide === 'mobile' ? ' · masqué sur mobile' : hide === 'desktop' ? ' · mobile seulement' : ''}`}
       editable={b.type === 'heading' || b.type === 'text' || b.type === 'button'}
       hint={b.type === 'raw' && /<[a-zA-Z]/.test(b.html) ? ' · clique un élément pour le modifier, glisse-le pour le déplacer' : undefined}
-      selectedId={p.selectedId} onSelect={p.onSelect} style={{ marginTop: sp.t || undefined, marginBottom: sp.b || undefined, ...style }} onDropImage={p.onDropImage}>
+      selectedId={p.selectedId} onSelect={p.onSelect} style={{ marginTop: sp.t || undefined, marginBottom: sp.b || undefined, marginLeft: sp.l || undefined, marginRight: sp.r || undefined, ...style }} onDropImage={p.onDropImage}>
       {children}
     </Node>
   )
@@ -228,11 +228,17 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
       )
     case 'divider':
       // Margins of a divider are padding here, so its whole height stays clickable.
-      return node(<hr style={{ border: 0, borderTop: dividerLine(b), margin: '0 auto', width: b.width && b.width < 100 ? `${b.width}%` : undefined }} />, {
-        marginTop: 0,
-        marginBottom: 0,
-        padding: `${sp.t}px 0 ${sp.b}px`,
-      })
+      return node(
+        <hr
+          style={{
+            border: 0,
+            borderTop: dividerLine(b),
+            margin: `0 ${b.mr != null ? `${sp.r}px` : 'auto'} 0 ${b.ml != null ? `${sp.l}px` : 'auto'}`,
+            width: b.width && b.width < 100 ? `${b.width}%` : undefined,
+          }}
+        />,
+        { marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0, padding: `${sp.t}px 0 ${sp.b}px` },
+      )
     case 'spacer':
       return node(<div style={{ height: p.mobile && b.mobileHeight != null ? b.mobileHeight : b.height }} />)
     case 'raw':
@@ -268,7 +274,7 @@ function cssObject(css?: string): CSSProperties {
 
 function SectionView({ s, font, nested, ...p }: { s: Section; font: string; nested?: boolean } & Omit<Props, 'tree'>) {
   const stacked = p.mobile && s.behavior === 'stack'
-  const { y: padY, x: padX } = sectionPad(s)
+  const { x: padX, t: padT, b: padB, l: padL, r: padR } = sectionPad(s)
   const widths = columnWidths(s)
   const sp = spacingOf(s, nested)
   const img = safeBgImage(s.bgImage)
@@ -294,8 +300,8 @@ function SectionView({ s, font, nested, ...p }: { s: Section; font: string; nest
       <div style={{ display: 'flex', flexDirection: stacked ? 'column' : 'row', alignItems: stacked ? undefined : s.valign === 'middle' ? 'center' : s.valign === 'bottom' ? 'flex-end' : 'flex-start' }}>
         {s.cells.map((cell, i) => {
           const last = i === s.cells.length - 1
-          const left = stacked || i === 0 ? padX : padX / 2
-          const right = stacked || last ? padX : padX / 2
+          const left = stacked || i === 0 ? padL : padX / 2
+          const right = stacked || last ? padR : padX / 2
           return (
             <div
               key={i}
@@ -304,7 +310,7 @@ function SectionView({ s, font, nested, ...p }: { s: Section; font: string; nest
               style={{
                 flex: stacked ? '1 1 auto' : `${widths[i]} 1 0`,
                 minWidth: 0,
-                padding: `${stacked && i > 0 ? 0 : padY}px ${right}px ${padY}px ${left}px`,
+                padding: `${stacked && i > 0 ? 0 : padT}px ${right}px ${padB}px ${left}px`,
               }}
             >
               {/* A loop grid's last row may end early: its spare cells stay blank. */}

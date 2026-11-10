@@ -35,6 +35,9 @@ export interface Spacing {
   /** Margin above / below, px. */
   mt?: number
   mb?: number
+  /** Margin left / right, px (blocks only: a section always fills its column). */
+  ml?: number
+  mr?: number
   /** Hidden on phones (≤ 480px) or shown only on phones. */
   hide?: Hide
 }
@@ -169,6 +172,13 @@ export interface Section extends Spacing {
   /** Top/bottom and left/right padding when they differ from `padding`. */
   padY?: number
   padX?: number
+  /** One side's padding when it differs (top, right, bottom, left; right/left
+   *  are the outer edges of the first/last column, the gap between columns
+   *  stays `padX`). */
+  pt?: number
+  pr?: number
+  pb?: number
+  pl?: number
   borderWidth?: number
   borderColor?: string
   /** Background image (https), the colour stays as a fallback (Outlook). */

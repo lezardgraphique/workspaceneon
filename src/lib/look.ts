@@ -7,20 +7,29 @@ export const MOBILE = 'only screen and (max-width: 480px)'
 
 // Default margins (px) around an element: 12 under a block, 16 around a divider,
 // 12 under a nested card, nothing around a top-level section or a spacer.
-export function spacingOf(b: Block, nested = false): { t: number; b: number } {
+export function spacingOf(b: Block, nested = false): { t: number; b: number; l: number; r: number } {
   const def = b.type === 'divider' ? [16, 16] : b.type === 'section' ? [0, nested ? 12 : 0] : b.type === 'spacer' || b.type === 'raw' ? [0, b.type === 'raw' ? 12 : 0] : [0, 12]
   const s = b as Spacing
-  return { t: s.mt ?? def[0], b: s.mb ?? def[1] }
+  // Left/right margins only exist for blocks: a section always fills its column.
+  const side = b.type !== 'section'
+  return { t: s.mt ?? def[0], b: s.mb ?? def[1], l: side ? (s.ml ?? 0) : 0, r: side ? (s.mr ?? 0) : 0 }
 }
 
 const px = (n: number) => (n ? `${n}px` : '0')
-export const marginCss = (t: number, b: number) => (t === b ? `margin:${px(t)} 0;` : `margin:${px(t)} 0 ${px(b)};`)
+export const marginCss = (t: number, b: number, l = 0, r = 0) =>
+  l || r ? `margin:${px(t)} ${px(r)} ${px(b)} ${px(l)};` : t === b ? `margin:${px(t)} 0;` : `margin:${px(t)} 0 ${px(b)};`
 
-export const hasSpacing = (b: Spacing) => b.mt != null || b.mb != null
+export const hasSpacing = (b: Spacing) => b.mt != null || b.mb != null || b.ml != null || b.mr != null
 
 // Data attributes of the shared settings (sync code only).
 export function spacingAttrs(b: Spacing): Record<string, string | number> {
-  return { ...(b.mt != null ? { mt: b.mt } : {}), ...(b.mb != null ? { mb: b.mb } : {}), ...(b.hide ? { hide: b.hide } : {}) }
+  return {
+    ...(b.mt != null ? { mt: b.mt } : {}),
+    ...(b.mb != null ? { mb: b.mb } : {}),
+    ...(b.ml != null ? { ml: b.ml } : {}),
+    ...(b.mr != null ? { mr: b.mr } : {}),
+    ...(b.hide ? { hide: b.hide } : {}),
+  }
 }
 
 export function spacingParse(g: (k: string) => string | null): Spacing {
@@ -31,10 +40,10 @@ export function spacingParse(g: (k: string) => string | null): Spacing {
   }
   const hide = g('hide')
   const out: Spacing = {}
-  const mt = n('mt')
-  const mb = n('mb')
-  if (mt != null) out.mt = mt
-  if (mb != null) out.mb = mb
+  for (const k of ['mt', 'mb', 'ml', 'mr'] as const) {
+    const v = n(k)
+    if (v != null) out[k] = v
+  }
   if (hide === 'mobile' || hide === 'desktop') out.hide = hide
   return out
 }
@@ -42,10 +51,10 @@ export function spacingParse(g: (k: string) => string | null): Spacing {
 export function spacingClean(raw: Record<string, unknown>): Spacing {
   const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(200, Math.max(0, v))) : undefined)
   const out: Spacing = {}
-  const mt = n(raw.mt)
-  const mb = n(raw.mb)
-  if (mt != null) out.mt = mt
-  if (mb != null) out.mb = mb
+  for (const k of ['mt', 'mb', 'ml', 'mr'] as const) {
+    const v = n(raw[k])
+    if (v != null) out[k] = v
+  }
   if (raw.hide === 'mobile' || raw.hide === 'desktop') out.hide = raw.hide
   return out
 }
@@ -65,7 +74,13 @@ export const headingWeight = (b: HeadingBlock) => b.weight ?? 700
 
 export const dividerLine = (b: DividerBlock) => `${b.thickness ?? 1}px ${b.lineStyle ?? 'solid'} ${b.color}`
 
-export const sectionPad = (s: Section) => ({ y: s.padY ?? s.padding, x: s.padX ?? s.padding })
+// Section padding: `y`/`x` as before (x = gap between columns too), and each
+// outer side, which can differ (pt/pr/pb/pl).
+export const sectionPad = (s: Section) => {
+  const y = s.padY ?? s.padding
+  const x = s.padX ?? s.padding
+  return { y, x, t: s.pt ?? y, b: s.pb ?? y, l: s.pl ?? x, r: s.pr ?? x }
+}
 
 // Column widths in % for a section: 2 columns can be split unevenly.
 export function columnWidths(s: Section): number[] {
