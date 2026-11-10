@@ -31,6 +31,9 @@ C'est la version web de l'application Kotlin Multiplatform *workspace_neon* (seu
 - Tests internes de l'outil (« Lance les tests internes de l'outil ») et création des modules qui manquent à la bibliothèque, sur demande.
 - Hors ligne : peut être téléchargée sur l'appareil, sinon répond aux questions sur l'application.
 
+**Connexion IA (MCP)**
+- Serveur MCP intégré : depuis « Mon compte », crée une connexion et colle son adresse dans Claude (connecteur personnalisé) ou dans un autre client MCP. L'IA peut lister, lire, créer et modifier tes modules et tes blocs, les exporter et tester leur rendu, jamais rien supprimer.
+
 **Partout**
 - Comptes personnels : chaque compte ne voit que ses modules, ses blocs et ses fichiers.
 - Espace fichiers (10 Mo par fichier, 200 Mo par compte), images hébergées pour les e-mails.

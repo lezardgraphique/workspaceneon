@@ -10,6 +10,13 @@ L'accès se fait par **compte** (Netlify Identity : e-mail et mot de passe, conf
 
 Réglages Netlify à connaître (tableau de bord, *Identity*) : **Registration** en *Invite only* pour réserver l'application à des personnes invitées (sinon n'importe qui peut créer un compte, mais il n'accède qu'à son propre espace) ; *Confirmation* des e-mails activée.
 
+## Serveur MCP (connexion d'une IA)
+
+- `/mcp/…` laisse une IA (Claude…) lister, lire, créer et modifier les modules et blocs d'un compte, les exporter et les auditer. **Aucune suppression possible**.
+- Accès par **jeton personnel** uniquement (créé dans « Mon compte », affiché une seule fois, 32 octets aléatoires, seule son empreinte SHA-256 est stockée, révocable, 10 au plus) : dans l'adresse (`/mcp/<jeton>`, les connecteurs de claude.ai ne prennent qu'une URL) ou en `Authorization: Bearer`. Le cookie de session n'y est jamais accepté : une page web ne peut pas s'en servir à la place d'un visiteur, d'où l'exemption de la vérification CSRF sur ce seul chemin.
+- Tout ce qui est écrit passe par les mêmes contrôles que l'éditeur (validateur, `sanitizeTree`, tailles maximales) ; chaque requête est limitée au compte du jeton ; 120 appels par minute et par jeton.
+- Le jeton figurant dans l'adresse peut apparaître dans les journaux de Netlify (visibles par le seul propriétaire du site) : révoque-le et crée-en un autre au moindre doute.
+
 ## Connexion et mots de passe
 
 - **Nouveaux mots de passe** (création de compte, invitation, réinitialisation) : 12 caractères minimum, 72 octets maximum (au-delà, le hachage bcrypt de Netlify Identity ignorerait la fin), pas trop répétitif, pas l'adresse e-mail, pas un mot de passe courant ; indicateur de solidité. Recommandations ANSSI et NIST SP 800-63B : la longueur compte, pas de règles de composition imposées.
@@ -28,7 +35,8 @@ Réglages Netlify à connaître (tableau de bord, *Identity*) : **Registration**
 | Accès aux données d'autrui | Session Netlify Identity vérifiée côté serveur à chaque appel ; toutes les requêtes sont filtrées par `user_id` ; un identifiant étranger se comporte comme un identifiant inexistant ; clés de fichiers préfixées par l'empreinte du propriétaire | `src/server/auth.server.ts`, `*.functions.ts`, `file-owner.ts` |
 | XSS via le HTML des modules (texte, code libre, import) | Assainisseur à liste blanche (balises, attributs, URL, styles) appliqué à l'import, à l'affichage et avant stockage ; les variables HuBL (`{{ }}`, `{% %}`) sont préservées | `src/lib/sanitize.ts`, `hubl.ts`, `Preview.tsx` |
 | Données stockées forgées (appel direct des serveurs de fonctions) | L'arbre d'un module ou d'un bloc est reconstruit bloc par bloc (types connus, valeurs bornées, couleurs/polices filtrées, URL sûres) | `src/lib/sanitize-tree.ts`, `src/server/*.functions.ts` |
-| CSRF | Toute requête d'écriture doit venir du même site (`Sec-Fetch-Site`/`Origin`/`Referer`) | `src/start.ts` |
+| CSRF | Toute requête d'écriture doit venir du même site (`Sec-Fetch-Site`/`Origin`/`Referer`), sauf `/mcp/` qui n'accepte qu'un jeton personnel | `src/start.ts` |
+| Accès d'une IA au compte | Jetons personnels hachés, révocables, sans droit de suppression, limités en débit | `src/routes/mcp.$.ts`, `src/server/api-tokens.server.ts` |
 | Mots de passe faibles ou divulgués, essais en série | Règles de longueur, vérification *Have I Been Pwned* (k-anonymat), attente croissante après 5 échecs, réponse identique pour « mot de passe oublié » | `src/lib/password.ts`, `src/routes/connexion.tsx` |
 | Redirection vers un autre site | Les adresses internes passées en paramètre (`offline-go`) doivent être un chemin du site (`//` et `/\` refusés) | `src/components/OfflineManager.tsx` |
 | Injection de scripts, clickjacking, MIME sniffing | `Content-Security-Policy`, `X-Frame-Options`, `nosniff`, HSTS, `Referrer-Policy`, `Permissions-Policy` | `src/start.ts`, `netlify.toml` |

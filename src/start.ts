@@ -86,7 +86,13 @@ export const startInstance = createStart(() => ({
   requestMiddleware: [
     // Writes must come from this site (Sec-Fetch-Site / Origin / Referer): a
     // page on another domain can't make a visitor's browser edit or delete.
-    createCsrfMiddleware({ filter: ({ request }) => !['GET', 'HEAD', 'OPTIONS'].includes(request.method.toUpperCase()) }),
+    // The MCP server (/mcp/…) is called by AI services from their own servers,
+    // with no Origin: it only accepts a personal token, never the session
+    // cookie, so a forged cross-site request has nothing to ride on.
+    createCsrfMiddleware({
+      filter: ({ request }) =>
+        !['GET', 'HEAD', 'OPTIONS'].includes(request.method.toUpperCase()) && !new URL(request.url).pathname.startsWith('/mcp/'),
+    }),
     securityHeaders,
   ],
 }))

@@ -52,3 +52,22 @@ export const userSettings = pgTable('user_settings', {
   prefs: jsonb().notNull().default({}),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+// Personal access tokens for the MCP server (/mcp): an AI client (Claude…)
+// acts on the account's modules and blocks with one. Only the SHA-256 of the
+// token is stored (shown once at creation); `prefix` helps recognise it in the
+// list. A revoked token stays listed (revokedAt) and never works again.
+export const apiTokens = pgTable(
+  'api_tokens',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: text('user_id').notNull(),
+    name: text().notNull(),
+    tokenHash: text('token_hash').notNull(),
+    prefix: text().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [unique('api_tokens_hash_unique').on(t.tokenHash), index('api_tokens_user_idx').on(t.userId)],
+)

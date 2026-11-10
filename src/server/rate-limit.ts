@@ -46,6 +46,8 @@ export const RULES: Array<{ test: (path: string, method: string) => boolean; rul
   { test: (p) => p === '/countdown.gif', rule: { name: 'countdown', max: 300, windowMs: MIN } },
   // Account copy of the offline Maily model: ~270 parts of 3 MB per transfer, sent or fetched in a few minutes.
   { test: (p) => p.startsWith('/modele-local/'), rule: { name: 'model', max: 400, windowMs: MIN } },
+  // MCP server: many users' AI clients can share an IP; each token also has its own limit (120/min, mcp.$.ts).
+  { test: (p) => p.startsWith('/mcp/'), rule: { name: 'mcp', max: 600, windowMs: MIN } },
   { test: (p, m) => p.startsWith('/api/files/') && m === 'DELETE', rule: { name: 'delete', max: 60, windowMs: MIN } },
   { test: (_p, m) => m !== 'GET' && m !== 'HEAD' && m !== 'OPTIONS', rule: { name: 'write', max: 240, windowMs: MIN } },
 ]
