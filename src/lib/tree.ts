@@ -65,8 +65,18 @@ export function replaceNode(tree: ModuleTree, id: string, blocks: Block[]): Modu
 }
 
 // Convert every raw block of the tree at once.
-export function expandRaw(tree: ModuleTree, convert: (html: string) => Block[]): ModuleTree {
-  return mapLists(tree, (list) => list.flatMap((b) => (b.type === 'raw' ? convert(b.html) : [b])))
+export function expandRaw(tree: ModuleTree, convert: (html: string) => Block[], only?: Set<string>): ModuleTree {
+  return mapLists(tree, (list) => list.flatMap((b) => (b.type === 'raw' && (!only || only.has(b.id)) ? convert(b.html) : [b])))
+}
+
+/** Every raw block (« Bloc HTML » or logic line) of the module, in document order. */
+export function rawBlocks(tree: ModuleTree): Extract<Block, { type: 'raw' }>[] {
+  const found: Extract<Block, { type: 'raw' }>[] = []
+  mapLists(tree, (list) => {
+    for (const b of list) if (b.type === 'raw') found.push(b)
+    return list
+  })
+  return found
 }
 
 export function moveNode(tree: ModuleTree, id: string, dir: -1 | 1): ModuleTree {

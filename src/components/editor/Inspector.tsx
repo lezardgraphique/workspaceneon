@@ -3,8 +3,10 @@ import { guardedFetch } from '@/lib/session-guard'
 import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, BookmarkPlus, Check, Copy, Loader2, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { ConvertPanel } from './ConvertPanel'
 import { EstimatePanel } from './EstimatePanel'
 import { ImageUpload } from './ImageUpload'
+import { PhotoButton } from './PhotoButton'
 import { ExtraFieldCard } from './FieldsPanel'
 import { refreshCustomBlocks } from './useCustomBlocks'
 import { wrapForLibrary } from '@/lib/custom-blocks'
@@ -16,9 +18,7 @@ import type { Align, Block, ButtonBlock, Columns, ModuleTree, Section, Spacing }
 import { headingLine, headingWeight, spacingOf, textLine } from '@/lib/look'
 import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight } from '@/lib/vml'
 import {
-  countBlocks,
   duplicateNode,
-  expandRaw,
   findNode,
   findPath,
   moveNode,
@@ -467,7 +467,12 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
               <img src={b.src} alt="" className="max-h-40 max-w-full object-contain" />
             </div>
           )}
-          <ImageUpload onUploaded={(src) => set({ src })} />
+          <div className="flex gap-2">
+            <div className="min-w-0 flex-1">
+              <ImageUpload onUploaded={(src) => set({ src })} />
+            </div>
+            <PhotoButton src={b.src} onSave={(src) => set({ src })} />
+          </div>
           <Field label="Ou URL de l'image (https://…)">
             <input className={`${input} ${mono}`} value={b.src} onChange={(e) => set({ src: e.target.value })} placeholder="https://…" />
           </Field>
@@ -614,7 +619,6 @@ export function Inspector(p: Props) {
 
   if (!node) {
     const t = p.tree
-    const rawCount = countBlocks(t, 'raw')
     return (
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
         <div>
@@ -634,20 +638,7 @@ export function Inspector(p: Props) {
             {!FONTS.includes(t.font) && <option value={t.font}>{t.font}</option>}
           </select>
         </Field>
-        {rawCount > 0 && (
-          <div className="rounded-lg border border-cyan/30 bg-cyan/5 p-3">
-            <p className="mb-2 text-xs text-mute">
-              {rawCount} {rawCount > 1 ? 'Blocs HTML' : 'Bloc HTML'} dans ce module.
-            </p>
-            <button
-              type="button"
-              onClick={() => p.commit(expandRaw(t, htmlToBlocks))}
-              className="flex w-full items-center justify-center gap-2 rounded-md bg-cyan px-3 py-2.5 text-sm font-semibold text-void hover:brightness-110 lg:py-2"
-            >
-              <Wand2 className="size-4" /> Tout convertir en blocs
-            </button>
-          </div>
-        )}
+        <ConvertPanel tree={t} commit={(next) => p.commit(next)} onSelect={(id) => p.onSelect(id)} />
         {t.sections.length > 0 && (
           <div className="space-y-2">
             <button

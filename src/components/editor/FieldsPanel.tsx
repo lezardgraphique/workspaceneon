@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Braces, ImageIcon, RotateCcw } from 'lucide-react'
 
 import { ImageUpload } from './ImageUpload'
+import { PhotoButton } from './PhotoButton'
 import { BLOCK_ICONS } from './Structure'
 import { defaultFor } from '@/lib/extra-fields'
 import { FIELD_KIND, collectFields } from '@/lib/fields'
@@ -54,7 +55,12 @@ function Value({ b, set }: { b: FieldBlock; set: (patch: Partial<Block>) => void
           <div className="grid min-w-0 flex-1 gap-2">
             <input className={`${input} ${mono}`} value={b.src} onChange={(e) => set({ src: e.target.value })} aria-label="URL de l'image" placeholder="https://…" />
             <input className={input} value={b.alt} onChange={(e) => set({ alt: e.target.value })} aria-label="Texte alternatif" placeholder="Texte alternatif" />
-            <ImageUpload compact onUploaded={(src) => set({ src })} />
+            <div className="flex gap-2">
+              <div className="min-w-0 flex-1">
+                <ImageUpload compact onUploaded={(src) => set({ src })} />
+              </div>
+              <PhotoButton compact src={b.src} onSave={(src) => set({ src })} />
+            </div>
           </div>
         </div>
       )
