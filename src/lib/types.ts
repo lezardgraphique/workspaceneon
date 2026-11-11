@@ -107,6 +107,8 @@ export interface ButtonBlock extends Spacing {
   fullWidth?: boolean
   /** Left/right padding, px (26 when absent). */
   padX?: number
+  /** Top/bottom padding, px (12 when absent; a fixed `height` wins). */
+  padY?: number
 }
 
 export interface ImageBlock extends Spacing {

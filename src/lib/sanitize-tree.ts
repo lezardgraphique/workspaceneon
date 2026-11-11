@@ -156,6 +156,7 @@ function blockInner(raw: unknown, depth: number, count: { n: number }): Block | 
         ...(raw.msoCell === true ? { msoCell: true } : {}),
         ...(raw.fullWidth === true ? { fullWidth: true } : {}),
         ...opt(raw.padX, 'padX', 0, 80),
+        ...opt(raw.padY, 'padY', 0, 60),
         ...(typeof raw.borderWidth === 'number' && raw.borderWidth > 0 ? { borderWidth: num(raw.borderWidth, 1, 1, 8), borderColor: safeColor(raw.borderColor, '#ffffff') } : {}),
       }
     }

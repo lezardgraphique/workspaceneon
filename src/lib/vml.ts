@@ -13,6 +13,7 @@ const SIDE_PADDING = 26
 // The optional look of a button, shared by the HTML link, the VML shape and the previews.
 export interface ButtonLook {
   height?: number
+  padY?: number
   fontSize?: number
   bold?: boolean
   borderWidth?: number
@@ -25,7 +26,7 @@ export const buttonBold = (b: ButtonLook) => b.bold !== false
 export const buttonBorder = (b: ButtonLook) => (b.borderWidth && b.borderWidth > 0 ? b.borderWidth : 0)
 export const buttonBorderColor = (b: ButtonLook) => b.borderColor || b.color || '#ffffff'
 // Total height in px: explicit, or what the padded text makes (42 by default).
-export const buttonHeight = (b: ButtonLook) => b.height ?? Math.round(buttonFontSize(b) * 1.2) + 24 + 2 * buttonBorder(b)
+export const buttonHeight = (b: ButtonLook) => b.height ?? Math.round(buttonFontSize(b) * 1.2) + 2 * (b.padY ?? 12) + 2 * buttonBorder(b)
 // Height in Outlook (VML shape, coloured cell): its own setting, else the button's.
 export const outlookHeight = (b: ButtonLook & { vmlHeight?: number }) => b.vmlHeight ?? buttonHeight(b)
 

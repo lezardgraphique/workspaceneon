@@ -3,8 +3,10 @@ import { Link2, Link2Off } from 'lucide-react'
 
 // Margins and paddings of an element in one place, drawn like a browser's
 // inspector: the outer box is the margin around the element, the inner box its
-// inner margin (padding). Each side has a number field; empty = the default
-// (shown greyed). The chain button types one value into all four sides.
+// inner margin (padding). Each side shows the value in use (the default until
+// changed, then highlighted); emptying a field goes back to the default. The
+// chain button types one value into all four sides. A side that can't be set
+// shows a dash with its reason, not a greyed field.
 
 export type Side = 't' | 'r' | 'b' | 'l'
 export type Sides = Record<Side, number | undefined>
@@ -30,6 +32,15 @@ const ORDER: Side[] = ['t', 'r', 'b', 'l']
 function SideInput({ side, layer, name, linked }: { side: Side; layer: BoxLayer; name: string; linked: boolean }) {
   const locked = layer.locked?.[side]
   const v = layer.values[side]
+  const shown = String(v ?? layer.base[side])
+  // While typing, the field keeps what is typed (even empty) instead of jumping back to the default.
+  const [draft, setDraft] = useState<string | null>(null)
+  if (locked)
+    return (
+      <span title={locked} aria-label={`${name} ${SIDE_NAMES[side]} : ${locked}`} className="w-12 text-center font-mono text-xs text-mute">
+        —
+      </span>
+    )
   return (
     <input
       type="number"
@@ -37,19 +48,22 @@ function SideInput({ side, layer, name, linked }: { side: Side; layer: BoxLayer;
       min={0}
       max={layer.max}
       step={1}
-      disabled={!!locked}
-      title={locked}
-      value={locked ? '' : (v ?? '')}
-      placeholder={locked ? '—' : String(layer.base[side])}
-      aria-label={`${name} ${SIDE_NAMES[side]}${locked ? ` (${locked})` : ''}`}
+      title={v == null ? 'Valeur par défaut : tape un nombre pour la changer' : 'Valeur choisie : vide le champ pour revenir à la valeur par défaut'}
+      value={draft ?? shown}
+      aria-label={`${name} ${SIDE_NAMES[side]}`}
+      onFocus={(e) => e.currentTarget.select()}
+      onBlur={() => setDraft(null)}
       onChange={(e) => {
         const raw = e.target.value.trim()
+        setDraft(raw)
         const n = raw === '' ? undefined : Math.min(layer.max, Math.max(0, Math.round(Number(raw))))
         if (n != null && Number.isNaN(n)) return
         if (linked) layer.onAll(n)
         else layer.onChange(side, n)
       }}
-      className="w-12 [appearance:textfield] rounded border border-line bg-void px-1 py-1 text-center font-mono [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none text-base text-white tabular-nums outline-none placeholder:text-mute/70 focus:border-cyan disabled:opacity-40 lg:text-xs"
+      className={`w-12 [appearance:textfield] rounded border bg-void px-1 py-1 text-center font-mono [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none text-base tabular-nums outline-none focus:border-cyan lg:text-xs ${
+        v == null ? 'border-line text-white' : 'border-cyan/60 text-cyan'
+      }`}
     />
   )
 }
@@ -124,7 +138,7 @@ export function BoxModel({ margin, padding, label, note }: { margin: BoxLayer; p
         </div>
       </div>
       <p className="text-[11px] text-mute">
-        En pixels. Une case vide garde la valeur par défaut (en gris).{note ? ` ${note}` : ''}
+        En pixels. Les valeurs changées sont en bleu ; vide une case pour revenir à la valeur par défaut.{note ? ` ${note}` : ''}
       </p>
       {(anySet(margin) || anySet(padding)) && (
         <button

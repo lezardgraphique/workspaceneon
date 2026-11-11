@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import {
   ArrowDown,
   ArrowUp,
+  BookmarkCheck,
+  ChevronDown,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
@@ -22,7 +24,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
-import { fromLibrary } from '@/lib/custom-blocks'
+import { fromLibrary, withNewIds } from '@/lib/custom-blocks'
 import { removeBlock } from '@/lib/data'
 import { isLogicBlock } from '@/lib/hubl-render'
 import { refreshCustomBlocks, useCustomBlocks } from './useCustomBlocks'
@@ -250,6 +252,80 @@ function RenameField({ value, onDone }: { value: string; onDone: (name?: string)
       }}
       className="my-1 min-w-0 flex-1 rounded border border-cyan bg-void px-2 py-1 text-sm text-white outline-none"
     />
+  )
+}
+
+// « Mes blocs »: everything saved with « Enregistrer dans Mes blocs », always
+// within reach at the bottom of the Structure tab (opened state remembered).
+// A saved block goes after the selected section, or at the end of the module.
+function MyBlocks({ p }: { p: Props }) {
+  const custom = useCustomBlocks()
+  const [open, setOpen] = useState(() => store.get('nsp-my-blocks') === '1')
+  const toggle = () => {
+    setOpen(!open)
+    store.set('nsp-my-blocks', open ? '0' : '1')
+  }
+  const insert = (section: Section) => {
+    const copy = withNewIds(section)
+    const top = p.selectedId ? p.tree.sections.findIndex((s) => s.id === p.selectedId || !!findNode({ ...p.tree, sections: [s] }, p.selectedId!)) : -1
+    const at = top >= 0 ? top + 1 : p.tree.sections.length
+    p.commit({ ...p.tree, sections: [...p.tree.sections.slice(0, at), copy, ...p.tree.sections.slice(at)] }, copy.id)
+  }
+  return (
+    <div className="border-t border-line">
+      <button type="button" onClick={toggle} aria-expanded={open} className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-white/5">
+        <BookmarkCheck className="size-4 shrink-0 text-pink" aria-hidden />
+        <span className="font-mono text-[10px] uppercase tracking-wider text-mute">Mes blocs</span>
+        <span className="rounded-full bg-pink/15 px-1.5 text-[10px] font-semibold text-pink">{custom.length}</span>
+        <ChevronDown className={`ml-auto size-3.5 text-mute transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+      </button>
+      {open && (
+        <div className="max-h-56 space-y-1 overflow-y-auto px-2 pb-2">
+          {custom.length === 0 ? (
+            <p className="px-1 pb-1 text-xs text-mute">
+              Rien d'enregistré pour l'instant. Sélectionne un élément, une card ou une section, puis l'icône « Enregistrer dans Mes blocs » (marque-page) en haut des Réglages : il apparaîtra ici, dans tous tes modules.
+            </p>
+          ) : (
+            <>
+              <p className="px-1 text-[11px] text-mute">Clique pour l'ajouter {p.selectedId ? 'après la section sélectionnée' : 'à la fin du module'}. Disponibles dans tous tes modules.</p>
+              {custom.map((c) => (
+                <div key={c.id} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    title={c.description || c.name}
+                    onClick={() => insert(c.section)}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-2 text-left text-sm text-[#c9c9de] hover:bg-pink/15 hover:text-white lg:py-1 lg:text-xs"
+                  >
+                    <Plus className="size-3 shrink-0 text-pink" aria-hidden />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{c.name}</span>
+                      {c.description && <span className="block truncate text-[10px] text-mute">{c.description}</span>}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Supprimer « ${c.name} » de Mes blocs`}
+                    title="Supprimer de Mes blocs"
+                    onClick={async () => {
+                      if (!confirm(`Supprimer « ${c.name} » de Mes blocs ? Les modules qui l'utilisent ne changent pas.`)) return
+                      try {
+                        await removeBlock(c.id)
+                        refreshCustomBlocks()
+                      } catch (e) {
+                        alert(e instanceof Error ? e.message : 'Suppression impossible')
+                      }
+                    }}
+                    className="rounded p-1.5 text-mute hover:bg-pink/10 hover:text-pink"
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -533,6 +609,7 @@ export function Structure(p: Props) {
           {p.tree.sections.length === 0 && <p className="p-4 text-center text-sm text-mute">Ajoute ta première section.</p>}
           {query && shown?.size === 0 && <p className="p-4 text-center text-sm text-mute">Aucun élément ne contient « {query} ».</p>}
         </div>
+        <MyBlocks p={p} />
         <div className="border-t border-line p-3">
           <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-mute">Nouvelle section</p>
           <div className="grid grid-cols-3 gap-2">

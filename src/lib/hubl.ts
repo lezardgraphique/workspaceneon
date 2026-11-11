@@ -129,7 +129,7 @@ function renderBlock(b: Block, ctx: Ctx, d: number, font: string, avail: number)
       }
       const bw = buttonBorder(b)
       const px = b.padX ?? 26
-      const pad = b.height ? `padding:0 ${px}px;line-height:${b.height - 2 * bw}px;` : `padding:12px ${px}px;`
+      const pad = b.height ? `padding:0 ${px}px;line-height:${b.height - 2 * bw}px;` : `padding:${b.padY ?? 12}px ${px}px;`
       const border = bw ? `border:${bw}px solid ${escKeep(buttonBorderColor(b))};` : ''
       const link = `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display:${b.fullWidth ? 'block;text-align:center' : 'inline-block'};${pad}background:${escKeep(b.bg)};color:${escKeep(b.color)};${border}border-radius:${b.radius}px;font-family:${esc(font)};font-size:${buttonFontSize(b)}px;font-weight:${buttonBold(b) ? 700 : 400};text-decoration:none;">${label}</a>`
       // With VML on, Outlook for Windows gets a drawn shape (rounded, padded,
@@ -144,7 +144,7 @@ ${indent(notMso(`  ${link}`), p + '  ')}`
               return `${p}  ${open}\n${p}  ${link}\n${p}  ${close}`
             })()
           : `${p}  ${link}`
-      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}), ...(b.vmlHeight ? { 'vml-height': b.vmlHeight } : {}), ...(b.height ? { height: b.height } : {}), ...(b.fontSize ? { 'font-size': b.fontSize } : {}), ...(b.bold === false ? { bold: 0 } : {}), ...(bw ? { 'border-width': bw, 'border-color': b.borderColor || b.color } : {}), ...(b.msoCell ? { 'mso-cell': 1 } : {}), ...(b.fullWidth ? { full: 1 } : {}), ...(b.padX != null ? { 'pad-x': b.padX } : {}), ...(b.fixed ? { fixed: 1 } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b, sp.l, sp.r)}text-align:${b.align};${olStyle(b.outlook)}">
+      return `${p}<div${ctx.attrs({ neon: 'button', ...ctx.fieldAttrs(b), align: b.align, bg: b.bg, color: b.color, radius: b.radius, ...(b.vmlWidth ? { 'vml-width': b.vmlWidth } : {}), ...(b.vmlHeight ? { 'vml-height': b.vmlHeight } : {}), ...(b.height ? { height: b.height } : {}), ...(b.fontSize ? { 'font-size': b.fontSize } : {}), ...(b.bold === false ? { bold: 0 } : {}), ...(bw ? { 'border-width': bw, 'border-color': b.borderColor || b.color } : {}), ...(b.msoCell ? { 'mso-cell': 1 } : {}), ...(b.fullWidth ? { full: 1 } : {}), ...(b.padX != null ? { 'pad-x': b.padX } : {}), ...(b.padY != null ? { 'pad-y': b.padY } : {}), ...(b.fixed ? { fixed: 1 } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide))} style="${hideStyle(b.hide)}${marginCss(sp.t, sp.b, sp.l, sp.r)}text-align:${b.align};${olStyle(b.outlook)}">
 ${inner}
 ${p}</div>`
     }
@@ -491,6 +491,7 @@ function parseBlockInner(el: Element): Block | null {
         ...(g('mso-cell') === '1' ? { msoCell: true } : {}),
         ...(g('full') === '1' ? { fullWidth: true } : {}),
         ...optNum(g('pad-x'), 'padX', 0, 80),
+        ...optNum(g('pad-y'), 'padY', 0, 60),
         ...(g('border-width') ? { borderWidth: asNum(g('border-width'), 1, 1, 8), borderColor: asColor(g('border-color'), '#ffffff') } : {}),
       }
     }

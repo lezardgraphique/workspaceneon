@@ -198,7 +198,7 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
             style={{
               display: b.fullWidth ? 'block' : 'inline-block',
               textAlign: 'center',
-              padding: b.height ? `0 ${b.padX ?? 26}px` : `12px ${b.padX ?? 26}px`,
+              padding: b.height ? `0 ${b.padX ?? 26}px` : `${b.padY ?? 12}px ${b.padX ?? 26}px`,
               ...(b.height ? { lineHeight: `${b.height - 2 * buttonBorder(b)}px` } : {}),
               background: b.bg,
               color: b.color,

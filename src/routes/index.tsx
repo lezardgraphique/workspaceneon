@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
-import { ArrowRight, BookOpen, ChevronDown, Columns3, Code2, Download, Eye, FolderOpen, Heart, Layers, LayoutTemplate, Loader2, MailCheck, MousePointerClick, Sparkles, Trash2, Wand2, X } from 'lucide-react'
+import { ArrowRight, BookOpen, ChevronDown, Columns3, Code2, Download, Eye, FolderOpen, Heart, Layers, LayoutTemplate, Loader2, MailCheck, BookmarkCheck, MousePointerClick, Sparkles, Trash2, Wand2, X } from 'lucide-react'
 
 import { AccountMenu } from '@/components/AccountMenu'
 import { BackupPanel } from '@/components/BackupPanel'
@@ -12,7 +12,8 @@ import { previewEmail } from '@/lib/hubl'
 import { KOFI_URL } from '@/lib/links'
 import { STARTERS } from '@/lib/templates'
 import { countBlocks } from '@/lib/tree'
-import { adoptServerList, createLocalFirst, loadModules, removeModule } from '@/lib/data'
+import { adoptServerList, createLocalFirst, loadModules, removeBlock, removeModule } from '@/lib/data'
+import { refreshCustomBlocks, useCustomBlocks } from '@/components/editor/useCustomBlocks'
 import { GUIDE_HIDDEN_KEY } from '@/lib/settings-keys'
 import { SETTINGS_EVENT, getPref, setPref } from '@/lib/settings-sync'
 
@@ -387,6 +388,8 @@ function Library() {
           )}
         </section>
 
+        <MyBlocksSection />
+
         <BackupPanel />
       </main>
 
@@ -397,5 +400,51 @@ function Library() {
         </a>
       </footer>
     </div>
+  )
+}
+
+// « Mes blocs » on the home page: what was saved for reuse, and where to use it.
+function MyBlocksSection() {
+  const blocks = useCustomBlocks()
+  return (
+    <section id="mes-blocs" aria-labelledby="mes-blocs-titre" className="mt-20 scroll-mt-24 max-sm:mt-12">
+      <h2 id="mes-blocs-titre" className="flex items-center gap-2 font-display text-2xl font-semibold">
+        Mes blocs <span className="rounded-full bg-pink/15 px-2 text-sm text-pink">{blocks.length}</span>
+      </h2>
+      <p className="mt-2 text-sm text-mute">
+        Les éléments, cards et sections que tu as enregistrés pour les réutiliser. Pour en ajouter un : ouvre un module, onglet <strong className="text-white">Structure</strong>, volet{' '}
+        <strong className="text-white">« Mes blocs »</strong> en bas. Pour en enregistrer un : sélectionne-le dans l'éditeur, puis l'icône marque-page « Enregistrer dans Mes blocs ».
+      </p>
+      {blocks.length > 0 && (
+        <ul className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          {blocks.map((c) => (
+            <li key={c.id} className="flex items-start gap-2 rounded-xl border border-line bg-night/70 p-4 max-sm:p-3">
+              <BookmarkCheck className="mt-0.5 size-4 shrink-0 text-pink" aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold max-sm:text-sm">{c.name}</span>
+                {c.description && <span className="mt-0.5 line-clamp-2 block text-xs text-mute">{c.description}</span>}
+              </span>
+              <button
+                type="button"
+                aria-label={`Supprimer « ${c.name} » de Mes blocs`}
+                title="Supprimer de Mes blocs"
+                onClick={async () => {
+                  if (!confirm(`Supprimer « ${c.name} » de Mes blocs ? Les modules qui l'utilisent ne changent pas.`)) return
+                  try {
+                    await removeBlock(c.id)
+                    refreshCustomBlocks()
+                  } catch (e) {
+                    alert(e instanceof Error ? e.message : 'Suppression impossible')
+                  }
+                }}
+                className="-m-1 rounded-md p-1.5 text-mute hover:bg-pink/10 hover:text-pink"
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }

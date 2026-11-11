@@ -152,21 +152,22 @@ function SpacingFields({ b, set, nested }: { b: Block; set: (patch: Partial<Bloc
         ),
     }
   } else if (b.type === 'button') {
-    const why = b.fullWidth ? 'bouton en pleine largeur' : undefined
+    // Top/bottom (same value both sides) replace a fixed height; left/right the side padding.
+    const y = b.height ? Math.max(0, Math.round((b.height - Math.round(buttonFontSize(b) * 1.2)) / 2) - buttonBorder(b)) : 12
     padding = {
-      values: { t: undefined, b: undefined, l: b.padX, r: b.padX },
-      base: { t: 0, b: 0, l: 26, r: 26 },
-      locked: { t: 'réglée par la hauteur du bouton', b: 'réglée par la hauteur du bouton', ...(why ? { l: why, r: why } : {}) },
+      values: { t: b.padY, b: b.padY, l: b.padX, r: b.padX },
+      base: { t: y, b: y, l: 26, r: 26 },
       max: 70,
-      onChange: (_side, v) => set({ padX: v == null ? undefined : Math.max(6, v) } as Partial<Block>),
-      onAll: (v) => set({ padX: v == null ? undefined : Math.max(6, v) } as Partial<Block>),
+      onChange: (side, v) =>
+        set((side === 't' || side === 'b' ? { padY: v == null ? undefined : Math.min(60, v), height: undefined } : { padX: v == null ? undefined : Math.max(6, v) }) as Partial<Block>),
+      onAll: (v) => set({ padX: v == null ? undefined : Math.max(6, v), padY: v == null ? undefined : Math.min(60, v), height: undefined } as Partial<Block>),
     }
   }
   const note =
     b.type === 'section'
       ? 'Gauche et droite de la marge intérieure : bords extérieurs de la première et de la dernière colonne.'
       : b.type === 'button'
-        ? 'Marge intérieure gauche / droite : la même des deux côtés du texte.'
+        ? 'Marge intérieure : haut et bas ensemble, gauche et droite ensemble (le texte reste centré).'
         : undefined
   return (
     <div className="space-y-3 rounded-lg border border-line p-3">
@@ -258,8 +259,8 @@ export function ButtonLookFields({ b, onChange, inBox }: { b: ButtonBlock; onCha
       </Group>
       <RangeField label="Bordure" value={bw} min={0} max={8} onChange={(w) => onChange(w ? { borderWidth: w, borderColor: b.borderColor ?? b.color } : { borderWidth: undefined, borderColor: undefined })} />
       {bw > 0 && <ColorField label="Couleur de la bordure" value={buttonBorderColor(b)} onChange={(borderColor) => onChange({ borderColor })} />}
-      {(b.height || b.fontSize || b.bold === false || bw > 0 || b.fullWidth || b.padX != null) && (
-        <button onClick={() => onChange({ height: undefined, fontSize: undefined, bold: undefined, borderWidth: undefined, borderColor: undefined, fullWidth: undefined, padX: undefined })} className="text-xs text-mute underline hover:text-white">
+      {(b.height || b.fontSize || b.bold === false || bw > 0 || b.fullWidth || b.padX != null || b.padY != null) && (
+        <button onClick={() => onChange({ height: undefined, fontSize: undefined, bold: undefined, borderWidth: undefined, borderColor: undefined, fullWidth: undefined, padX: undefined, padY: undefined })} className="text-xs text-mute underline hover:text-white">
           Réinitialiser l'apparence
         </button>
       )}
@@ -350,7 +351,7 @@ const suggestName = (b: Block): string =>
   ).slice(0, 60) || BLOCK_LABELS[b.type]
 
 const SAVED: Record<string, string> = {
-  created: 'Enregistré dans Mes blocs (Structure › Ajouter › Mes blocs).',
+  created: 'Enregistré dans Mes blocs : retrouve-le dans l’onglet Structure, en bas (« Mes blocs »), dans tous tes modules.',
   updated: 'Mis à jour : un bloc portait déjà ce nom.',
   exists: 'Déjà dans Mes blocs (contenu identique) : rien n’a été doublé.',
   local: 'Enregistré sur cet appareil : il sera envoyé dès le retour de la connexion.',
