@@ -319,9 +319,11 @@ body {
   .neon-home[data-lit] { opacity: var(--neon-o); animation: neon-fade 0.6s ease-out both, neon-spin 80s linear infinite; }
 }
 /* Sign-in: a sign behind the illustration (desktop), on the floor under the form (phone). */
-.neon-auth-side { --neon-o: 0.34; left: 50%; top: 4%; width: 105%; translate: -50% -50%; }
+/* The centring lives in `transform`, not `translate`: the CSS minifier drops a
+   `translate` declaration that sits next to a `transform`. */
+.neon-auth-side { --neon-o: 0.34; left: 50%; top: 4%; width: 105%; transform: translate(-50%, -50%); }
 .neon-auth-floor-wrap { position: absolute; inset: auto 0 0; height: 31%; perspective: 900px; mask-image: linear-gradient(to bottom, transparent, #000 30%); }
-.neon-auth-floor { --neon-o: 0.34; left: 50%; bottom: -10%; width: min(18rem, 74vw); translate: -50% 0; transform: rotateX(52deg); }
+.neon-auth-floor { --neon-o: 0.34; left: 50%; bottom: -10%; width: min(18rem, 74vw); transform: translateX(-50%) rotateX(52deg); }
 @media (max-height: 500px) { .neon-auth-floor-wrap { display: none; } }
 @media (prefers-reduced-motion: reduce) {
   .neon-cube[data-lit] { animation: none; opacity: var(--neon-o); }
