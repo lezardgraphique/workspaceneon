@@ -41,6 +41,12 @@ export const CPU_MODELS: CpuModel[] = [
 
 export const RUNTIME_CACHE = 'wllama/runtime'
 
+// Context window used when loading (shorter on phones and tablets: memory).
+let contextLimit = 8192
+export const setContextLimit = (n: number) => {
+  contextLimit = n
+}
+
 // Same rule as wllama: browsers without JSPI or 64-bit memory (Safari) need the
 // compat build; Firefox runs the default one on the processor.
 function needsCompat(): boolean {
@@ -148,7 +154,7 @@ export async function loadCpu(models: CpuModel[], download: boolean, onProgress?
         if (!cached && !download) throw new Error('Modèle local absent.')
         const source = cached ?? (await wllama.modelManager.downloadModel(model.url, { progressCallback: ({ loaded: l, total }) => onProgress?.(total ? l / total : null, model) }))
         // GPU off: this engine is the one for devices where WebGPU is missing or failed.
-        await wllama.loadModel(source, { n_ctx: model.context, n_gpu_layers: 0 })
+        await wllama.loadModel(source, { n_ctx: Math.min(model.context, contextLimit), n_gpu_layers: 0 })
         loaded = { model, wllama, blob }
         return loaded
       } catch (err) {

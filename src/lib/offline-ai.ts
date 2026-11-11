@@ -205,30 +205,64 @@ async function gemmaCandidates(): Promise<GemmaModel[]> {
   const memory = deviceMemory()
   const big = GEMMA.filter((m) => m.id.startsWith('gemma-4') && m.f16 === gpu.f16)
   const small = GEMMA.filter((m) => m.id.startsWith('gemma3') && (!m.f16 || gpu.f16))
-  // The 2 GB model doesn't fit in an iPhone/iPad tab: the small ones only.
-  if (appleMobile()) return small
+  // The 2 GB model doesn't fit in a phone or tablet tab: the small ones only.
+  if (appleMobile() || smallDevice()) return small
   return memory < 8 ? [...small, ...big] : [...big, ...small]
 }
 
-// WebAssembly with SIMD and exception handling (what llama.cpp's build needs).
-function wasmOk(): boolean {
-  try {
-    const simd = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11])
-    const exc = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 8, 1, 6, 0, 6, 64, 25, 11, 11])
-    return typeof WebAssembly === 'object' && WebAssembly.validate(simd) && WebAssembly.validate(exc) && typeof caches !== 'undefined' && !!navigator.storage?.getDirectory
-  } catch {
-    return false
-  }
+// Phones and tablets: a browser tab gets far less memory than a computer's
+// (an iPhone/iPad tab is closed well below the device's RAM, Android ones too).
+// They take the small model with a shorter context, unless the device reports
+// plenty of memory (Android tells, Safari doesn't).
+function smallDevice(): boolean {
+  const known = (navigator as Navigator & { deviceMemory?: number }).deviceMemory
+  const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+  if (appleMobile()) return true
+  if (known !== undefined) return known < 6
+  return touch
 }
 
-const cpu = () => import('@/lib/offline-cpu')
+// What the processor engine (llama.cpp in WebAssembly) needs, and why not when missing.
+function wasmMissing(): string | null {
+  try {
+    if (typeof WebAssembly !== 'object') return 'WebAssembly'
+    const simd = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11])
+    const exc = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 8, 1, 6, 0, 6, 64, 25, 11, 11])
+    if (!WebAssembly.validate(simd)) return 'simd'
+    if (!WebAssembly.validate(exc)) return 'exceptions'
+    // The model file goes into the private file system (written by a worker).
+    if (typeof caches === 'undefined' || !navigator.storage?.getDirectory) return 'storage'
+    return null
+  } catch {
+    return 'WebAssembly'
+  }
+}
+const wasmOk = () => wasmMissing() === null
+
+// Why this browser can't run Maily on the device, in plain words.
+function unsupportedReason(): string {
+  const missing = wasmMissing()
+  const apple = appleMobile() || /Safari\//.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent)
+  const v = /Version\/(\d+)\.(\d+)/.exec(navigator.userAgent)
+  const safari = apple && v ? ` (Safari ${v[1]}.${v[2]})` : ''
+  if (apple && (missing === 'simd' || missing === 'exceptions' || missing === 'storage'))
+    return `Ce Safari${safari} ne peut pas faire tourner de modèle sur l'appareil : il faut iOS / iPadOS 16.4 ou plus récent (calcul WebAssembly SIMD et stockage de fichiers). Les appareils bloqués en iPadOS 15 ne peuvent pas l'installer.`
+  if (missing === 'storage') return "Ce navigateur ne laisse pas l'application garder un gros fichier sur l'appareil (mode privé ?) : ouvre-la dans une fenêtre normale, ou mets le navigateur à jour."
+  return "Ce navigateur est trop ancien pour faire tourner un modèle sur l'appareil : mets-le à jour (Chrome, Edge, Firefox ou Safari 16.4 et plus)."
+}
+
+const cpu = () => import('@/lib/offline-cpu').then((m) => (m.setContextLimit(cpuContext()), m))
 
 // Processor models this device can try, best first.
 async function cpuCandidates() {
   const { CPU_MODELS } = await cpu()
-  const memory = deviceMemory()
-  return memory < 4 ? [...CPU_MODELS].reverse() : CPU_MODELS
+  // Phones and tablets: the small model only (the 1 GB one closes the tab).
+  if (smallDevice()) return CPU_MODELS.filter((m) => m.id.includes('270m'))
+  return deviceMemory() < 4 ? [...CPU_MODELS].reverse() : CPU_MODELS
 }
+
+/** Context of the processor engine: shorter on phones and tablets (memory). */
+export const cpuContext = () => (browser() && smallDevice() ? 4096 : 8192)
 
 let checked: Promise<OfflineAiState> | null = null
 // The account copy couldn't be fetched this time: fall back to the usual sources.
@@ -253,7 +287,8 @@ export function checkOfflineAi(): Promise<OfflineAiState> {
       writePref(null)
     }
     // A copy is waiting on the account: this device takes the same model from the app.
-    if (shared && wasmOk() && pref?.engine !== 'nano' && pref?.engine !== 'gemma') {
+    // Only when that model suits this device (a computer's 1 GB copy would close a phone's tab).
+    if (shared && wasmOk() && pref?.engine !== 'nano' && pref?.engine !== 'gemma' && (await cpuCandidates()).some((m) => m.id === shared)) {
       const chosen = (await cpu()).CPU_MODELS.find((x) => x.id === shared)
       if (chosen) {
         setState({ status: 'available', engine: 'cpu', model: chosen.label, message: null, size: `${chosen.size}, copie de ton compte`, fromAccount: true })
@@ -274,7 +309,7 @@ export function checkOfflineAi(): Promise<OfflineAiState> {
         return state
       }
       if (pref) writePref(null)
-      setState({ status: 'unsupported', engine: null, model: null, message: null, size: null })
+      setState({ status: 'unsupported', engine: null, model: null, message: unsupportedReason(), size: null })
       return state
     }
     if (pref?.engine === 'gemma' && pref.model) {
@@ -359,8 +394,10 @@ if (browser()) {
 // ---- prepare / remove ------------------------------------------------------------
 
 const errorText = (e: unknown) =>
-  e instanceof Error && /memory|OOM|device lost|adapter/i.test(e.message)
+  e instanceof Error && /device lost|adapter/i.test(e.message)
     ? 'Pas assez de mémoire graphique sur cet appareil pour le modèle local.'
+    : e instanceof Error && /memory|OOM|allocat/i.test(e.message)
+      ? 'Pas assez de mémoire sur cet appareil pour le modèle local : ferme les autres onglets et applications, puis réessaie.'
     : e instanceof Error && /quota|storage/i.test(e.message)
       ? 'Pas assez de place sur l’appareil pour télécharger le modèle.'
       : 'Le modèle local n’a pas pu être préparé. Réessaie en ligne.'
@@ -591,7 +628,7 @@ if (browser()) {
 /** Context window (tokens) of the prepared model, used to size the prompt. */
 export function localContextTokens(): number {
   if (state.engine === 'gemma') return (GEMMA.find((m) => m.id === readPref()?.model) ?? GEMMA[0]).context
-  if (state.engine === 'cpu') return 8192
+  if (state.engine === 'cpu') return cpuContext()
   return nanoQuota
 }
 // Gemini Nano's window as last reported by a session (Chrome gives ~6-9k tokens).

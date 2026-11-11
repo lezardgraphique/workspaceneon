@@ -112,7 +112,7 @@ export function MailyOffline({ offline }: { offline: boolean }) {
   } else if (s.status === 'unsupported') {
     body = (
       <span>
-        Ce navigateur est trop ancien pour faire tourner un modèle sur l'appareil. Sans connexion, je réponds quand même avec mon guide intégré ; mets ton navigateur à jour pour la version complète.
+        {s.message ?? "Ce navigateur est trop ancien pour faire tourner un modèle sur l'appareil."} Sans connexion, je réponds quand même avec mon guide intégré (questions sur l'outil, HubSpot, l'emailing).
       </span>
     )
   } else if (offline) {
@@ -143,7 +143,7 @@ export function MailyOffline({ offline }: { offline: boolean }) {
         <span className="min-w-0 flex-1">
           {s.status === 'error' && s.message ? `${s.message} ` : ''}
           {offlineAiWanted() ? 'Maily hors ligne est activée sur ton compte, pas sur cet appareil. ' : ''}
-          Maily hors ligne : télécharge Maily sur cet appareil ({size(s)}){s.engine === 'cpu' ? ', fonctionne dans tous les navigateurs récents' : ''} pour me parler sans connexion{offlineAiWanted() ? '' : ' (tes autres appareils te proposeront de la préparer aussi)'}.
+          Maily hors ligne : télécharge-moi sur cet appareil ({size(s)}) pour me parler sans connexion.
         </span>
         <button type="button" className={btn} onClick={() => void prepareOfflineAi()}>
           {s.status === 'error' ? 'Réessayer' : 'Préparer'}

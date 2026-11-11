@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { guardedFetch } from '@/lib/session-guard'
-import { CheckCircle2, ExternalLink, FileCode2, Heart, Lightbulb, Loader2, MessageCircle, Paperclip, Plus, Send, Square, Wand2, X } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ExternalLink, FileCode2, Heart, Lightbulb, Loader2, MessageCircle, Paperclip, Plus, Send, Square, Wand2, X } from 'lucide-react'
 import { Streamdown } from 'streamdown'
 
 import { Maily } from '@/components/Maily'
@@ -139,6 +139,41 @@ function toPayload(m: Msg, withImages: boolean) {
     ? (m.files ?? []).filter((f) => f.kind === 'image').map((f) => ({ mimeType: f.mimeType!, data: f.data! }))
     : []
   return { role: m.role, content, ...(images.length ? { images } : {}) }
+}
+
+// A long answer is shown folded (its start, then « Lire la suite ») so the
+// conversation doesn't turn into a long scroll; never while it is being written.
+const FOLD_PX = 280
+function FoldedReply({ live, children }: { live: boolean; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [tall, setTall] = useState(false)
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => setTall(el.scrollHeight > FOLD_PX + 80))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const folded = tall && !open && !live
+  return (
+    <>
+      <div ref={ref} className={folded ? 'relative overflow-hidden' : undefined} style={folded ? { maxHeight: FOLD_PX } : undefined}>
+        {children}
+        {folded && <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-panel to-transparent" />}
+      </div>
+      {tall && !live && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-cyan hover:underline"
+        >
+          <ChevronDown className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden /> {open ? 'Réduire' : 'Lire la suite'}
+        </button>
+      )}
+    </>
+  )
 }
 
 async function* readText(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
@@ -596,7 +631,7 @@ export function MailyPanel({
       </div>
       <MailyOffline offline={!online} />
 
-      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto p-4 max-sm:space-y-2.5 max-sm:p-3">
         <button
           onClick={() => setTip((t) => (t + 1) % TIPS.length)}
           className="w-full rounded-lg border border-cyan/30 bg-cyan/5 p-3 text-left"
@@ -629,16 +664,22 @@ export function MailyPanel({
 
         {messages.map((m, i) =>
           m.hidden ? null : (
-          <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex gap-2'}>
-            {m.role === 'assistant' && <Maily size={26} bob={false} mood={m.applied ? 'success' : 'happy'} className="mt-1 shrink-0" />}
+          <div key={i} className={m.role === 'user' ? 'flex min-w-0 justify-end' : 'flex min-w-0 gap-2'}>
+            {m.role === 'assistant' && <Maily size={26} bob={false} mood={m.applied ? 'success' : 'happy'} className="mt-1 shrink-0 max-sm:hidden" />}
             <div
-              className={`max-w-[88%] rounded-xl px-3 py-2 text-sm ${
+              className={`max-w-[88%] min-w-0 rounded-xl px-3 py-2 text-sm [overflow-wrap:anywhere] max-sm:max-w-[94%] ${
                 m.role === 'user' ? 'bg-pink-fill text-white' : 'maily-md border border-line bg-panel text-[#e3e3f0]'
               }`}
             >
               {m.role === 'assistant' ? (
                 <>
-                  {m.content ? <Streamdown>{m.content}</Streamdown> : !m.building && <Loader2 className="size-4 animate-spin text-cyan" />}
+                  {m.content ? (
+                    <FoldedReply live={!!m.building || (loading && i === messages.length - 1)}>
+                      <Streamdown>{m.content}</Streamdown>
+                    </FoldedReply>
+                  ) : (
+                    !m.building && <Loader2 className="size-4 animate-spin text-cyan" />
+                  )}
                   {m.building && (
                     <p className={`flex items-center gap-2 text-mute ${m.content ? 'mt-2' : ''}`}>
                       <Loader2 className="size-4 animate-spin text-pink" /> Maily construit ton module…
