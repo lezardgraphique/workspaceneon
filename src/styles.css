@@ -325,6 +325,18 @@ body {
 .neon-cube[data-lit='again'] { animation: neon-fade 0.6s ease-out both; }
 /* Home: a sign behind Maily (desktop), a slowly turning halo (phone). */
 .neon-home { --neon-o: 0.3; inset: -18%; width: 136%; height: 136%; }
+/* Tablets and small computers: the sign stays within the page's side margin
+   (wider, it made the whole page scroll sideways). */
+@media (min-width: 48rem) and (max-width: 79.99rem) {
+  .neon-home { inset: -6%; width: 112%; height: 112%; }
+}
+/* Safari before 16 has no overflow: clip: hidden instead (both axes, or the
+   section would get its own vertical scroll). */
+@supports not (overflow: clip) {
+  @media not all and (min-width: 48rem) {
+    .max-md\:overflow-x-clip { overflow: hidden; }
+  }
+}
 @media (width < 48rem) {
   .neon-home { --neon-o: 0.24; inset: -6%; width: 112%; height: 112%; }
   .neon-home[data-lit] { opacity: var(--neon-o); animation: neon-fade 0.6s ease-out both, neon-spin 80s linear infinite; }
@@ -344,7 +356,10 @@ body {
 @layer base {
   /* iPhone held sideways (viewport-fit=cover): nothing under the notch or the
      rounded corners. No grey flash on tap, no double-tap zoom delay. */
+  /* Safety net: nothing may make the page scroll sideways (Safari 15 included).
+     Set on body, it applies to the window, so the sticky top bar still sticks. */
   body {
+    overflow-x: hidden;
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
     -webkit-tap-highlight-color: transparent;
