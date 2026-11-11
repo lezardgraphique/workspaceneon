@@ -294,11 +294,58 @@ function tokenizeExpr(src: string): { t: string; v: string }[] {
   return out
 }
 
+// List, dict and string methods of HubSpot (Jinja): {% do list.append(x) %},
+// {{ d.get('k') }}, {{ s.upper() }}… The lists are changed in place, as in HubSpot.
+const LIST_METHODS: Record<string, (a: unknown[], ...x: unknown[]) => unknown> = {
+  append: (a, x) => void (a.length < 1_000 && a.push(x)),
+  extend: (a, x) => void (Array.isArray(x) && a.length + x.length <= 1_000 && a.push(...x)),
+  insert: (a, i, x) => void (a.length < 1_000 && a.splice(num(i), 0, x)),
+  pop: (a, i) => (i === undefined ? a.pop() : a.splice(num(i), 1)[0]),
+  remove: (a, x) => void (a.indexOf(x) >= 0 && a.splice(a.indexOf(x), 1)),
+  index: (a, x) => a.indexOf(x),
+  count: (a, x) => a.filter((y) => y === x).length,
+  reverse: (a) => void a.reverse(),
+}
+const DICT_METHODS: Record<string, (o: Record<string, unknown>, ...x: unknown[]) => unknown> = {
+  get: (o, k, d) => (Object.prototype.hasOwnProperty.call(o, toStr(k)) ? o[toStr(k)] : d),
+  keys: (o) => Object.keys(o),
+  values: (o) => Object.values(o),
+  items: (o) => Object.entries(o),
+  update: (o, x) => void (x && typeof x === 'object' && Object.assign(o, x)),
+}
+const STR_METHODS: Record<string, (s: string, ...x: unknown[]) => unknown> = {
+  upper: (s) => s.toUpperCase(),
+  lower: (s) => s.toLowerCase(),
+  strip: (s) => s.trim(),
+  lstrip: (s) => s.trimStart(),
+  rstrip: (s) => s.trimEnd(),
+  startswith: (s, x) => s.startsWith(toStr(x)),
+  endswith: (s, x) => s.endsWith(toStr(x)),
+  replace: (s, a, b) => s.split(toStr(a)).join(toStr(b)),
+  split: (s, x) => (x === undefined ? s.trim().split(/\s+/) : s.split(toStr(x))),
+  capitalize: (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase(),
+  title: (s) => s.replace(/\b\w/g, (c) => c.toUpperCase()),
+}
 const member = (o: unknown, k: unknown): unknown => {
   if (o === undefined || o === null) return undefined
-  if (Array.isArray(o) && k === 'length') return o.length
-  if (typeof o === 'string') return k === 'length' ? o.length : undefined
-  if (typeof o === 'object') return (o as Record<string, unknown>)[String(k)]
+  if (Array.isArray(o)) {
+    if (k === 'length') return o.length
+    const m = typeof k === 'string' && Object.prototype.hasOwnProperty.call(LIST_METHODS, k) ? LIST_METHODS[k] : undefined
+    if (m) return (...x: unknown[]) => m(o, ...x)
+    return (o as unknown as Record<string, unknown>)[String(k)]
+  }
+  if (typeof o === 'string') {
+    if (k === 'length') return o.length
+    const m = typeof k === 'string' && Object.prototype.hasOwnProperty.call(STR_METHODS, k) ? STR_METHODS[k] : undefined
+    return m ? (...x: unknown[]) => m(o, ...x) : undefined
+  }
+  if (typeof o === 'object') {
+    const r = o as Record<string, unknown>
+    const key = String(k)
+    if (key in r) return r[key]
+    const m = Object.prototype.hasOwnProperty.call(DICT_METHODS, key) ? DICT_METHODS[key] : undefined
+    return m ? (...x: unknown[]) => m(r, ...x) : undefined
+  }
   return undefined
 }
 
@@ -571,6 +618,7 @@ type Node =
   | { t: 'if'; branches: { c: string | null; body: Node[] }[] }
   | { t: 'for'; names: string[]; it: string; body: Node[]; other: Node[] }
   | { t: 'set'; name: string; e: string }
+  | { t: 'do'; e: string }
   | { t: 'seq'; body: Node[] }
   | { t: 'macro'; name: string; params: { name: string; def?: string }[]; body: Node[] }
 
@@ -650,6 +698,9 @@ function parse(src: string): Node[] {
     } else if (name === 'set') {
       const f = /^([\w.]+)\s*=\s*([\s\S]+)$/.exec(rest)
       if (f && !cur().skip) cur().list.push({ t: 'set', name: f[1], e: f[2] })
+    } else if (name === 'do') {
+      // {% do list.append(x) %}: evaluated for its effect, prints nothing.
+      if (rest && !cur().skip) cur().list.push({ t: 'do', e: rest })
     } else if (name === 'macro') {
       // {% macro name(a, b=1) %}…{% endmacro %}: a function printing its body.
       const f = /^([A-Za-z_]\w*)\s*\(([\s\S]*)\)\s*$/.exec(rest)
@@ -730,6 +781,9 @@ function run(nodes: Node[], scope: Scope, budget: { n: number }): string {
         }
         break
       }
+      case 'do':
+        evalExpr(n.e, scope)
+        break
       case 'seq':
         out += run(n.body, scope, budget)
         break
@@ -821,6 +875,8 @@ export function previewScope(tree: ModuleTree, contact: SampleContact = 'known')
   const contactData = contact === 'known' ? CONTACT : {}
   return {
     module,
+    // HubSpot's name of the module in the email (modules use it for unique CSS classes).
+    name: 'module_1',
     // Older modules call their fields widget.<name>.
     widget: module,
     contact: contactData,
@@ -888,7 +944,7 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
   const suffixIds = (b: Block, k: number | string): Block =>
     b.type === 'section' ? { ...b, id: `${b.id}~${k}`, cells: b.cells.map((c) => c.map((x) => suffixIds(x, k))) } : { ...b, id: `${b.id}~${k}` }
 
-  const list = (blocks: Block[], parent: Scope): Block[] => {
+  const list = (blocks: Block[], parent: Scope, inLoop = false): Block[] => {
     const sc: Scope = Object.create(parent)
     const out: Block[] = []
     // Open {% if %} / {% for %} frames: is the current branch visible?
@@ -963,7 +1019,7 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
                 const vals = names.length > 1 && Array.isArray(item) ? item : [item]
                 names.forEach((n, j) => (child[n] = vals[j] ?? {}))
                 child.loop = { index: k + 1, index0: k, first: k === 0, last: k === arr.length - 1, length: arr.length }
-                const res = list(body, child)
+                const res = list(body, child, true)
                 const placed = k === 0 ? res : res.map((x) => suffixIds(x, `${b.id}.${k}`))
                 if (cols) grid.push(placed)
                 else out.push(...placed)
@@ -983,11 +1039,15 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
             if (f && active) {
               sc[f[1]] = evalExpr(f[2], sc)
               // A variable set outside any loop is the whole module's (the import
-              // spreads one template over several sections).
-              if (!(f[1] in scope)) scope[f[1]] = sc[f[1]]
+              // spreads one template over several sections), even when set again.
+              if (!(f[1] in scope) || (!inLoop && Object.prototype.hasOwnProperty.call(scope, f[1]))) scope[f[1]] = sc[f[1]]
             }
             break
           }
+          case 'do':
+            // {% do list.append(x) %}: run for its effect.
+            if (active && st.rest) evalExpr(st.rest, sc)
+            break
         }
         continue
       }
@@ -1006,6 +1066,8 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
         return { ...b, bg: text(b.bg, sc), ...(b.css ? { css: text(b.css, sc) } : {}), cells: b.cells.map((c) => list(c, sc)) }
       case 'raw':
         // The selected HTML block is edited from its own code (variables shown as written).
+        // A verbatim template is always shown rendered: its source is edited in the Code tab.
+        if (b.verbatim) return { ...b, html: text(b.html, sc), ...(b.css ? { css: text(b.css, sc) } : {}) }
         return b.id === keepId ? b : { ...b, html: text(b.html, sc) }
       case 'heading':
         return b.id === keepId ? b : { ...b, text: text(b.text, sc), color: text(b.color, sc) }

@@ -47,6 +47,8 @@ import { uploadImage } from '@/lib/images'
 import { signature, withNewIds } from '@/lib/custom-blocks'
 import { interpretForPreview } from '@/lib/hubl-render'
 import type { SampleContact } from '@/lib/hubl-render'
+import { checkPreview } from '@/lib/preview-check'
+import { keepTemplateWhole } from '@/lib/import-repair'
 import { KOFI_URL } from '@/lib/links'
 import type { FieldSpec } from '@/lib/module-fields'
 import { applyValues } from '@/lib/json-import'
@@ -164,6 +166,13 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
   const [future, setFuture] = useState<ModuleTree[]>([])
   const [typing, setTyping] = useState(false)
   const [pageHidden, setPageHidden] = useState(() => typeof document !== 'undefined' && document.visibilityState === 'hidden')
+  // A request the validator hands to Maily ("Maily" button): she explains and fixes.
+  const [mailyRequest, setMailyRequest] = useState<{ text: string; n: number } | null>(null)
+  const askMaily = (text: string) => {
+    setLeftTab('maily')
+    setPane('maily')
+    setMailyRequest((r) => ({ text, n: (r?.n ?? 0) + 1 }))
+  }
 
   // "Parler à Maily" from the offline status panel (OfflineManager).
   useEffect(() => {
@@ -215,7 +224,9 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
       setCodeError(null)
       setCodeImported(!!res.imported)
       pushHistory(tree)
-      const next = syncExtraFields({ ...reconcileIds(res.tree, tree), fields: res.imported ? undefined : tree.fields }, undefined, res.imported ? code : undefined)
+      const synced = syncExtraFields({ ...reconcileIds(res.tree, tree), fields: res.imported ? undefined : tree.fields }, undefined, res.imported ? code : undefined)
+      // Pasted template whose layout the blocks would lose: kept whole.
+      const next = (res.imported && keepTemplateWhole(code, synced)) || synced
       const known = new Set((tree.fields ?? []).map((f) => f.name))
       setNewFields((next.fields ?? []).map((f) => f.name).filter((n) => !known.has(n)))
       setTree(next)
@@ -227,7 +238,8 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
   const applyCode = (generated: string, specs?: FieldSpec[], values?: Record<string, unknown> | null) => {
     const res = codeToTree(generated, tree, specs)
     if (!res.ok) return res.error
-    const next = applyValues(syncExtraFields({ ...res.tree, fields: undefined }, specs, generated), values ?? null).tree
+    const synced = syncExtraFields({ ...res.tree, fields: undefined }, specs, generated)
+    const next = applyValues((res.imported && keepTemplateWhole(generated, synced, specs)) || synced, values ?? null).tree
     setNewFields((next.fields ?? []).map((f) => f.name))
     commit(next, null)
     return null
@@ -391,6 +403,8 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     if (pageHidden) return { tree, forced: [] as string[] }
     return interpretForPreview(tree, contact, selectedId)
   }, [tree, contact, selectedId, pageHidden])
+  // What the preview shows that the code validator can't see (empty preview, example items…).
+  const previewNotes = useMemo(() => (pageHidden ? [] : checkPreview(tree, previewTree)), [tree, previewTree, pageHidden])
   const treeProps = { tree, selectedId, onSelect: select, commit }
   const selected = selectedId ? findNode(tree, selectedId) : null
   const selectedLabel =
@@ -549,7 +563,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
               </div>
               <div className={`${vis('maily', leftTab === 'maily')} min-h-0 w-full flex-1 flex-col bg-space`}>
                 <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="size-5 animate-spin text-cyan" /></div>}>
-                  <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyCode} addSection={addSection} />
+                  <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyCode} addSection={addSection} request={mailyRequest} />
                 </Suspense>
               </div>
             </aside>
@@ -635,7 +649,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
                   </button>
                 </div>
                 <CodeEditor value={code} onChange={onCodeChange} jump={codeJump} />
-                <ValidatorPanel code={code} onFix={onCodeChange} onJump={(line) => setCodeJump((j) => ({ line, n: (j?.n ?? 0) + 1 }))} />
+                <ValidatorPanel code={code} notes={previewNotes} onFix={onCodeChange} onJump={(line) => setCodeJump((j) => ({ line, n: (j?.n ?? 0) + 1 }))} onAskMaily={askMaily} />
               </div>
             </aside>
           </div>

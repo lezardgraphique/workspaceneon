@@ -2,6 +2,7 @@ import { collectFields } from './fields'
 import { humanize } from './module-fields'
 import { normalizeHubl, withLegacySpecs } from './hubl-legacy'
 import type { FieldSpec } from './module-fields'
+import { HERO_IMAGE } from './templates'
 import type { ExtraField, ExtraFieldType, Json, ModuleTree } from './types'
 
 // Module fields from HuBL code, as exact as the code allows.
@@ -579,9 +580,46 @@ export function fromSpec(raw: Record<string, unknown>): ExtraField | null {
   const d = asJson(def)
   field.default = d !== undefined && d !== null ? d : def === null ? null : standIn(field)
   if (!('default' in raw)) field.noDefault = true
+  // A list that starts empty (default: []) would show nothing at all:
+  // example items stand in for it until the user changes them.
+  if (field.repeater && Array.isArray(field.default) && field.default.length === 0) {
+    field.default = sampleItems(field)
+    field.sample = true
+  }
   field.keep = true
   return field
 }
+
+// Example items for a list whose definition starts empty: two (or its maximum
+// if lower), each with an image, a text… so the loop shows what it builds.
+export function sampleItems(f: ExtraField): Json[] {
+  const occ = f.spec?.occurrence
+  const max = occ && typeof occ === 'object' && !Array.isArray(occ) && typeof occ.max === 'number' ? occ.max : 2
+  return Array.from({ length: Math.max(1, Math.min(2, max)) }, (_, i) =>
+    f.type === 'group' ? Object.fromEntries((f.children ?? []).map((c) => [c.name, sampleChild(c, i)])) : fillSample(f, defaultFor({ ...f, repeater: false, default: undefined }), i),
+  )
+}
+
+function sampleChild(c: ExtraField, i: number): Json {
+  if (c.repeater) return Array.isArray(c.default) && c.default.length && !c.sample ? c.default : sampleItems(c)
+  // A number left empty in the definition stays empty (the template tests `is number`).
+  if (c.noDefault && c.type === 'number') return null
+  return fillSample(c, c.default ?? defaultFor(c), i)
+}
+
+function fillSample(c: ExtraField, v: Json, i: number): Json {
+  const label = c.label || humanize(c.name)
+  if (c.type === 'image') {
+    const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {}
+    return o.src ? o : { ...o, src: HERO_IMAGE, alt: typeof o.alt === 'string' && o.alt ? o.alt : `${label} ${i + 1}`, width: typeof o.width === 'number' ? o.width : 1200, height: typeof o.height === 'number' ? o.height : 600 }
+  }
+  if (c.type === 'richtext' && (typeof v !== 'string' || !v.replace(/<[^>]*>/g, '').trim() || v === `<p>${humanize(c.name)}</p>`)) return `<p><strong>${label} ${i + 1}</strong> : texte d’exemple, à remplacer dans l’onglet Champs.</p>`
+  if (c.type === 'text' && !c.hsType && (typeof v !== 'string' || !v.trim() || (c.noDefault && v === humanize(c.name)))) return `${label} ${i + 1}`
+  return v
+}
+
+// Still the example items (never edited): the export writes the empty list of the original.
+export const isSample = (f: ExtraField) => !!f.sample && JSON.stringify(f.default) === JSON.stringify(sampleItems(f))
 
 // Value shown for a field whose definition gives none.
 const standIn = (f: ExtraField): Json => (f.type === 'choice' && f.options?.length ? f.options[0].value : defaultFor({ ...f, default: undefined }))
@@ -680,10 +718,12 @@ export function scopeValue(f: ExtraField): Json {
     const item = (src: Json | undefined): Json => {
       const o = obj(src)
       // A repeated sub-field (a list inside each item) stays a list.
-      return Object.fromEntries((f.children ?? []).map((c) => [c.name, scopeValue({ ...c, default: (o[c.name] as Json | undefined) ?? (c.repeater ? undefined : c.default) })]))
+      // A value left empty on purpose (null) stays empty: templates test `is number`, `if x`.
+      return Object.fromEntries((f.children ?? []).map((c) => [c.name, o[c.name] === null || (!(c.name in o) && src !== undefined && c.noDefault && c.type === 'number') ? null : scopeValue({ ...c, default: (o[c.name] as Json | undefined) ?? (c.repeater ? undefined : c.default) })]))
     }
     if (f.repeater) {
-      const list = Array.isArray(f.default) && f.default.length ? f.default : [{}, {}]
+      // An empty list shows example items (the export keeps it empty).
+      const list = Array.isArray(f.default) && f.default.length ? f.default : sampleItems(f)
       return list.map((x) => item(x as Json))
     }
     return item(f.default)
@@ -704,6 +744,7 @@ export function hubspotField(f: ExtraField): Record<string, unknown> {
     const kids = (f.children ?? []).map((c) => hubspotField({ ...c }))
     const one: Json = Object.fromEntries((f.children ?? []).map((c) => [c.name, c.default ?? defaultFor(c)]))
     if (isStandIn(f)) return { ...base, children: kids }
+    if (isSample(f)) return { ...base, children: kids, default: [] }
     return { ...base, children: kids, default: f.default ?? (f.repeater ? [one, one] : one) }
   }
   if (isStandIn(f)) return f.type === 'choice' ? { ...(f.spec ? {} : { display_width: null, multiple: false, display: 'select' }), ...base, choices: (f.options ?? []).map((o) => [o.value, o.label]) } : base
@@ -715,5 +756,5 @@ export function hubspotField(f: ExtraField): Record<string, unknown> {
       default: f.default ?? defaultFor(f),
     }
   }
-  return { ...base, default: f.default === undefined ? defaultFor(f) : f.default }
+  return { ...base, default: isSample(f) ? [] : f.default === undefined ? defaultFor(f) : f.default }
 }

@@ -153,6 +153,14 @@ export interface RawBlock {
   html: string
   /** On a `{% for %}` line: the repeated content is laid out side by side in that many columns (stacked on phones). */
   cols?: 2 | 3
+  /**
+   * A whole imported template kept as written (macros, computed widths, cells
+   * printed by loops…): never re-parsed as HTML, which would lose its structure.
+   * Written in the code inside <script type="text/hubl" data-neon="raw">.
+   */
+  verbatim?: true
+  /** Its <style> sheets (exported in front of it, never injected into the app). */
+  css?: string
 }
 
 export type Columns = 1 | 2 | 3
@@ -253,6 +261,8 @@ export interface ExtraField {
   keep?: boolean
   /** The imported definition had no default: the value shown is only a preview stand-in, not exported. */
   noDefault?: boolean
+  /** An empty list in its definition: the items shown are examples (sampleItems), exported as [] while unchanged. */
+  sample?: boolean
 }
 
 export interface ModuleTree {

@@ -55,7 +55,8 @@ const excerptOf = (html: string) => {
 export function planConversion(tree: ModuleTree, convert: (html: string) => Block[]): Plan {
   const plan: Plan = { items: [], logic: 0 }
   for (const b of rawBlocks(tree)) {
-    if (isLogicBlock(b)) {
+    // Logic lines, and templates kept whole (cutting them would lose their layout).
+    if (isLogicBlock(b) || b.verbatim) {
       plan.logic++
       continue
     }

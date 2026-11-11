@@ -256,6 +256,28 @@ export function lintCode(code: string): LintResult & { fix: Fix } {
   return { issues, errors, warnings: issues.length - errors, ok: errors === 0, fix }
 }
 
+// Why an issue matters and how to fix it, in plain words (shown under it).
+const HELP: [RegExp, string][] = [
+  [/^\{% (\w+) %\} n'est jamais refermé/, 'Chaque {% if %}, {% for %} ou {% macro %} doit être fermé par sa balise de fin ({% endif %}, {% endfor %}, {% endmacro %}). Sans elle, HubSpot refuse le module ou masque tout ce qui suit. « Corriger » l’ajoute à la fin du bloc.'],
+  [/n'est pas refermé avant/, 'Les balises se ferment dans l’ordre inverse de leur ouverture : la plus récente d’abord. Ici une fin arrive alors qu’un bloc ouvert plus tard est encore ouvert.'],
+  [/sans \{% end\w+ %\} correspondant|sans \{% \w+ %\} correspondant/, 'Cette balise de fin ne ferme rien : elle est en trop, ou sa balise d’ouverture a été effacée. « Corriger » la retire.'],
+  [/en dehors d'un \{% if %\}/, '{% elif %} et {% else %} ne s’utilisent qu’à l’intérieur d’un {% if %} … {% endif %} (ou {% else %} dans un {% for %}).'],
+  [/sans condition/, 'Il faut écrire ce qu’on teste, par exemple {% if module.afficher %}.'],
+  [/doit avoir la forme/, 'Une boucle parcourt une liste : {% for item in module.liste %} … {% endfor %}.'],
+  [/Guillemet/, 'Un texte entre guillemets doit être fermé par le même guillemet, sinon toute la suite de la ligne est lue comme du texte.'],
+  [/Parenthèse ou crochet/, 'Chaque ( ou [ ouvert doit être refermé dans la même balise HuBL.'],
+  [/sans ouverture correspondante/, 'Une fin de balise HuBL (}} ou %}) sans son ouverture ({{ ou {%) s’affiche telle quelle dans l’email.'],
+  [/^Variable \{\{ \}\} vide|^Instruction \{% %\} vide/, 'Balise vide : il manque le nom de la variable ou de l’instruction. Supprime-la ou complète-la.'],
+  [/n'est pas terminée \(manque >\)/, 'Une balise HTML doit se fermer par > ; sans lui, le navigateur avale le texte qui suit.'],
+  [/<\/\w+> sans <\w+> correspondant/, 'Cette fermeture HTML ne correspond à aucune ouverture : elle est en trop. « Corriger » la retire.'],
+  [/n'est jamais refermé$/, 'Une balise HTML ouverte sans fermeture peut décaler toute la mise en page dans certaines messageries (Outlook surtout). « Corriger » ajoute la fermeture.'],
+  [/Plusieurs data-neon="module"/, 'Le code d’un module n’a qu’un seul conteneur data-neon="module" : fusionne les deux ou importe-les séparément.'],
+  [/data-neon="[^"]*" inconnu/, 'Ce marqueur n’est pas reconnu : le bloc sera gardé comme HTML brut.'],
+  [/normalisé|déjà utilisé/, 'Les noms de champs HubSpot n’ont ni accent ni espace et sont uniques dans le module.'],
+  [/Le code est vide/, 'Colle ton code ou utilise « Importer » pour reprendre un module existant.'],
+]
+export const explainIssue = (message: string): string | undefined => HELP.find(([re]) => re.test(message))?.[1]
+
 export function validateSyntax(code: string): LintResult {
   const { fix: _fix, ...res } = lintCode(code)
   return res

@@ -52,7 +52,16 @@ const BAD_PROPS = new Set(['position', 'z-index', 'behavior', '-moz-binding', 'c
 // Keeps the declarations that can't load anything, run anything or cover the page.
 export function sanitizeStyle(style: string): string {
   const out: string[] = []
-  for (const decl of style.split(/;(?![^(]*\))/)) {
+  for (const part of style.split(/;(?![^(]*\))/)) {
+    // `{% if x %}max-width:10px;{% endif %}`: statements before a declaration
+    // (or alone) are kept with it, so optional declarations survive.
+    const lead = /^\s*((?:\{%(?:(?!%\})[\s\S])*%\}\s*)*)([\s\S]*)$/.exec(part)!
+    const pre = lead[1].trim()
+    const decl = lead[2]
+    if (!decl.trim()) {
+      if (pre) out.push(pre)
+      continue
+    }
     const i = decl.indexOf(':')
     if (i < 1) continue
     const prop = decl.slice(0, i).trim().toLowerCase()
@@ -61,9 +70,18 @@ export function sanitizeStyle(style: string): string {
     // Template tokens are allowed, but what is around them is checked.
     if (!value || BAD_CSS.test(value.replace(HUBL, ' '))) continue
     if (/[{}]/.test(value.replace(HUBL, ' '))) continue
-    out.push(`${prop}:${value}`)
+    out.push(`${pre}${prop}:${value}`)
   }
   return out.join(';')
+}
+
+// A <style> sheet of an imported template, kept for the export (and the
+// standalone preview window), never added to the app's own page. Anything
+// that could load or run something, or leave the <style> element, is refused.
+const BAD_SHEET = /<|url\s*\(|expression|javascript|vbscript|@import|behavior|-moz-binding|\\/i
+export function sanitizeCssText(css: string): string {
+  const t = css.slice(0, 20_000).replace(/\/\*[\s\S]*?\*\//g, '').trim()
+  return t && !BAD_SHEET.test(t.replace(/\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}/g, (m) => (/[<\\]/.test(m) ? '<' : ' '))) ? t : ''
 }
 
 const escText = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -83,8 +101,16 @@ const PH_ONLY = /^(\d+)$/
 
 // In a text node a token can't contain something a browser would read as a tag.
 const textToken = (t: string) => (/<[a-zA-Z/!?]/.test(t) ? t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : t)
-// In tag position (between attributes) a token must not be able to end the tag or open a value.
-const tagTokenOk = (t: string) => !/[<>"'`]/.test(t)
+// In tag position (between attributes) a token must not be able to open a tag
+// or give an attribute a value: no `<`, no backtick, no `=` other than the
+// comparisons (==, !=, <=, >=). A `>` (n > 0) or a quote ('left') is allowed:
+// at worst a browser reads the rest of the tag as plain text, never as markup.
+const tagTokenOk = (t: string) => !/[<`]/.test(t) && !/(^|[^=!<>])=(?!=)/.test(t.replace(/^\{[{%]-?|-?[}%]\}$/g, ''))
+
+// Outlook conditional comments (<!--[if mso]>…<![endif]-->): inert in browsers,
+// kept for Outlook unless they hold something that could end the comment early.
+const MSO_COMMENT = /^\[if [^\]]{1,40}\]>[\s\S]*<!\[endif\]$|^\[if [^\]]{1,40}\]><!$|^<!\[endif\]$/
+const msoCommentOk = (c: string) => MSO_COMMENT.test(c) && !/--!?>|<!--(?!\[)|<\/?(script|style|iframe|object|embed|svg|math|template|textarea|title|noscript|xmp|plaintext)\b|javascript:|vbscript:/i.test(c)
 
 // A DOM round trip writes the comparison operators of HuBL ({% if n > 0 %}) as
 // &gt; / &lt;, which HubSpot would not understand: put them back inside the tag.
@@ -234,6 +260,11 @@ export function sanitizeHtml(html: string): string {
       },
       ontext(text) {
         if (!dropDepth) out += back(escText(text), (t) => textToken(t))
+      },
+      oncomment(data) {
+        if (dropDepth) return
+        const c = back(data, (t) => t)
+        if (msoCommentOk(c)) out += `<!--${c}-->`
       },
     },
     { decodeEntities: true, lowerCaseTags: true, lowerCaseAttributeNames: true, recognizeSelfClosing: false },

@@ -166,7 +166,7 @@ function ValueEditor({ f, value, set }: { f: ExtraField; value: Json | undefined
               <span className={caption}>
                 {c.label} <span className="normal-case text-mute/70">· {c.hsType ?? c.type}</span>
               </span>
-              <ValueEditor f={c} value={o[c.name] ?? c.default} set={(v) => set({ ...o, [c.name]: v })} />
+              <ValueEditor f={c} value={c.name in o ? o[c.name] : c.noDefault && c.type === 'number' ? null : c.default} set={(v) => set({ ...o, [c.name]: v })} />
             </div>
           ))}
         </div>
@@ -176,7 +176,8 @@ function ValueEditor({ f, value, set }: { f: ExtraField; value: Json | undefined
     case 'richtext':
       return <textarea className={`${input} min-h-20`} value={String(d ?? '')} onChange={(e) => set(e.target.value)} aria-label="Valeur (HTML inline autorisé)" />
     case 'number':
-      return <input type="number" className={input} value={Number(d ?? 0)} onChange={(e) => set(Number(e.target.value))} aria-label="Valeur" />
+      // Empty stays empty (null): templates test `is number` to apply a value only when one is given.
+      return <input type="number" className={input} value={d === null || d === undefined ? '' : Number(d)} onChange={(e) => set(e.target.value === '' ? null : Number(e.target.value))} aria-label="Valeur" placeholder="Vide" />
     case 'boolean':
       return (
         <label className="flex items-center gap-2 text-sm">

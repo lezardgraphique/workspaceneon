@@ -4,13 +4,16 @@
 // headings, template wrappers, {% module %} tags), a module is rebuilt from
 // its fields when only a fields.json / module JSON is given, and every repair
 // is listed for the person. Browser only (codeToTree uses DOMParser).
-import { codeToTree, syncExtraFields } from './hubl'
+import { Parser } from 'htmlparser2'
+import { codeToTree, previewEmail, syncExtraFields, verbatimBlock } from './hubl'
+import { previewScope, renderHubl } from './hubl-render'
 import { applyValues, importSpecs, parseForeignJson } from './json-import'
 import type { ForeignJson } from './json-import'
 import { parseFieldsJson } from './module-fields'
 import type { FieldSpec } from './module-fields'
 import { parseLenient } from './json-repair'
 import { fixCode, validateSyntax } from './validator'
+import { uid } from './types'
 import type { ModuleTree } from './types'
 
 const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`
@@ -347,6 +350,59 @@ export function prepareImport(input: ImportInput, current: ModuleTree): Prepared
   const specs = importSpecs(source, given.length ? given : null, foreign)
   const res = codeToTree(source, current, specs)
   if (!res.ok) return { ok: false, error: res.error, repairs }
-  const { tree, applied } = applyValues(syncExtraFields({ ...res.tree, fields: undefined }, specs, source), foreign?.values ?? null)
+  let { tree, applied } = applyValues(syncExtraFields({ ...res.tree, fields: undefined }, specs, source), foreign?.values ?? null)
+  const whole = fromFields ? null : keepTemplateWhole(source, tree, specs)
+  if (whole) {
+    ;({ tree, applied } = applyValues(whole, foreign?.values ?? null))
+    repairs.push(KEPT_WHOLE)
+  }
   return { ok: true, tree, source, specs, values: foreign?.values ?? null, repairs, fromFields, foreign, fieldsJson: fj, applied }
+}
+
+export const KEPT_WHOLE = 'modèle gardé tel quel (macros, largeurs calculées, cellules écrites par des boucles) : son contenu se règle dans l’onglet Champs'
+
+/**
+ * Templates built on macros, computed widths or cells printed by loops lose
+ * their structure once cut into blocks. `tree` is the imported module (blocks
+ * and fields); when its blocks show less than the template itself, the module
+ * with the template kept whole, exactly as written, is returned (else null).
+ */
+export function keepTemplateWhole(source: string, tree: ModuleTree, specs?: FieldSpec[]): ModuleTree | null {
+  if (/data-neon=["'](module|section)/.test(source) || !looksLikeTemplate(source)) return null
+  const whole = renderedSize(renderHubl(source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ''), previewScope(tree)))
+  const cut = renderedSize(previewEmail(tree, 'x'))
+  if (!(whole.imgs || whole.text) || !(whole.imgs > cut.imgs || whole.text > cut.text * 1.25 + 20)) return null
+  const kept: ModuleTree = {
+    ...tree,
+    fields: undefined,
+    sections: [{ id: uid(), type: 'section', columns: 1, behavior: 'stack', bg: 'transparent', padding: 0, radius: 0, cells: [[verbatimBlock(source)]] }],
+  }
+  return syncExtraFields(kept, specs, source)
+}
+
+// Logic beyond simple conditions: macros, computed variables, loops writing cells.
+const looksLikeTemplate = (src: string) => /\{%-?\s*(macro|do|for)\b/.test(src) || (src.match(/\{%-?\s*set\b/g)?.length ?? 0) >= 5
+
+// What a rendering shows: its images and the length of its visible text.
+function renderedSize(html: string): { imgs: number; text: number } {
+  let imgs = 0
+  let text = 0
+  let hidden = 0
+  const p = new Parser(
+    {
+      onopentag: (n) => {
+        if (n === 'img') imgs++
+        if (n === 'style' || n === 'script' || n === 'title') hidden++
+      },
+      onclosetag: (n) => {
+        if (n === 'style' || n === 'script' || n === 'title') hidden = Math.max(0, hidden - 1)
+      },
+      ontext: (t) => {
+        if (!hidden) text += t.replace(/\s+/g, '').length
+      },
+    },
+    { decodeEntities: true },
+  )
+  p.end(html)
+  return { imgs, text }
 }

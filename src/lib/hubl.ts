@@ -5,7 +5,7 @@ import { interpretForPreview } from './hubl-render'
 import type { SampleContact } from './hubl-render'
 import { analyzeFieldRefs, exposedNames, hubspotField } from './extra-fields'
 import { bindFieldsFromCode } from './module-fields'
-import { isSafeUrl, sanitizeHtml as strictHtml, sanitizeStyle } from './sanitize'
+import { isSafeUrl, sanitizeCssText, sanitizeHtml as strictHtml, sanitizeStyle } from './sanitize'
 import type { FieldBinding, FieldSpec } from './module-fields'
 import { olAttr, olParse, olStyle } from './outlook'
 import { protectHubl, restoreDom, restoreTree } from './hubl-protect'
@@ -53,6 +53,8 @@ class Ctx {
   fields: Field[] = []
   defs: Map<string, ModuleField>
   vml: boolean
+  /** Rendered for display (standalone preview): templates kept as written are shown, not wrapped for the code. */
+  shown = false
   constructor(public mode: Mode, tree: ModuleTree) {
     this.vml = !!tree.vml
     this.defs = new Map(mode === 'hubspot' ? collectFields(tree).map((f) => [f.block.id, f]) : [])
@@ -170,6 +172,7 @@ ${p}</div>`
     case 'spacer':
       return `${p}<div${ctx.attrs({ neon: 'spacer', height: b.height, ...(b.mobileHeight != null ? { 'mobile-height': b.mobileHeight } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide), b.mobileHeight != null ? `neon-mh-${b.mobileHeight}` : '')} style="${hideStyle(b.hide)}${hasSpacing(b) ? marginCss(sp.t, sp.b, sp.l, sp.r) : ''}height:${b.height}px;line-height:${b.height}px;font-size:0;${b.outlook?.h != null ? `mso-line-height-alt:${b.outlook.h}px;mso-line-height-rule:exactly;` : ''}${olStyle(b.outlook)}">&nbsp;</div>`
     case 'raw':
+      if (b.verbatim) return verbatimCode(b, ctx.shown ? 'hubspot' : ctx.mode, p)
       return ctx.mode === 'hubspot' ? `${p}${b.html}` : `${p}<div data-neon="raw"${b.cols ? ` data-cols="${b.cols}"` : ''}>${b.html}</div>`
     case 'section':
       return renderSection(b, ctx, d, font, true, avail)
@@ -268,6 +271,24 @@ ${body}
   </table>
   <!--[if mso]></td></tr></table><![endif]-->
 </div>`
+}
+
+// A template kept as written: in the code, inside a <script type="text/hubl">
+// (never parsed as HTML, so cells printed by macros or loops stay where they are).
+const VERBATIM_RE = /<script type="text\/hubl" data-neon="raw"( data-cols="[23]")?>([\s\S]*?)<\/script>/g
+const STYLE_RE = /<style\b[^>]*>([\s\S]*?)<\/style>/gi
+function verbatimCode(b: RawBlock, mode: Mode, p: string): string {
+  const css = b.css ? `<style type="text/css">\n${b.css}\n</style>\n` : ''
+  if (mode === 'hubspot') return `${p}${css}${b.html}`
+  const body = `${css}${b.html}`.replace(/<\/(script)/gi, '<\\/$1')
+  return `${p}<script type="text/hubl" data-neon="raw"${b.cols ? ` data-cols="${b.cols}"` : ''}>\n${body}\n${p}</script>`
+}
+/** A verbatim template from its code: <style> sheets apart, the rest sanitized as is. */
+export function verbatimBlock(src: string, cols?: number): RawBlock {
+  const sheets: string[] = []
+  const html = src.replace(/<\\\/script/gi, '</script').replace(STYLE_RE, (_m, css: string) => (sheets.push(css.trim()), '')).trim()
+  const css = sanitizeCssText(sheets.filter(Boolean).join('\n\n'))
+  return { id: uid(), type: 'raw', html: strictHtml(html).trim(), verbatim: true, ...(css ? { css } : {}), ...(cols === 2 || cols === 3 ? { cols } : {}) }
 }
 
 export function treeToCode(tree: ModuleTree, name: string): string {
@@ -500,6 +521,8 @@ function parseBlockInner(el: Element): Block | null {
       return { id, type: 'spacer', height: asNum(g('height'), 24, 0, 400), ...optNum(g('mobile-height'), 'mobileHeight', 0, 400) }
     case 'raw': {
       const cols = Number(el.getAttribute('data-cols'))
+      const kept = el.getAttribute('data-verbatim')
+      if (kept !== null && verbatimStore[Number(kept)] !== undefined) return { ...verbatimBlock(verbatimStore[Number(kept)], cols), id }
       return { id, type: 'raw', html: strictHtml(el.innerHTML.trim()), ...(cols === 2 || cols === 3 ? { cols: cols as 2 | 3 } : {}) }
     }
     case 'section':
@@ -575,9 +598,15 @@ export type ParseResult =
 
 // `specs` (a fields.json) gives labels and default values to the {{ module.… }} fields
 // found in free code, which become real, exactly named fields of the blocks.
+// Verbatim templates of the code being parsed, out of the HTML parser's reach.
+let verbatimStore: string[] = []
+
 export function codeToTree(code: string, fallback: ModuleTree, specs?: FieldSpec[]): ParseResult {
+  verbatimStore = []
+  // Templates kept as written leave the HTML before parsing (placeholders).
+  const lifted = code.replace(VERBATIM_RE, (_m, cols: string | undefined, body: string) => `<div data-neon="raw"${cols ?? ''} data-verbatim="${verbatimStore.push(body) - 1}"></div>`)
   // HuBL comments would otherwise leak into the DOM as text.
-  const cleaned = code.replace(/\{#[\s\S]*?#\}/g, '')
+  const cleaned = lifted.replace(/\{#[\s\S]*?#\}/g, '')
   const prot = protectHubl(cleaned)
   const doc = new DOMParser().parseFromString(`<body>${prot.html}</body>`, 'text/html')
   restoreDom(doc.body, prot.tokens)
@@ -1172,7 +1201,7 @@ ${STACK_CSS}${responsiveCss(tree)}
 </style>
 </head>
 <body>
-${renderModule(tree, new Ctx('sync', tree))}
+${renderModule(tree, Object.assign(new Ctx('sync', tree), { shown: true }))}
 </body>
 </html>
 `

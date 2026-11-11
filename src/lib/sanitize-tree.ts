@@ -1,6 +1,6 @@
 import { olClean } from './outlook'
 import { safeBgImage, spacingClean } from './look'
-import { isSafeUrl, sanitizeHtml, sanitizeStyle, stripTags } from './sanitize'
+import { isSafeUrl, sanitizeCssText, sanitizeHtml, sanitizeStyle, stripTags } from './sanitize'
 import { uid } from './types'
 import type { Align, Block, Columns, ExtraField, ExtraFieldType, Json, ModuleTree, Section } from './types'
 
@@ -185,7 +185,14 @@ function blockInner(raw: unknown, depth: number, count: { n: number }): Block | 
     case 'spacer':
       return { ...base, type: 'spacer', height: num(raw.height, 24, 0, 400), ...opt(raw.mobileHeight, 'mobileHeight', 0, 400) }
     case 'raw':
-      return { ...base, type: 'raw', html: sanitizeHtml(str(raw.html, 50_000)), ...(raw.cols === 2 || raw.cols === 3 ? { cols: raw.cols } : {}) }
+      return {
+        ...base,
+        type: 'raw',
+        html: sanitizeHtml(str(raw.html, 50_000)),
+        ...(raw.cols === 2 || raw.cols === 3 ? { cols: raw.cols } : {}),
+        ...(raw.verbatim === true ? { verbatim: true as const } : {}),
+        ...(raw.verbatim === true && typeof raw.css === 'string' && sanitizeCssText(raw.css) ? { css: sanitizeCssText(raw.css) } : {}),
+      }
     case 'section':
       return depth < MAX_DEPTH ? section(raw, depth + 1, count) : null
     default:
@@ -278,6 +285,7 @@ function extraField(raw: unknown, depth = 0): ExtraField | null {
   if (raw.repeater === true) out.repeater = true
   if (raw.keep === true) out.keep = true
   if (raw.noDefault === true) out.noDefault = true
+  if (raw.sample === true) out.sample = true
   const spec = specObj(raw.spec)
   if (spec) out.spec = spec
   // Simple values are checked by type; groups, lists and HubSpot-only types as bounded JSON.

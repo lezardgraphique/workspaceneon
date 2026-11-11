@@ -2,7 +2,7 @@ import { codeToTree, syncExtraFields } from '@/lib/hubl'
 import { isLogicBlock } from '@/lib/hubl-render'
 import { withLegacySpecs } from '@/lib/hubl-legacy'
 import { validateSyntax } from '@/lib/validator'
-import { cleanSource } from '@/lib/import-repair'
+import { cleanSource, keepTemplateWhole } from '@/lib/import-repair'
 import type { FieldBinding, FieldSpec } from '@/lib/module-fields'
 import type { Block, ModuleTree } from '@/lib/types'
 
@@ -65,7 +65,10 @@ export function recognizeCode(input: string, current: ModuleTree, given?: FieldS
   if (!res.ok) return { ok: false, kind, error: res.error }
 
   // Every variable no block owns becomes a module field (the variable stays in the content).
-  const tree = syncExtraFields({ ...res.tree, fields: undefined }, specs, code)
+  const synced = syncExtraFields({ ...res.tree, fields: undefined }, specs, code)
+  // A template whose layout blocks would lose (macros, computed widths…) is kept whole.
+  const kept = keepTemplateWhole(code, synced, specs)
+  const tree = kept ?? synced
   const created = tree.fields ?? []
 
   const st = { blocks: 0, raw: 0, cards: 0 }
@@ -94,13 +97,15 @@ export function recognizeCode(input: string, current: ModuleTree, given?: FieldS
       ? `${plural(syntax.errors, 'erreur de syntaxe', 'erreurs de syntaxe')} dans le code (ligne ${syntax.issues.find((i) => i.severity === 'error')!.line} : ${syntax.issues.find((i) => i.severity === 'error')!.message})`
       : left > 0
       ? `${plural(left, 'variable', 'variables')} {{ module.… }} (${unbound.join(', ')}) non liée${left > 1 ? 's' : ''} à un champ`
-      : st.blocks && st.raw / st.blocks > 0.5
+      : !kept && st.blocks && st.raw / st.blocks > 0.5
         ? `${st.raw} blocs sur ${st.blocks} restent en Bloc HTML`
         : undefined
 
   const parts = [plural(tree.sections.length, 'section', 'sections'), plural(st.blocks - st.raw, 'bloc éditable', 'blocs éditables')]
   if (st.cards) parts.push(plural(st.cards, 'card', 'cards'))
-  const raw = st.raw
+  const raw = kept
+    ? ' (modèle gardé tel quel : macros et largeurs calculées conservées, contenu réglable dans l’onglet Champs)'
+    : st.raw
     ? ` et ${plural(st.raw, 'Bloc HTML', 'Blocs HTML')} (logique HuBL ou éléments non reconnus, conservés tels quels)`
     : ''
   const fields = binding?.bound.length

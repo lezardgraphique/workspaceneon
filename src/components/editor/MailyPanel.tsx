@@ -206,10 +206,13 @@ export function MailyPanel({
   moduleName,
   applyCode,
   addSection,
+  request,
 }: {
   tree: ModuleTree
   code: string
   moduleName: string
+  /** A message sent for the user (the validator's "Maily" button); `n` changes each time. */
+  request?: { text: string; n: number } | null
   applyCode: (code: string, specs?: FieldSpec[], values?: Record<string, unknown> | null) => string | null
   // Appends a custom block to the open module; returns a message when it is refused (duplicate)
   addSection: (section: Section) => string | null
@@ -551,6 +554,15 @@ export function MailyPanel({
       abortRef.current = null
     }
   }
+
+  // The validator's request: sent once, as if the user had typed it.
+  const handled = useRef(0)
+  useEffect(() => {
+    if (!request || request.n === handled.current || loading) return
+    handled.current = request.n
+    void send(request.text)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request?.n, loading])
 
   return (
     <div

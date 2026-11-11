@@ -165,7 +165,7 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
       hidden={hidden}
       label={`${b.type !== 'section' && 'field' in b && b.field?.label ? b.field.label : BLOCK_LABELS[b.type]}${hide === 'mobile' ? ' · masqué sur mobile' : hide === 'desktop' ? ' · mobile seulement' : ''}`}
       editable={b.type === 'heading' || b.type === 'text' || b.type === 'button'}
-      hint={b.type === 'raw' && /<[a-zA-Z]/.test(b.html) ? ' · clique un élément pour le modifier, glisse-le pour le déplacer' : undefined}
+      hint={b.type === 'raw' && b.verbatim ? ' · modèle importé tel quel : son contenu se modifie dans l’onglet Champs, son code dans l’onglet Code' : b.type === 'raw' && /<[a-zA-Z]/.test(b.html) ? ' · clique un élément pour le modifier, glisse-le pour le déplacer' : undefined}
       selectedId={p.selectedId} onSelect={p.onSelect} style={{ marginTop: sp.t || undefined, marginBottom: sp.b || undefined, marginLeft: sp.l || undefined, marginRight: sp.r || undefined, ...style }} onDropImage={p.onDropImage}>
       {children}
     </Node>
@@ -244,7 +244,7 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
     case 'raw':
       // Selected HTML block: its own code, editable in place (texts, images,
       // links, elements dragged within the block).
-      if (active && /<[a-zA-Z]/.test(b.html)) return node(<HtmlBlockEditor html={b.html} font={font} onChange={(html) => edit({ html })} />)
+      if (active && !b.verbatim && /<[a-zA-Z]/.test(b.html)) return node(<HtmlBlockEditor html={b.html} font={font} onChange={(html) => edit({ html })} />)
       // The tree reaching the preview is already interpreted: show the result.
       return node(
         b.html.trim() ? (
