@@ -296,6 +296,37 @@ body {
   .auth-tile, .auth-rise, .auth-intro-out, .auth-form-in { animation: none; }
 }
 
+/* Logo as a neon sign in the background (NeonCube.tsx). Hidden until the page
+   runs (data-lit), then lit: flicker the first time per visit, fade afterwards.
+   Strength = --neon-o, set per place below. Only opacity/transform animate. */
+@keyframes neon-on {
+  0% { opacity: 0; }
+  8% { opacity: var(--neon-o); }
+  10% { opacity: calc(var(--neon-o) * 0.15); }
+  14% { opacity: var(--neon-o); }
+  17% { opacity: calc(var(--neon-o) * 0.3); }
+  24%, 100% { opacity: var(--neon-o); }
+}
+@keyframes neon-fade { from { opacity: 0; } to { opacity: var(--neon-o); } }
+@keyframes neon-spin { to { transform: rotate(360deg); } }
+.neon-cube { position: absolute; opacity: 0; --neon-o: 0.4; }
+.neon-cube[data-lit='first'] { animation: neon-on 2.6s ease-in 0.3s both; }
+.neon-cube[data-lit='again'] { animation: neon-fade 0.6s ease-out both; }
+/* Home: a sign behind Maily (desktop), a slowly turning halo (phone). */
+.neon-home { --neon-o: 0.3; inset: -18%; width: 136%; height: 136%; }
+@media (width < 48rem) {
+  .neon-home { --neon-o: 0.24; inset: -6%; width: 112%; height: 112%; }
+  .neon-home[data-lit] { opacity: var(--neon-o); animation: neon-fade 0.6s ease-out both, neon-spin 80s linear infinite; }
+}
+/* Sign-in: a sign behind the illustration (desktop), on the floor under the form (phone). */
+.neon-auth-side { --neon-o: 0.32; left: 50%; top: 50%; width: 130%; translate: -50% -50%; }
+.neon-auth-floor-wrap { position: absolute; inset: auto 0 0; height: 30%; perspective: 900px; mask-image: linear-gradient(to bottom, transparent, #000 45%); }
+.neon-auth-floor { --neon-o: 0.3; left: 50%; bottom: -70%; width: min(34rem, 135vw); translate: -50% 0; transform: rotateX(64deg); }
+@media (max-height: 500px) { .neon-auth-floor-wrap { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .neon-cube[data-lit] { animation: none; opacity: var(--neon-o); }
+}
+
 /* In the base layer so Tailwind utilities (hidden, min-h-14…) still win. */
 @layer base {
   /* iPhone held sideways (viewport-fit=cover): nothing under the notch or the

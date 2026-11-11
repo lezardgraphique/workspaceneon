@@ -7,6 +7,7 @@ import { BackupPanel } from '@/components/BackupPanel'
 import { AppHeader, headerButton } from '@/components/AppHeader'
 import { EmailFrame } from '@/components/EmailFrame'
 import { Maily } from '@/components/Maily'
+import { NeonCube } from '@/components/NeonCube'
 import { previewEmail } from '@/lib/hubl'
 import { KOFI_URL } from '@/lib/links'
 import { STARTERS } from '@/lib/templates'
@@ -159,7 +160,7 @@ function Library() {
       </AppHeader>
 
       <main className="mx-auto max-w-6xl px-6 pb-24">
-        <section className="relative grid items-center gap-10 py-12 md:grid-cols-[1.4fr_1fr] md:py-20">
+        <section className="relative grid items-center gap-10 py-12 max-md:overflow-x-clip md:grid-cols-[1.4fr_1fr] md:py-20">
           <div>
             <p className="mb-4 font-mono text-xs uppercase tracking-[0.25em] text-cyan">Modules email & web · HTML · HuBL</p>
             <h1 className="font-display text-4xl leading-[1.05] font-bold md:text-6xl">
@@ -210,8 +211,8 @@ function Library() {
             </div>
           </div>
           <div className="relative mx-auto flex aspect-square w-full max-w-sm items-center justify-center">
-            <div className="absolute inset-6 rounded-full bg-violet/25 blur-3xl" />
-            <div className="absolute inset-0 rounded-[28%] border border-cyan/20" />
+            <div className="absolute inset-6 rounded-full bg-violet/25 blur-3xl max-md:opacity-50" />
+            <NeonCube className="neon-home" />
             <button
               type="button"
               onClick={() => start('blank', true)}
