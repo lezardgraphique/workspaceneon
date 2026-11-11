@@ -160,13 +160,15 @@ function Library() {
       </AppHeader>
 
       <main className="mx-auto max-w-6xl px-6 pb-24">
-        <section className="relative grid items-center gap-10 py-12 max-md:overflow-x-clip md:grid-cols-[1.4fr_1fr] md:pt-8 md:pb-20 max-md:pt-8 touch:pt-3">
+        {/* Computer and tablet: text and Maily centred in the screen's height under the bar.
+            Phone held sideways: from the top. Phone upright: Maily first, small, beside her bubble. */}
+        <section className="relative grid items-center gap-10 py-12 max-md:gap-5 max-md:overflow-x-clip max-md:pt-5 max-md:pb-8 md:min-h-[calc(100svh-4.25rem)] md:grid-cols-[1.4fr_1fr] md:content-center md:py-8 short:min-h-0 short:content-start short:pt-3">
           <div>
             <p className="mb-4 font-mono text-xs uppercase tracking-[0.25em] text-cyan">Modules email & web · HTML · HuBL</p>
             <h1 className="font-display text-4xl leading-[1.05] font-bold md:text-6xl">
               Construis tes modules email &amp; web <span className="neon-text">à la vitesse de la lumière.</span>
             </h1>
-            <p className="mt-6 max-w-xl text-lg text-mute">
+            <p className="mt-6 max-w-xl text-lg text-mute max-sm:mt-4 max-sm:text-base">
               Un <strong className="font-semibold text-white">module</strong>, c'est un morceau d'e-mail ou de page web prêt à
               réutiliser : bandeau, carte produit, bouton, pied de page. Ici, tu le construis en cliquant dans l'aperçu ou en
               écrivant le code, les deux restent synchronisés, puis tu l'exportes vers ton outil d'envoi ou ton site.
@@ -177,11 +179,11 @@ function Library() {
                 {error}
               </p>
             )}
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-8 flex flex-wrap gap-3 max-sm:mt-6">
               <button
                 onClick={() => start('newsletter')}
                 disabled={!!busy}
-                className="glow-pink inline-flex items-center gap-2 rounded-lg bg-pink-fill px-5 py-3 font-display font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+                className="glow-pink inline-flex items-center gap-2 rounded-lg bg-pink-fill px-5 py-3 font-display font-semibold text-white transition hover:brightness-110 disabled:opacity-60 max-sm:px-4 max-sm:text-[15px]"
               >
                 {busy === 'newsletter' ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
                 Créer un module
@@ -189,7 +191,7 @@ function Library() {
               <button
                 onClick={() => start('blank', true)}
                 disabled={!!busy}
-                className="inline-flex items-center gap-2 rounded-lg border border-cyan/60 px-5 py-3 font-display font-semibold text-cyan transition hover:bg-cyan/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg border border-cyan/60 px-5 py-3 font-display font-semibold text-cyan transition hover:bg-cyan/10 max-sm:px-4 max-sm:text-[15px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan disabled:opacity-60"
               >
                 {busy === 'blank' ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                 Parler à Maily
@@ -218,22 +220,22 @@ function Library() {
               )}
             </div>
           </div>
-          {/* On tablets and phones held sideways the text column is tall: Maily
-              stays at the top, sized to the screen height, so she is never cut. */}
-          <div className="relative mx-auto flex aspect-square w-full max-w-sm items-center justify-center touch:max-w-[min(24rem,calc(100svh-8rem))] md:mt-24 touch:mt-0 touch:self-start">
-            <div className="absolute inset-6 rounded-full bg-violet/25 blur-3xl max-md:opacity-50" />
-            <NeonCube className="neon-home" />
+          {/* Never cut: on a phone upright Maily comes first, small, beside her bubble;
+              on tablets and phones sideways she is sized to the screen height. */}
+          <div className="relative mx-auto flex aspect-square w-full max-w-sm items-center justify-center max-md:order-first max-md:mx-0 max-md:aspect-auto max-md:max-w-none max-md:justify-start max-md:gap-3 touch:max-w-[min(24rem,calc(100svh-8rem))] short:self-start">
+            <div className="absolute inset-6 rounded-full bg-violet/25 blur-3xl max-md:hidden" />
+            <NeonCube className="neon-home max-md:hidden" />
             <button
               type="button"
               onClick={() => start('blank', true)}
               disabled={!!busy}
               aria-label="Parler à Maily : crée un module vide et ouvre son chat"
-              className="relative rounded-[28%] transition hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan active:scale-95 disabled:opacity-60 motion-reduce:transition-none motion-reduce:hover:scale-100"
+              className="relative shrink-0 rounded-[28%] transition max-md:size-[5.5rem] hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan active:scale-95 disabled:opacity-60 motion-reduce:transition-none motion-reduce:hover:scale-100"
             >
-              <Maily size={260} mood="happy" decorative className="touch:size-[min(260px,calc(100svh-11rem))]" />
+              <Maily size={260} mood="happy" decorative className="touch:size-[min(260px,calc(100svh-11rem))] max-md:size-full" />
             </button>
-            <p className="absolute -bottom-2 left-1/2 w-max max-w-full -translate-x-1/2 rounded-full border border-line bg-night/90 px-4 py-1.5 text-sm">
-              Salut, moi c'est <span className="font-semibold text-cyan">Maily</span> 👋 <span className="text-mute">Touche-moi pour discuter</span>
+            <p className="absolute -bottom-2 left-1/2 w-max max-w-full -translate-x-1/2 rounded-full border border-line bg-night/90 px-4 py-1.5 text-sm max-md:static max-md:w-auto max-md:translate-x-0 max-md:rounded-2xl max-md:rounded-bl-sm max-md:px-3.5 max-md:py-2 max-md:text-sm">
+              Salut, moi c'est <span className="font-semibold text-cyan">Maily</span> 👋 <span className="text-mute max-md:block">Touche-moi pour discuter</span>
             </p>
           </div>
         </section>

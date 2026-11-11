@@ -5,6 +5,8 @@
    panels get narrower so the module in the middle keeps its real width. */
 /* Touch screens wide enough for two columns: tablets, phones held sideways. */
 @custom-variant touch (@media (pointer: coarse) and (min-width: 48rem));
+/* Two columns but little height: phones held sideways. */
+@custom-variant short (@media (min-width: 48rem) and (max-height: 34rem));
 @custom-variant tablet (@media (pointer: coarse) and (min-width: 64rem) and (max-width: 89.99rem));
 
 @theme {
