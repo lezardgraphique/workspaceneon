@@ -160,7 +160,7 @@ function Library() {
       </AppHeader>
 
       <main className="mx-auto max-w-6xl px-6 pb-24">
-        <section className="relative grid items-center gap-10 py-12 max-md:overflow-x-clip md:grid-cols-[1.4fr_1fr] md:py-20 max-md:pt-8 touch:pt-3">
+        <section className="relative grid items-center gap-10 py-12 max-md:overflow-x-clip md:grid-cols-[1.4fr_1fr] md:pt-8 md:pb-20 max-md:pt-8 touch:pt-3">
           <div>
             <p className="mb-4 font-mono text-xs uppercase tracking-[0.25em] text-cyan">Modules email & web · HTML · HuBL</p>
             <h1 className="font-display text-4xl leading-[1.05] font-bold md:text-6xl">
@@ -220,7 +220,7 @@ function Library() {
           </div>
           {/* On tablets and phones held sideways the text column is tall: Maily
               stays at the top, sized to the screen height, so she is never cut. */}
-          <div className="relative mx-auto flex aspect-square w-full max-w-sm items-center justify-center touch:max-w-[min(24rem,calc(100svh-8rem))] touch:self-start">
+          <div className="relative mx-auto flex aspect-square w-full max-w-sm items-center justify-center touch:max-w-[min(24rem,calc(100svh-8rem))] md:mt-24 touch:mt-0 touch:self-start">
             <div className="absolute inset-6 rounded-full bg-violet/25 blur-3xl max-md:opacity-50" />
             <NeonCube className="neon-home" />
             <button
