@@ -180,11 +180,11 @@ function Library() {
                 {error}
               </p>
             )}
-            <div className="mt-8 flex flex-wrap gap-3 max-sm:mt-6 touch:mt-6 touch:gap-2">
+            <div className="mt-8 flex flex-wrap gap-3 max-sm:mt-6 md:mt-6 md:gap-2">
               <button
                 onClick={() => start('newsletter')}
                 disabled={!!busy}
-                className="glow-pink inline-flex items-center gap-2 rounded-lg bg-pink-fill px-5 py-3 font-display font-semibold text-white transition hover:brightness-110 disabled:opacity-60 max-sm:px-4 max-sm:text-[15px] touch:px-3.5 touch:py-2.5 touch:text-sm"
+                className="glow-pink inline-flex items-center gap-2 rounded-lg bg-pink-fill px-5 py-3 font-display font-semibold text-white transition hover:brightness-110 disabled:opacity-60 max-sm:px-4 max-sm:text-[15px] md:px-3.5 md:py-2.5 md:text-sm"
               >
                 {busy === 'newsletter' ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
                 Créer un module
@@ -192,7 +192,7 @@ function Library() {
               <button
                 onClick={() => start('blank', true)}
                 disabled={!!busy}
-                className="inline-flex items-center gap-2 rounded-lg border border-cyan/60 px-5 py-3 font-display font-semibold text-cyan transition hover:bg-cyan/10 max-sm:px-4 max-sm:text-[15px] touch:px-3.5 touch:py-2.5 touch:text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg border border-cyan/60 px-5 py-3 font-display font-semibold text-cyan transition hover:bg-cyan/10 max-sm:px-4 max-sm:text-[15px] md:px-3.5 md:py-2.5 md:text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan disabled:opacity-60"
               >
                 {busy === 'blank' ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                 Parler à Maily
@@ -204,15 +204,15 @@ function Library() {
                     <button
                       type="button"
                       onClick={() => showGuide(true)}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold hover:border-cyan max-sm:min-w-0 max-sm:flex-1 max-sm:px-3 max-sm:text-sm touch:px-3.5 touch:py-2.5 touch:text-sm"
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold hover:border-cyan max-sm:min-w-0 max-sm:flex-1 max-sm:px-3 max-sm:text-sm md:px-3.5 md:py-2.5 md:text-sm"
                     >
-                      <BookOpen className="size-4 shrink-0 text-cyan" /> <span className="truncate">Guide<span className="touch:hidden"> de démarrage</span></span>
+                      <BookOpen className="size-4 shrink-0 text-cyan" /> <span className="truncate">Guide<span className="md:hidden"> de démarrage</span></span>
                     </button>
                   )}
                   {modules.length > 0 && (
                     <a
                       href="#mes-modules"
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold whitespace-nowrap hover:border-cyan max-sm:shrink-0 max-sm:px-3 max-sm:text-sm touch:px-3.5 touch:py-2.5 touch:text-sm"
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold whitespace-nowrap hover:border-cyan max-sm:shrink-0 max-sm:px-3 max-sm:text-sm md:px-3.5 md:py-2.5 md:text-sm"
                     >
                       Mes modules ({modules.length})
                     </a>
@@ -221,23 +221,27 @@ function Library() {
               )}
             </div>
           </div>
-          {/* Never cut: on a phone upright Maily comes first, small, beside her bubble;
-              on tablets and phones sideways she is sized to the screen height. */}
-          <div className="relative mx-auto flex aspect-square w-full max-w-sm items-center justify-center max-md:order-first max-md:mx-0 max-md:aspect-auto max-md:max-w-none max-md:justify-start max-md:gap-3 touch:max-w-[min(24rem,calc(100svh-8rem))] short:self-start">
-            <div className="absolute inset-6 rounded-full bg-violet/25 blur-3xl max-md:hidden" />
-            <NeonCube className="neon-home max-md:hidden" />
-            <button
-              type="button"
-              onClick={() => start('blank', true)}
-              disabled={!!busy}
-              aria-label="Parler à Maily : crée un module vide et ouvre son chat"
-              className="relative shrink-0 rounded-[28%] transition max-md:size-[5.5rem] hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan active:scale-95 disabled:opacity-60 motion-reduce:transition-none motion-reduce:hover:scale-100"
-            >
-              <Maily size={260} mood="happy" decorative className="touch:size-[min(260px,calc(100svh-11rem))] max-md:size-full" />
-            </button>
-            <p className="absolute -bottom-2 left-1/2 w-max max-w-full -translate-x-1/2 rounded-full border border-line bg-night/90 px-4 py-1.5 text-sm max-md:static max-md:w-auto max-md:translate-x-0 max-md:rounded-2xl max-md:rounded-bl-sm max-md:px-3.5 max-md:py-2 max-md:text-sm">
-              Salut, moi c'est <span className="font-semibold text-cyan">Maily</span> 👋 <span className="text-mute max-md:block">Touche-moi pour discuter</span>
-            </p>
+          {/* Computer and tablet: Maily sits in a box as tall as the visible screen
+              under the bar, so she is centred on the screen even when the text is taller. */}
+          <div className="max-md:contents md:flex md:h-[calc(100svh-8.25rem)] md:items-center md:justify-center md:self-start short:block short:h-auto">
+            {/* Never cut: on a phone upright Maily comes first, small, beside her bubble;
+                on tablets and phones sideways she is sized to the screen height. */}
+            <div className="relative mx-auto flex aspect-square w-full max-w-sm items-center justify-center max-md:order-first max-md:mx-0 max-md:aspect-auto max-md:max-w-none max-md:justify-start max-md:gap-3 touch:max-w-[min(24rem,calc(100svh-8rem))] short:self-start">
+              <div className="absolute inset-6 rounded-full bg-violet/25 blur-3xl max-md:hidden" />
+              <NeonCube className="neon-home max-md:hidden" />
+              <button
+                type="button"
+                onClick={() => start('blank', true)}
+                disabled={!!busy}
+                aria-label="Parler à Maily : crée un module vide et ouvre son chat"
+                className="relative shrink-0 rounded-[28%] transition max-md:size-[5.5rem] hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan active:scale-95 disabled:opacity-60 motion-reduce:transition-none motion-reduce:hover:scale-100"
+              >
+                <Maily size={260} mood="happy" decorative className="touch:size-[min(260px,calc(100svh-11rem))] max-md:size-full" />
+              </button>
+              <p className="absolute -bottom-2 left-1/2 w-max max-w-full -translate-x-1/2 rounded-full border border-line bg-night/90 px-4 py-1.5 text-sm max-md:static max-md:w-auto max-md:translate-x-0 max-md:rounded-2xl max-md:rounded-bl-sm max-md:px-3.5 max-md:py-2 max-md:text-sm">
+                Salut, moi c'est <span className="font-semibold text-cyan">Maily</span> 👋 <span className="text-mute max-md:block">Touche-moi pour discuter</span>
+              </p>
+            </div>
           </div>
         </section>
 

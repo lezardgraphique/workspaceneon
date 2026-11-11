@@ -4,10 +4,11 @@
 /* Tablets held sideways (iPad landscape, touch, 1024–1439px): the editor's side
    panels get narrower so the module in the middle keeps its real width. */
 /* Touch screens wide enough for two columns: tablets, phones held sideways. */
-@custom-variant touch (@media (pointer: coarse) and (min-width: 48rem));
+/* any-pointer: an iPad with a keyboard and trackpad still has its touch screen. */
+@custom-variant touch (@media (any-pointer: coarse) and (min-width: 48rem));
 /* Two columns but little height: phones held sideways. */
 @custom-variant short (@media (min-width: 48rem) and (max-height: 34rem));
-@custom-variant tablet (@media (pointer: coarse) and (min-width: 64rem) and (max-width: 89.99rem));
+@custom-variant tablet (@media (any-pointer: coarse) and (min-width: 64rem) and (max-width: 89.99rem));
 
 @theme {
   --color-void: #07070d;
