@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-// The app logo (the cube of favicon.svg) drawn as a neon sign, for the
+// The app logo (the cube of favicon.svg, without its rounded square) drawn as a neon sign, for the
 // background of the home and sign-in screens. Purely decorative: hidden from
 // assistive tech and never catches a click.
 //
@@ -15,14 +15,12 @@ import { useEffect, useRef } from 'react'
 
 const LIT_KEY = 'nsp-neon-lit'
 
-const SQUIRCLE = 'M134 6H378A128 128 0 0 1 506 134V378A128 128 0 0 1 378 506H134A128 128 0 0 1 6 378V134A128 128 0 0 1 134 6Z'
 const CUBE = 'M256 120L380 190V330L256 400L132 330V190Z'
 const EDGES = 'M256 120V260L380 190M256 260L132 190M256 260V400'
 const CHEVRONS = 'M200 230L170 260L200 290M312 230L342 260L312 290'
 
 // [path, colour, core width, extra attributes]
 const LINES: [string, string, number, { opacity?: number }][] = [
-  [SQUIRCLE, '#bc13fe', 5, { opacity: 0.7 }],
   [CUBE, '#00e5ff', 8, {}],
   [EDGES, '#00e5ff', 4, { opacity: 0.65 }],
   [CHEVRONS, '#ff007f', 11, {}],
