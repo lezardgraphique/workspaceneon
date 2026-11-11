@@ -160,7 +160,7 @@ function Library() {
       </AppHeader>
 
       <main className="mx-auto max-w-6xl px-6 pb-24">
-        <section className="relative grid items-center gap-10 py-12 max-md:overflow-x-clip md:grid-cols-[1.4fr_1fr] md:py-20 touch:pt-8">
+        <section className="relative grid items-center gap-10 py-12 max-md:overflow-x-clip md:grid-cols-[1.4fr_1fr] md:py-20 max-md:pt-8 touch:pt-3">
           <div>
             <p className="mb-4 font-mono text-xs uppercase tracking-[0.25em] text-cyan">Modules email & web · HTML · HuBL</p>
             <h1 className="font-display text-4xl leading-[1.05] font-bold md:text-6xl">
@@ -238,18 +238,18 @@ function Library() {
           </div>
         </section>
 
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
           {FEATURES.map((f) => (
-            <div key={f.title} className="rounded-xl border border-line bg-night/70 p-5">
-              <f.icon className="mb-3 size-5 text-cyan" />
-              <h2 className="font-display font-semibold">{f.title}</h2>
-              <p className="mt-1 text-sm text-mute">{f.text}</p>
+            <div key={f.title} className="rounded-xl border border-line bg-night/70 p-5 max-sm:p-3.5 max-lg:[&:last-child:nth-child(odd)]:col-span-2">
+              <f.icon className="mb-3 size-5 text-cyan max-sm:mb-2" />
+              <h2 className="font-display font-semibold max-sm:text-sm">{f.title}</h2>
+              <p className="mt-1 text-sm text-mute max-sm:text-xs max-sm:leading-snug">{f.text}</p>
             </div>
           ))}
         </section>
 
         {guide && (
-          <section id="premiers-pas" aria-labelledby="premiers-pas-titre" className="mt-20 scroll-mt-24">
+          <section id="premiers-pas" aria-labelledby="premiers-pas-titre" className="mt-20 scroll-mt-24 max-sm:mt-12">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className="font-mono text-xs uppercase tracking-[0.25em] text-cyan">Nouveau ici ?</p>
@@ -265,17 +265,17 @@ function Library() {
                 <X className="size-4" /> Masquer le guide
               </button>
             </div>
-            <ol className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <ol className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
               {STEPS.map((step, i) => (
-                <li key={step.title} className="relative rounded-xl border border-line bg-night/70 p-5">
+                <li key={step.title} className="relative rounded-xl border border-line bg-night/70 p-5 max-sm:p-3.5">
                   <span className="flex items-center gap-3">
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-pink-fill font-display text-sm font-bold text-white">
                       {i + 1}
                     </span>
                     <step.icon className="size-5 text-cyan" aria-hidden />
                   </span>
-                  <h3 className="mt-3 font-display font-semibold">{step.title}</h3>
-                  <p className="mt-1 text-sm text-mute">{step.text}</p>
+                  <h3 className="mt-3 font-display font-semibold max-sm:mt-2 max-sm:text-sm">{step.title}</h3>
+                  <p className="mt-1 text-sm text-mute max-sm:text-xs max-sm:leading-snug">{step.text}</p>
                 </li>
               ))}
             </ol>
@@ -306,32 +306,32 @@ function Library() {
           </section>
         )}
 
-        <section className="mt-20">
+        <section className="mt-20 max-sm:mt-12">
           <h2 className="font-display text-2xl font-semibold">Partir d'un modèle</h2>
           <p className="mt-2 text-sm text-mute">Un clic crée une copie à ton nom et l'ouvre dans l'éditeur : tout se modifie ensuite.</p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             {STARTERS.map((s) => (
               <button
                 key={s.key}
                 onClick={() => start(s.key)}
                 disabled={!!busy}
-                className="group rounded-xl border border-line bg-panel/60 p-5 text-left transition hover:-translate-y-0.5 hover:border-pink disabled:opacity-60"
+                className="group rounded-xl border border-line bg-panel/60 p-5 text-left transition max-sm:p-3.5 hover:-translate-y-0.5 hover:border-pink disabled:opacity-60"
               >
-                <span className="flex items-center justify-between">
-                  <span className="font-display font-semibold">{s.name}</span>
+                <span className="flex items-center justify-between gap-2">
+                  <span className="font-display font-semibold max-sm:text-sm">{s.name}</span>
                   {busy === s.key ? (
                     <Loader2 className="size-4 animate-spin text-pink" />
                   ) : (
                     <ArrowRight className="size-4 text-mute transition group-hover:translate-x-0.5 group-hover:text-pink" />
                   )}
                 </span>
-                <span className="mt-2 block text-sm text-mute">{s.description}</span>
+                <span className="mt-2 block text-sm text-mute max-sm:text-xs max-sm:leading-snug">{s.description}</span>
               </button>
             ))}
           </div>
         </section>
 
-        <section id="mes-modules" className="mt-20 scroll-mt-24">
+        <section id="mes-modules" className="mt-20 scroll-mt-24 max-sm:mt-12">
           <h2 className="font-display text-2xl font-semibold">Mes modules</h2>
           {modules.length === 0 ? (
             <div className="mt-5 flex items-center gap-4 rounded-xl border border-dashed border-line p-6 text-mute">
@@ -342,21 +342,21 @@ function Library() {
               </p>
             </div>
           ) : (
-            <ul className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
               {modules.map((m) => (
                 <li key={m.id} className="group flex flex-col overflow-hidden rounded-xl border border-line bg-night/70 transition hover:border-pink">
                   {/* The thumbnail (an iframe) sits beside the link covering it: an iframe may not be inside a link. */}
-                  <div className="relative block h-56 overflow-hidden border-b border-line bg-white">
+                  <div className="relative block h-56 overflow-hidden border-b border-line bg-white max-sm:h-32">
                     <div aria-hidden>
                       <EmailFrame html={previewEmail(m.tree, m.name)} width={m.tree.width + 40} maxHeight={900} title={`Vignette de ${m.name}`} />
                     </div>
                     <span className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/25 to-transparent" />
                     <Link to="/editor/$moduleId" params={{ moduleId: m.id }} aria-label={`Ouvrir ${m.name}`} tabIndex={-1} className="absolute inset-0" />
                   </div>
-                  <div className="flex items-center gap-2 px-4 py-3">
-                    <Link to="/editor/$moduleId" params={{ moduleId: m.id }} className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">{m.name}</p>
-                      <p className="truncate text-xs text-mute">
+                  <div className="flex items-center gap-2 px-4 py-3 max-sm:flex-wrap max-sm:gap-x-1 max-sm:gap-y-0 max-sm:px-3 max-sm:py-2">
+                    <Link to="/editor/$moduleId" params={{ moduleId: m.id }} className="min-w-0 flex-1 max-sm:basis-full">
+                      <p className="truncate font-semibold max-sm:text-sm">{m.name}</p>
+                      <p className="truncate text-xs text-mute max-sm:text-[11px]">
                         {countBlocks(m.tree)} éléments · modifié le{' '}
                         {new Date(m.updatedAt).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })}
                       </p>
