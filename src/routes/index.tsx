@@ -164,7 +164,7 @@ function Library() {
         {/* Computer and tablet: text and Maily centred in the screen's height under the bar.
             Phone held sideways: from the top. Phone upright: Maily first, small, beside her bubble. */}
         <section className="relative grid items-center gap-10 py-12 max-md:gap-5 max-md:overflow-x-clip max-md:pt-5 max-md:pb-8 md:min-h-[calc(100svh-4.25rem)] md:grid-cols-[1.4fr_1fr] md:content-center md:py-8 short:min-h-0 short:content-start short:pt-3">
-          <div>
+          <div className="touch:-translate-y-[2px]">
             <p className="mb-4 font-mono text-xs uppercase tracking-[0.25em] text-cyan">Modules email & web · HTML · HuBL</p>
             <h1 className="font-display text-4xl leading-[1.05] font-bold md:text-6xl">
               Construis tes modules email &amp; web <span className="neon-text">à la vitesse de la lumière.</span>
@@ -180,11 +180,11 @@ function Library() {
                 {error}
               </p>
             )}
-            <div className="mt-8 flex flex-wrap gap-3 max-sm:mt-6">
+            <div className="mt-8 flex flex-wrap gap-3 max-sm:mt-6 touch:mt-6 touch:gap-2">
               <button
                 onClick={() => start('newsletter')}
                 disabled={!!busy}
-                className="glow-pink inline-flex items-center gap-2 rounded-lg bg-pink-fill px-5 py-3 font-display font-semibold text-white transition hover:brightness-110 disabled:opacity-60 max-sm:px-4 max-sm:text-[15px]"
+                className="glow-pink inline-flex items-center gap-2 rounded-lg bg-pink-fill px-5 py-3 font-display font-semibold text-white transition hover:brightness-110 disabled:opacity-60 max-sm:px-4 max-sm:text-[15px] touch:px-3.5 touch:py-2.5 touch:text-sm"
               >
                 {busy === 'newsletter' ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
                 Créer un module
@@ -192,7 +192,7 @@ function Library() {
               <button
                 onClick={() => start('blank', true)}
                 disabled={!!busy}
-                className="inline-flex items-center gap-2 rounded-lg border border-cyan/60 px-5 py-3 font-display font-semibold text-cyan transition hover:bg-cyan/10 max-sm:px-4 max-sm:text-[15px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg border border-cyan/60 px-5 py-3 font-display font-semibold text-cyan transition hover:bg-cyan/10 max-sm:px-4 max-sm:text-[15px] touch:px-3.5 touch:py-2.5 touch:text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan disabled:opacity-60"
               >
                 {busy === 'blank' ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                 Parler à Maily
@@ -204,15 +204,15 @@ function Library() {
                     <button
                       type="button"
                       onClick={() => showGuide(true)}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold hover:border-cyan max-sm:min-w-0 max-sm:flex-1 max-sm:px-3 max-sm:text-sm"
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold hover:border-cyan max-sm:min-w-0 max-sm:flex-1 max-sm:px-3 max-sm:text-sm touch:px-3.5 touch:py-2.5 touch:text-sm"
                     >
-                      <BookOpen className="size-4 shrink-0 text-cyan" /> <span className="truncate">Guide de démarrage</span>
+                      <BookOpen className="size-4 shrink-0 text-cyan" /> <span className="truncate">Guide<span className="touch:hidden"> de démarrage</span></span>
                     </button>
                   )}
                   {modules.length > 0 && (
                     <a
                       href="#mes-modules"
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold whitespace-nowrap hover:border-cyan max-sm:shrink-0 max-sm:px-3 max-sm:text-sm"
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold whitespace-nowrap hover:border-cyan max-sm:shrink-0 max-sm:px-3 max-sm:text-sm touch:px-3.5 touch:py-2.5 touch:text-sm"
                     >
                       Mes modules ({modules.length})
                     </a>
