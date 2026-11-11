@@ -5,7 +5,7 @@
 // its fields when only a fields.json / module JSON is given, and every repair
 // is listed for the person. Browser only (codeToTree uses DOMParser).
 import { Parser } from 'htmlparser2'
-import { codeToTree, previewEmail, syncExtraFields, verbatimBlock } from './hubl'
+import { codeToTree, previewEmail, syncExtraFields, treeToHubSpot, verbatimBlock } from './hubl'
 import { previewScope, renderHubl } from './hubl-render'
 import { applyValues, importSpecs, parseForeignJson } from './json-import'
 import type { ForeignJson } from './json-import'
@@ -371,22 +371,60 @@ export function keepTemplateWhole(source: string, tree: ModuleTree, specs?: Fiel
   if (/data-neon=["'](module|section)/.test(source) || !looksLikeTemplate(source)) return null
   const whole = renderedSize(renderHubl(source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ''), previewScope(tree)))
   const cut = renderedSize(previewEmail(tree, 'x'))
-  if (!(whole.imgs || whole.text) || !(whole.imgs > cut.imgs || whole.text > cut.text * 1.25 + 20)) return null
-  const kept: ModuleTree = {
-    ...tree,
-    fields: undefined,
-    sections: [{ id: uid(), type: 'section', columns: 1, behavior: 'stack', bg: 'transparent', padding: 0, radius: 0, cells: [[verbatimBlock(source)]] }],
+  if (!showsMore(whole, cut)) return null
+  return syncExtraFields({ ...tree, fields: undefined, sections: [wholeSection(source)] }, specs, source)
+}
+
+const wholeSection = (html: string): ModuleTree['sections'][number] => ({ id: uid(), type: 'section', columns: 1, behavior: 'stack', bg: 'transparent', padding: 0, radius: 0, cells: [[verbatimBlock(html)]] })
+const showsMore = (a: { imgs: number; text: number }, b: { imgs: number; text: number }) => (a.imgs || a.text) > 0 && (a.imgs > b.imgs || a.text > b.text * 1.25 + 20)
+
+/**
+ * A module imported before templates were kept whole: when its blocks, put
+ * back together, show more as one template than cut into blocks, it becomes
+ * that template (fields, values and settings unchanged). Else null.
+ */
+export function upgradeImported(tree: ModuleTree): ModuleTree | null {
+  const raws: string[] = []
+  const walk = (list: ModuleTree['sections'][number]['cells'][number]) => list.forEach((b) => (b.type === 'raw' ? (b.verbatim ? raws.push('\u0000') : raws.push(b.html)) : b.type === 'section' && b.cells.forEach(walk)))
+  tree.sections.forEach((s) => s.cells.forEach(walk))
+  if (raws.includes('\u0000') || !raws.some((h) => /\{%-?\s*(macro|do|for)\b/.test(h))) return null
+  try {
+    const src = treeToHubSpot(tree, '')['module.html'].replace(/^\{#[\s\S]*?#\}\n?/, '')
+    if (!looksLikeTemplate(src)) return null
+    const kept: ModuleTree = { ...tree, sections: [wholeSection(src)] }
+    const after = renderedSize(previewEmail(kept, 'x'))
+    const before = renderedSize(previewEmail(tree, 'x'))
+    // Only when the whole template renders cleanly (no code shown as text).
+    return after.junk <= before.junk && showsMore(after, before) ? kept : null
+  } catch {
+    return null
   }
-  return syncExtraFields(kept, specs, source)
+}
+
+/** Macros the module defines but never calls: their calls were lost (an import cut the template). */
+export function lostMacroCalls(tree: ModuleTree): string[] {
+  const text: string[] = []
+  const walk = (list: ModuleTree['sections'][number]['cells'][number]) =>
+    list.forEach((b) => {
+      if (b.type === 'section') return b.cells.forEach(walk)
+      if (b.type === 'raw' && b.verbatim) return
+      text.push(b.type === 'raw' || b.type === 'text' ? b.html : b.type === 'heading' ? b.text : '')
+    })
+  tree.sections.forEach((s) => s.cells.forEach(walk))
+  const all = text.join('\n')
+  const names = [...all.matchAll(/\{%-?\s*macro\s+([A-Za-z_]\w*)\s*\(/g)].map((m) => m[1])
+  // Defined but called nowhere (not even by another macro): its calls were lost.
+  return names.filter((n) => (all.match(new RegExp(`\\b${n}\\s*\\(`, 'g'))?.length ?? 0) <= 1)
 }
 
 // Logic beyond simple conditions: macros, computed variables, loops writing cells.
 const looksLikeTemplate = (src: string) => /\{%-?\s*(macro|do|for)\b/.test(src) || (src.match(/\{%-?\s*set\b/g)?.length ?? 0) >= 5
 
 // What a rendering shows: its images and the length of its visible text.
-function renderedSize(html: string): { imgs: number; text: number } {
+function renderedSize(html: string): { imgs: number; text: number; junk: number } {
   let imgs = 0
   let text = 0
+  let junk = 0
   let hidden = 0
   const p = new Parser(
     {
@@ -398,11 +436,14 @@ function renderedSize(html: string): { imgs: number; text: number } {
         if (n === 'style' || n === 'script' || n === 'title') hidden = Math.max(0, hidden - 1)
       },
       ontext: (t) => {
-        if (!hidden) text += t.replace(/\s+/g, '').length
+        if (hidden) return
+        text += t.replace(/\s+/g, '').length
+        // Code printed as text: HuBL or attributes of a broken tag.
+        junk += (t.match(/\{\{|\{%|%\}|\}\}|\w="|<\/?[a-z]/gi) ?? []).length
       },
     },
     { decodeEntities: true },
   )
   p.end(html)
-  return { imgs, text }
+  return { imgs, text, junk }
 }

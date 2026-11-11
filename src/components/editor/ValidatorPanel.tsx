@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronDown, Info, Sparkles, Wrench, XCircle } from 'lucide-react'
+import { AlertTriangle, Braces, CheckCircle2, ChevronDown, Info, Sparkles, Wrench, XCircle } from 'lucide-react'
 
 import { explainIssue, fixCode, validateSyntax } from '@/lib/validator'
 import type { PreviewNote } from '@/lib/preview-check'
@@ -14,12 +14,14 @@ export function ValidatorPanel({
   onFix,
   onJump,
   onAskMaily,
+  onReimport,
 }: {
   code: string
   notes?: PreviewNote[]
   onFix: (code: string) => void
   onJump: (line: number) => void
   onAskMaily?: (request: string) => void
+  onReimport?: () => void
 }) {
   const res = useMemo(() => validateSyntax(code), [code])
   const [open, setOpen] = useState(false)
@@ -93,6 +95,11 @@ export function ValidatorPanel({
               <span className="min-w-0">
                 <span className="block text-[#d9d9ec]">{n.message}</span>
                 <span className="mt-0.5 block text-mute">{n.help}</span>
+                {n.action === 'reimport' && onReimport && (
+                  <button type="button" onClick={onReimport} className="mt-1 inline-flex items-center gap-1 rounded border border-cyan bg-cyan/10 px-2 py-1 text-cyan">
+                    <Braces className="size-3" /> Réimporter
+                  </button>
+                )}
               </span>
             </li>
           ))}

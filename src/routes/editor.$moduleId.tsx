@@ -48,7 +48,7 @@ import { signature, withNewIds } from '@/lib/custom-blocks'
 import { interpretForPreview } from '@/lib/hubl-render'
 import type { SampleContact } from '@/lib/hubl-render'
 import { checkPreview } from '@/lib/preview-check'
-import { keepTemplateWhole } from '@/lib/import-repair'
+import { keepTemplateWhole, upgradeImported } from '@/lib/import-repair'
 import { KOFI_URL } from '@/lib/links'
 import type { FieldSpec } from '@/lib/module-fields'
 import { applyValues } from '@/lib/json-import'
@@ -210,6 +210,16 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     setCodeImported(false)
     if (select !== undefined) setSelectedId(select)
   }
+
+  // A module imported before templates were kept whole: repaired once when
+  // opened, if putting its template back together shows it better (undo restores).
+  useEffect(() => {
+    const up = upgradeImported(initial.tree)
+    if (!up) return
+    commit(up)
+    showNotice('Module mis à jour : son modèle importé est maintenant gardé tel quel. « Annuler » revient à la version précédente.')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const onCodeChange = (text: string) => {
     codeTyped.current = true
@@ -649,7 +659,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
                   </button>
                 </div>
                 <CodeEditor value={code} onChange={onCodeChange} jump={codeJump} />
-                <ValidatorPanel code={code} notes={previewNotes} onFix={onCodeChange} onJump={(line) => setCodeJump((j) => ({ line, n: (j?.n ?? 0) + 1 }))} onAskMaily={askMaily} />
+                <ValidatorPanel code={code} notes={previewNotes} onFix={onCodeChange} onJump={(line) => setCodeJump((j) => ({ line, n: (j?.n ?? 0) + 1 }))} onAskMaily={askMaily} onReimport={() => setHsImport(true)} />
               </div>
             </aside>
           </div>
