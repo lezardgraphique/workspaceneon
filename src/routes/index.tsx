@@ -160,7 +160,7 @@ function Library() {
       </AppHeader>
 
       <main className="mx-auto max-w-6xl px-6 pb-24">
-        <section className="relative grid items-center gap-10 py-12 max-md:overflow-x-clip md:grid-cols-[1.4fr_1fr] md:py-20">
+        <section className="relative grid items-center gap-10 py-12 max-md:overflow-x-clip md:grid-cols-[1.4fr_1fr] md:py-20 touch:pt-8">
           <div>
             <p className="mb-4 font-mono text-xs uppercase tracking-[0.25em] text-cyan">Modules email & web · HTML · HuBL</p>
             <h1 className="font-display text-4xl leading-[1.05] font-bold md:text-6xl">
@@ -218,7 +218,9 @@ function Library() {
               )}
             </div>
           </div>
-          <div className="relative mx-auto flex aspect-square w-full max-w-sm items-center justify-center">
+          {/* On tablets and phones held sideways the text column is tall: Maily
+              stays at the top, sized to the screen height, so she is never cut. */}
+          <div className="relative mx-auto flex aspect-square w-full max-w-sm items-center justify-center touch:max-w-[min(24rem,calc(100svh-8rem))] touch:self-start">
             <div className="absolute inset-6 rounded-full bg-violet/25 blur-3xl max-md:opacity-50" />
             <NeonCube className="neon-home" />
             <button
@@ -228,7 +230,7 @@ function Library() {
               aria-label="Parler à Maily : crée un module vide et ouvre son chat"
               className="relative rounded-[28%] transition hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan active:scale-95 disabled:opacity-60 motion-reduce:transition-none motion-reduce:hover:scale-100"
             >
-              <Maily size={260} mood="happy" decorative />
+              <Maily size={260} mood="happy" decorative className="touch:size-[min(260px,calc(100svh-11rem))]" />
             </button>
             <p className="absolute -bottom-2 left-1/2 w-max max-w-full -translate-x-1/2 rounded-full border border-line bg-night/90 px-4 py-1.5 text-sm">
               Salut, moi c'est <span className="font-semibold text-cyan">Maily</span> 👋 <span className="text-mute">Touche-moi pour discuter</span>
