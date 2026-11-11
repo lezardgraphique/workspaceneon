@@ -48,6 +48,7 @@ import { signature, withNewIds } from '@/lib/custom-blocks'
 import { interpretForPreview } from '@/lib/hubl-render'
 import type { SampleContact } from '@/lib/hubl-render'
 import { checkPreview } from '@/lib/preview-check'
+import { fixCode, validateSyntax } from '@/lib/validator'
 import { keepTemplateWhole, upgradeImported } from '@/lib/import-repair'
 import { KOFI_URL } from '@/lib/links'
 import type { FieldSpec } from '@/lib/module-fields'
@@ -244,6 +245,50 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, pageHidden])
+
+  // « Reformater » / « Appliquer »: reads the code as it is now (even typed a
+  // moment ago), repairs what is mechanical when it doesn't parse, then rewrites
+  // it cleanly indented. Never wipes the person's code: when it can't be read,
+  // it says why and leaves it as typed.
+  const [codeNote, setCodeNote] = useState<{ ok: boolean; text: string } | null>(null)
+  useEffect(() => {
+    if (!codeNote) return
+    const t = setTimeout(() => setCodeNote(null), codeNote.ok ? 2500 : 8000)
+    return () => clearTimeout(t)
+  }, [codeNote])
+  const reformat = () => {
+    let src = code
+    let fixed = false
+    // HuBL or HTML errors first: what the validator can repair is repaired, the
+    // rest stops here (rewriting broken code could lose part of it).
+    if (validateSyntax(src).errors > 0) {
+      const repaired = fixCode(src).code
+      const left = validateSyntax(repaired)
+      if (left.errors > 0) {
+        const first = left.issues.find((i) => i.severity === 'error')
+        setCodeNote({ ok: false, text: `Reformatage impossible : ${first ? `ligne ${first.line}, ${first.message}.` : 'le code contient une erreur.'} Ton code est gardé tel quel ; corrige-la (le validateur en bas l'explique), puis reformate.` })
+        return
+      }
+      src = repaired
+      fixed = true
+    }
+    const res = codeToTree(src, tree)
+    if (!res.ok) {
+      setCodeError(res.error)
+      setCodeNote({ ok: false, text: `Reformatage impossible : ${res.error} Ton code est gardé tel quel ; le validateur en bas indique la ligne à corriger.` })
+      return
+    }
+    codeTyped.current = false
+    const synced = syncExtraFields({ ...reconcileIds(res.tree, tree), fields: res.imported ? undefined : tree.fields }, undefined, res.imported ? src : undefined)
+    const next = (res.imported && keepTemplateWhole(src, synced)) || synced
+    pushHistory(tree, next)
+    setTree(next)
+    const out = treeToCode(next, name)
+    setCodeNote({ ok: true, text: out === code ? 'Le code est déjà bien formaté.' : fixed ? 'Code corrigé puis reformaté.' : res.imported ? 'Code converti en blocs et reformaté.' : 'Code reformaté.' })
+    setCode(out)
+    setCodeError(null)
+    setCodeImported(false)
+  }
 
   const applyCode = (generated: string, specs?: FieldSpec[], values?: Record<string, unknown> | null) => {
     const res = codeToTree(generated, tree, specs)
@@ -620,7 +665,12 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
               </div>
               <div className={`${vis('code', rightTab === 'code')} min-h-0 w-full flex-1 flex-col bg-space`}>
                 <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-xs">
-                  {codeError ? (
+                  {codeNote ? (
+                    <span role="status" className={`flex min-w-0 flex-1 items-center gap-1.5 ${codeNote.ok ? 'text-cyan' : 'text-pink'}`}>
+                      {codeNote.ok ? <Check className="size-3.5 shrink-0" /> : <AlertTriangle className="size-3.5 shrink-0" />}
+                      <span className="line-clamp-2" title={codeNote.text}>{codeNote.text}</span>
+                    </span>
+                  ) : codeError ? (
                     <span className="flex min-w-0 flex-1 items-center gap-1.5 text-pink">
                       <AlertTriangle className="size-3.5 shrink-0" /> <span className="truncate" title={codeError}>{codeError}</span>
                     </span>
@@ -638,12 +688,8 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
                     </span>
                   )}
                   <button
-                    onClick={() => {
-                      setCode(treeToCode(tree, name))
-                      setCodeError(null)
-                      setCodeImported(false)
-                    }}
-                    title={codeImported ? 'Réécrire le code au format blocs, synchronisé avec l\'aperçu' : 'Régénérer le code depuis l\'aperçu'}
+                    onClick={reformat}
+                    title={codeImported ? 'Réécrire le code au format blocs, synchronisé avec l\'aperçu' : 'Remettre le code en forme (indentation, une balise par ligne), sans rien perdre de tes modifications'}
                     className={`inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1.5 lg:py-1 ${
                       codeImported ? 'border-cyan bg-cyan/10 text-cyan' : 'border-line text-mute hover:border-cyan hover:text-white'
                     }`}
