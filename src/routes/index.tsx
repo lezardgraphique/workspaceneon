@@ -194,19 +194,27 @@ function Library() {
                 {busy === 'blank' ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                 Parler à Maily
               </button>
-              {guide === false && (
-                <button
-                  type="button"
-                  onClick={() => showGuide(true)}
-                  className="inline-flex items-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold hover:border-cyan"
-                >
-                  <BookOpen className="size-4 text-cyan" /> Guide de démarrage
-                </button>
-              )}
-              {modules.length > 0 && (
-                <a href="#mes-modules" className="inline-flex items-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold hover:border-cyan">
-                  Mes modules ({modules.length})
-                </a>
+              {/* On a phone the guide and « Mes modules » share one row. */}
+              {(guide === false || modules.length > 0) && (
+                <div className="flex gap-3 max-sm:w-full sm:contents">
+                  {guide === false && (
+                    <button
+                      type="button"
+                      onClick={() => showGuide(true)}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold hover:border-cyan max-sm:min-w-0 max-sm:flex-1 max-sm:px-3 max-sm:text-sm"
+                    >
+                      <BookOpen className="size-4 shrink-0 text-cyan" /> <span className="truncate">Guide de démarrage</span>
+                    </button>
+                  )}
+                  {modules.length > 0 && (
+                    <a
+                      href="#mes-modules"
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold whitespace-nowrap hover:border-cyan max-sm:shrink-0 max-sm:px-3 max-sm:text-sm"
+                    >
+                      Mes modules ({modules.length})
+                    </a>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -321,7 +329,7 @@ function Library() {
           </div>
         </section>
 
-        <section id="mes-modules" className="mt-20">
+        <section id="mes-modules" className="mt-20 scroll-mt-24">
           <h2 className="font-display text-2xl font-semibold">Mes modules</h2>
           {modules.length === 0 ? (
             <div className="mt-5 flex items-center gap-4 rounded-xl border border-dashed border-line p-6 text-mute">
