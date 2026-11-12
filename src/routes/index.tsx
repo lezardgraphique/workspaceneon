@@ -162,9 +162,9 @@ function Library() {
 
       <main className="mx-auto max-w-6xl px-6 pb-24">
         {/* Computer and tablet: text and Maily centred in the screen's height under the bar.
-            Phone held sideways: from the top. Phone upright: Maily first, small, beside her bubble. */}
-        <section className="relative grid items-center gap-10 py-12 max-md:gap-5 max-md:overflow-x-clip max-md:pt-5 max-md:pb-8 md:min-h-[calc(100svh-4.25rem)] md:grid-cols-[1.4fr_1fr] md:content-center md:py-8 short:min-h-0 short:content-start short:pt-3">
-          <div className="touch:-translate-y-[2px]">
+            Phone held sideways: from the top. Phone upright: Maily small, beside her bubble, just above the buttons. */}
+        <section className="relative grid items-center gap-10 py-12 max-md:gap-0 max-md:overflow-x-clip max-md:pt-5 max-md:pb-8 md:min-h-[calc(100svh-4.25rem)] md:grid-cols-[1.4fr_1fr] md:content-center md:py-8 short:min-h-0 short:content-start short:pt-3">
+          <div className="max-md:contents touch:-translate-y-[2px]">
             <p className="mb-4 font-mono text-xs uppercase tracking-[0.25em] text-cyan">Modules email & web · HTML · HuBL</p>
             <h1 className="font-display text-4xl leading-[1.05] font-bold md:text-6xl">
               Construis tes modules email &amp; web <span className="neon-text">à la vitesse de la lumière.</span>
@@ -180,7 +180,7 @@ function Library() {
                 {error}
               </p>
             )}
-            <div className="mt-8 flex flex-wrap gap-3 max-sm:mt-6 md:mt-6 md:gap-2">
+            <div className="mt-8 flex flex-wrap gap-3 max-md:order-3 max-sm:mt-5 md:mt-6 md:gap-2">
               <button
                 onClick={() => start('newsletter')}
                 disabled={!!busy}
@@ -224,9 +224,9 @@ function Library() {
           {/* Computer and tablet: Maily sits in a box as tall as the visible screen
               under the bar, so she is centred on the screen even when the text is taller. */}
           <div className="max-md:contents md:flex md:h-[calc(100svh-8.25rem)] md:items-center md:justify-center md:self-start short:block short:h-auto">
-            {/* Never cut: on a phone upright Maily comes first, small, beside her bubble;
+            {/* Never cut: on a phone upright Maily sits above the buttons, small, beside her bubble;
                 on tablets and phones sideways she is sized to the screen height. */}
-            <div className="relative mx-auto flex aspect-square w-full max-w-sm items-center justify-center max-md:order-first max-md:mx-0 max-md:aspect-auto max-md:max-w-none max-md:justify-start max-md:gap-3 touch:max-w-[min(24rem,calc(100svh-8rem))] short:self-start">
+            <div className="relative mx-auto flex aspect-square w-full max-w-sm items-center justify-center max-md:order-2 max-md:mt-6 max-md:mx-0 max-md:aspect-auto max-md:max-w-none max-md:justify-start max-md:gap-3 touch:max-w-[min(24rem,calc(100svh-8rem))] short:self-start">
               <div className="absolute inset-6 rounded-full bg-violet/25 blur-3xl max-md:hidden" />
               <NeonCube className="neon-home max-md:hidden" />
               <button
