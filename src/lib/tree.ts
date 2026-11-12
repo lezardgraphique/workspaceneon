@@ -6,7 +6,7 @@ import type { Block, Columns, ModuleTree, Section } from './types'
 type Mapper = (blocks: Block[]) => Block[]
 
 // Apply `fn` to every block list in the tree (top-level sections + every cell).
-function mapLists(tree: ModuleTree, fn: Mapper): ModuleTree {
+export function mapLists(tree: ModuleTree, fn: Mapper): ModuleTree {
   const walkSection = (s: Section): Section => ({
     ...s,
     cells: s.cells.map((cell) => fn(cell).map((b) => (b.type === 'section' ? walkSection(b) : b))),

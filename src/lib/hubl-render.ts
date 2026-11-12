@@ -227,6 +227,9 @@ const FILTERS: Record<string, (v: unknown, ...a: unknown[]) => unknown> = {
   },
 }
 
+/** Filters the preview knows (and HubSpot prints): anything else from another tool is dropped at import. */
+export const FILTER_NAMES: ReadonlySet<string> = new Set(Object.keys(FILTERS))
+
 const FUNCTIONS: Record<string, (...a: unknown[]) => unknown> = {
   range: (a, b) => {
     const [from, to] = b === undefined ? [0, num(a)] : [num(a), num(b)]
@@ -377,7 +380,11 @@ export function compileExpr(src: string): Fn {
       i++
       const a = l
       const r = and()
-      l = (s) => truthy(a(s)) || truthy(r(s))
+      // Jinja: `a or b` gives a value (a when truthy, else b), not a boolean.
+      l = (s) => {
+        const x = a(s)
+        return truthy(x) ? x : r(s)
+      }
     }
     return l
   }
@@ -387,7 +394,10 @@ export function compileExpr(src: string): Fn {
       i++
       const a = l
       const r = not()
-      l = (s) => truthy(a(s)) && truthy(r(s))
+      l = (s) => {
+        const x = a(s)
+        return truthy(x) ? r(s) : x
+      }
     }
     return l
   }
@@ -751,13 +761,15 @@ function run(nodes: Node[], scope: Scope, budget: { n: number }): string {
         out += toStr(evalExpr(n.e, scope))
         break
       case 'if': {
-        const hit = n.branches.find((b) => b.c === null || evalCondition(b.c, scope))
+        // Revealing preview: a condition without « else » that hides its content shows its first case.
+        const hit = n.branches.find((b) => b.c === null || evalCondition(b.c, scope)) ?? (scope[REVEAL] ? n.branches[0] : undefined)
         if (hit) out += run(hit.body, scope, budget)
         break
       }
       case 'for': {
         const raw = evalExpr(n.it, scope)
-        const items = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.entries(raw) : []
+        let items = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.entries(raw) : []
+        if (!items.length && scope[REVEAL] && !n.other.length) items = [sampleItem()]
         if (!items.length) {
           out += run(n.other, scope, budget)
           break
@@ -920,6 +932,30 @@ const hasHubl = (s: string) => /\{[{%#]/.test(s)
 // resolved ({% if %} branches kept or dropped, {% for %} shown once), variables
 // replaced, the statements themselves hidden. `keepId` leaves that block's
 // text untouched so in-place editing works on the source, not the preview.
+// Scope flag of the revealing preview (interpretForPreview's last resort).
+export const REVEAL = '\u0000reveal'
+
+// Stand-in item of a list with no data: every property shows its name ([titre]).
+const sampleItem = (): unknown =>
+  new Proxy({} as Record<string, unknown>, {
+    get: (_t, k) => (typeof k === 'string' && k !== 'then' && k !== 'toJSON' ? `[${k}]` : undefined),
+    has: (_t, k) => typeof k === 'string',
+  })
+
+// Does the {% if %} at `from` have an {% else %} of its own before its {% endif %}?
+function hasElse(blocks: Block[], from: number): boolean {
+  let depth = 0
+  for (let j = from + 1; j < blocks.length; j++) {
+    const n = isLogicBlock(blocks[j]) ? statementOf(blocks[j])?.name : undefined
+    if (n === 'if' || n === 'unless') depth++
+    else if (n === 'endif' || n === 'endunless') {
+      if (depth === 0) return false
+      depth--
+    } else if (n === 'else' && depth === 0) return true
+  }
+  return false
+}
+
 export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | null): ModuleTree {
   const scope: Scope = Object.create(data)
 
@@ -966,7 +1002,9 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
         switch (st.name) {
           case 'if':
           case 'unless': {
-            const cond: boolean = active && evalCondition(st.name === 'unless' ? `not (${st.rest})` : st.rest, sc)
+            let cond: boolean = active && evalCondition(st.name === 'unless' ? `not (${st.rest})` : st.rest, sc)
+            // Revealing preview: a condition with no « else » that would hide its content shows its first case.
+            if (active && !cond && scope[REVEAL] && !hasElse(blocks, i)) cond = true
             frames.push({ kind: 'if', active: cond, taken: cond, parent: active })
             active = cond
             break
@@ -985,6 +1023,7 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
             }
             break
           case 'endif':
+          case 'endunless':
             if (top) {
               frames.pop()
               active = top.parent
@@ -1008,8 +1047,9 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
               const other = elseAt < 0 ? [] : range.slice(elseAt + 1)
               const iter: unknown = f ? evalExpr(f[2], sc) : undefined
               const found: unknown[] | undefined = Array.isArray(iter) ? iter : iter && typeof iter === 'object' ? Object.entries(iter) : undefined
-              // Unknown list: show the body once with empty data.
-              const items: unknown[] = found ?? [{}]
+              // Unknown list: show the body once with empty data (sample values when revealing).
+              let items: unknown[] = found ?? [scope[REVEAL] ? sampleItem() : {}]
+              if (!items.length && scope[REVEAL] && elseAt < 0) items = [sampleItem()]
               const names = (f?.[1] ?? 'item').split(',').map((n) => n.trim())
               if (!items.length) out.push(...list(other, sc))
               const cols = b.type === 'raw' ? b.cols : undefined
@@ -1116,14 +1156,26 @@ export interface PreviewResult {
   tree: ModuleTree
   /** Labels of the options switched on for the preview only. */
   forced: string[]
+  /**
+   * Conditions and lists of the code hid everything (data the preview doesn't
+   * have: a contact property, a HubDB table, another tool's variables): the
+   * preview shows their first case and one sample item instead of nothing.
+   */
+  revealed?: boolean
 }
 
 export function interpretForPreview(tree: ModuleTree, contact: SampleContact = 'known', keepId?: string | null): PreviewResult {
   const out = interpretTree(tree, previewScope(tree, contact), keepId)
   if (hasVisibleContent(out) || !hasVisibleContent({ ...tree, sections: tree.sections })) return { tree: out, forced: [] }
   const off = (tree.fields ?? []).filter((f) => (f.hsType ?? f.type) === 'boolean' && !f.default)
-  if (!off.length) return { tree: out, forced: [] }
-  const on = { ...tree, fields: (tree.fields ?? []).map((f) => (off.includes(f) ? { ...f, default: true } : f)) }
-  const shown = interpretTree(tree, previewScope(on, contact), keepId)
-  return hasVisibleContent(shown) ? { tree: shown, forced: off.map((f) => f.label || f.name) } : { tree: out, forced: [] }
+  const on = off.length ? { ...tree, fields: (tree.fields ?? []).map((f) => (off.includes(f) ? { ...f, default: true } : f)) } : tree
+  if (off.length) {
+    const shown = interpretTree(tree, previewScope(on, contact), keepId)
+    if (hasVisibleContent(shown)) return { tree: shown, forced: off.map((f) => f.label || f.name) }
+  }
+  // Last resort: never an empty preview for a module that has content.
+  const revealing: Scope = Object.create(previewScope(on, contact))
+  revealing[REVEAL] = true
+  const shown = interpretTree(tree, revealing, keepId)
+  return hasVisibleContent(shown) ? { tree: shown, forced: [], revealed: true } : { tree: out, forced: [] }
 }

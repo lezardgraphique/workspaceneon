@@ -8,8 +8,10 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Code,
+  Braces,
   Crosshair,
   Copy,
+  GitBranch,
   Heading,
   Image,
   Layers,
@@ -18,6 +20,7 @@ import {
   MoveVertical,
   Pencil,
   Plus,
+  Repeat,
   Search,
   Trash2,
   Type,
@@ -27,6 +30,9 @@ import type { LucideIcon } from 'lucide-react'
 import { fromLibrary, withNewIds } from '@/lib/custom-blocks'
 import { removeBlock } from '@/lib/data'
 import { isLogicBlock } from '@/lib/hubl-render'
+import { countLogic, logicFrames, logicInfo, onlyLogic } from '@/lib/logic'
+import type { LogicFrame } from '@/lib/logic'
+import { SHOW_LOGIC_KEY } from '@/lib/settings-keys'
 import { refreshCustomBlocks, useCustomBlocks } from './useCustomBlocks'
 import { BLOCK_LABELS, createBlock, createSection } from '@/lib/types'
 import { PRESETS } from '@/lib/presets'
@@ -91,6 +97,11 @@ interface TreeState {
   dragging: React.MutableRefObject<string | null>
   renaming: string | null
   setRenaming: (id: string | null) => void
+  /** Logic lines shown as rows; otherwise hidden, their effect shown as badges. */
+  showLogic: boolean
+  frames: Map<string, LogicFrame[]>
+  /** The selection and its sections: never hidden. */
+  selPath: Set<string>
 }
 const TreeCtx = createContext<TreeState | null>(null)
 const useTree = () => useContext(TreeCtx)!
@@ -98,7 +109,27 @@ const useTree = () => useContext(TreeCtx)!
 const countIn = (s: Section): number => s.cells.reduce((n, c) => n + c.reduce((m, b) => m + 1 + (b.type === 'section' ? countIn(b) : 0), 0), 0)
 
 const labelOf = (b: Block, nested?: boolean) =>
-  b.type === 'section' ? (b.name ? b.name : nested ? BLOCK_LABELS.section : 'Section') : isLogicBlock(b) ? 'Logique' : BLOCK_LABELS[b.type]
+  b.type === 'section' ? (b.name ? b.name : nested ? BLOCK_LABELS.section : 'Section') : isLogicBlock(b) ? (logicInfo(b)?.title ?? 'Logique') : BLOCK_LABELS[b.type]
+
+// Hidden row: a logic line, or a section of logic lines only (shown when searching or selected).
+const hiddenRow = (b: Block, t: TreeState) =>
+  !t.showLogic && !t.query && !t.selPath.has(b.id) && (b.type === 'section' ? onlyLogic(b) : isLogicBlock(b))
+
+// « si le prénom du contact est connu » / « répété pour… »: what the hidden logic does to this row.
+function FrameBadges({ frames }: { frames: LogicFrame[] }) {
+  const last = frames[frames.length - 1]
+  const Icon = last.kind === 'for' ? Repeat : GitBranch
+  const text = frames.map((f) => f.text).join(' · ')
+  return (
+    <span title={`Affiché ${text}`} className="flex max-w-[45%] shrink-0 items-center gap-1 rounded-full border border-violet/40 bg-violet/10 px-1.5 py-0.5 text-[10px] text-[#e3a6ff]">
+      <Icon className="size-3 shrink-0" aria-hidden />
+      <span className="truncate">
+        <span className="sr-only">Affiché </span>
+        {last.text}
+      </span>
+    </span>
+  )
+}
 
 function Row({ b, depth, p, nested }: { b: Block; depth: number; p: Props; nested?: boolean }) {
   const t = useTree()
@@ -201,6 +232,7 @@ function Row({ b, depth, p, nested }: { b: Block; depth: number; p: Props; neste
           <span className="min-w-0 flex-1 truncate text-xs text-mute">
             {isSection && !open && !searching ? `${countIn(b)} élément${countIn(b) > 1 ? 's' : ''} · replié` : preview(b)}
           </span>
+          {!t.showLogic && !isLogicBlock(b) && t.frames.get(b.id) && <FrameBadges frames={t.frames.get(b.id)!} />}
         </button>
       )}
       <span className="hidden shrink-0 items-center group-hover:flex group-focus-within:flex">
@@ -433,6 +465,7 @@ function AddMenu({ section, cell, depth, p }: { section: Section; cell: number; 
 function SectionTree({ s, depth, p, nested }: { s: Section; depth: number; p: Props; nested?: boolean }) {
   const t = useTree()
   if (t.shown && !t.shown.has(s.id)) return null
+  if (hiddenRow(s, t)) return null
   const open = !!t.query || !t.collapsed.has(s.id)
   return (
     <div>
@@ -449,7 +482,7 @@ function SectionTree({ s, depth, p, nested }: { s: Section; depth: number; p: Pr
               {cell.map((b) =>
                 b.type === 'section' ? (
                   <SectionTree key={b.id} s={b} depth={depth + 1} p={p} nested />
-                ) : !t.shown || t.shown.has(b.id) ? (
+                ) : (!t.shown || t.shown.has(b.id)) && !hiddenRow(b, t) ? (
                   <Row key={b.id} b={b} depth={depth + 1} p={p} />
                 ) : null,
               )}
@@ -471,6 +504,7 @@ export function Structure(p: Props) {
   const key = p.storageKey ? `nsp-folded-${p.storageKey}` : null
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [focus, setFocus] = useState(false)
+  const [showLogic, setShowLogic] = useState(false)
   const [query, setQuery] = useState('')
   const [drop, setDrop] = useState<TreeState['drop']>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -483,7 +517,7 @@ export function Structure(p: Props) {
   useEffect(() => {
     const on = (e: Event) => {
       const keys = (e as CustomEvent<string[]>).detail ?? []
-      if (keys.includes('nsp-structure-focus') || (key && keys.includes(key))) setSynced((n) => n + 1)
+      if (keys.includes('nsp-structure-focus') || keys.includes(SHOW_LOGIC_KEY) || (key && keys.includes(key))) setSynced((n) => n + 1)
     }
     window.addEventListener(SETTINGS_EVENT, on)
     return () => window.removeEventListener(SETTINGS_EVENT, on)
@@ -497,6 +531,7 @@ export function Structure(p: Props) {
       }
     }
     setFocus(store.get('nsp-structure-focus') === '1')
+    setShowLogic(store.get(SHOW_LOGIC_KEY) === '1')
   }, [key, synced])
   const save = (next: Set<string>) => {
     setCollapsed(next)
@@ -566,8 +601,15 @@ export function Structure(p: Props) {
     p.commit({ ...p.tree, sections: [...p.tree.sections, s] }, s.id)
   }
   const folded = all.filter((id) => collapsed.has(id)).length
+  const frames = useMemo(() => logicFrames(p.tree), [p.tree])
+  const logicCount = useMemo(() => countLogic(p.tree), [p.tree])
+  const selPath = useMemo(() => new Set(p.selectedId ? findPath(p.tree, p.selectedId) : []), [p.tree, p.selectedId])
+  const toggleLogic = () => {
+    setShowLogic(!showLogic)
+    store.set(SHOW_LOGIC_KEY, showLogic ? '0' : '1')
+  }
   return (
-    <TreeCtx.Provider value={{ collapsed, toggle, query, shown, drop, setDrop, dragging, renaming, setRenaming }}>
+    <TreeCtx.Provider value={{ collapsed, toggle, query, shown, drop, setDrop, dragging, renaming, setRenaming, showLogic, frames, selPath }}>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="space-y-1.5 border-b border-line p-2">
           <div className="relative">
@@ -601,6 +643,21 @@ export function Structure(p: Props) {
               <Crosshair className="size-3.5" aria-hidden /> Suivre<span className="sr-only"> la sélection</span>
             </button>
           </div>
+          {logicCount > 0 && (
+            <button
+              type="button"
+              aria-pressed={showLogic}
+              onClick={toggleLogic}
+              title="Conditions, boucles et variables du code : elles ne s’affichent pas dans l’e-mail, leur effet est indiqué sur les éléments concernés."
+              className={`flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs ${showLogic ? 'bg-violet/15 text-[#e3a6ff]' : 'text-mute hover:bg-white/5 hover:text-white'}`}
+            >
+              <Braces className="size-3.5 shrink-0" aria-hidden />
+              <span className="min-w-0 flex-1">
+                {showLogic ? 'Masquer' : 'Afficher'} les lignes de logique ({logicCount})
+              </span>
+              {!showLogic && <span className="shrink-0 text-[10px] text-mute">masquées</span>}
+            </button>
+          )}
         </div>
         <div ref={list} onKeyDown={onKeyDown} className="min-h-0 flex-1 overflow-y-auto p-2">
           {p.tree.sections.map((s) => (

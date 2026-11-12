@@ -22,7 +22,10 @@ export const AI_SHARED_KEY = 'nsp-ai-shared'
 /** « Premiers pas » guide of the home page hidden ('1'). */
 export const GUIDE_HIDDEN_KEY = 'nsp-guide-hidden'
 
-// nsp-sector (estimate), nsp-structure-focus, nsp-folded-<module id>, nsp-ai-wanted, nsp-ai-shared, nsp-guide-hidden.
-export const SYNC_KEY_RE = /^nsp-(?:sector|structure-focus|ai-wanted|ai-shared|guide-hidden|folded-[A-Za-z0-9_-]{1,80})$/
+/** Logic lines ({% if %}, {% set %}…) shown in the Structure tab ('1'); hidden by default. */
+export const SHOW_LOGIC_KEY = 'nsp-show-logic'
+
+// nsp-sector (estimate), nsp-structure-focus, nsp-show-logic, nsp-folded-<module id>, nsp-ai-wanted, nsp-ai-shared, nsp-guide-hidden.
+export const SYNC_KEY_RE = /^nsp-(?:sector|structure-focus|show-logic|ai-wanted|ai-shared|guide-hidden|folded-[A-Za-z0-9_-]{1,80})$/
 
 export const isSyncedKey = (k: string) => SYNC_KEY_RE.test(k)
