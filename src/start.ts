@@ -58,6 +58,8 @@ const securityHeaders = createMiddleware({ type: 'request' }).server(async ({ re
     if (!test(url.pathname, method)) continue
     const wait = hit(request, rule)
     if (wait) {
+      // Floods go to the security journal (one line a minute per address).
+      await import('@/server/firewall.server').then((f) => f.logEvent(request, `trop de requêtes (${rule.name})`, 'abus')).catch(() => {})
       return new Response(JSON.stringify({ error: 'Trop de requêtes, réessaie dans un instant.' }), {
         status: 429,
         headers: { 'Content-Type': 'application/json', 'Retry-After': String(wait), ...HEADERS },
@@ -69,6 +71,10 @@ const securityHeaders = createMiddleware({ type: 'request' }).server(async ({ re
 
   const result = await next()
   const res = (result as { response?: Response }).response
+  // A page that doesn't exist, asked for by a script: noted (scans show up there).
+  if (res?.status === 404 && method === 'GET') {
+    await import('@/server/firewall.server').then((f) => f.logEvent(request, 'page introuvable', 'suspect')).catch(() => {})
+  }
   if (res) {
     for (const [k, v] of Object.entries(HEADERS)) {
       // Routes that set their own policy (file downloads) keep it.
@@ -82,8 +88,24 @@ const securityHeaders = createMiddleware({ type: 'request' }).server(async ({ re
   return result
 })
 
+// Firewall first: attacks and blocked addresses never reach the app
+// (src/server/firewall.server.ts). Loaded on the server only.
+const firewall = createMiddleware({ type: 'request' }).server(async ({ request, next }) => {
+  const f = await import('@/server/firewall.server')
+  const refused = await f.guard(request, async () => {
+    const { sessionUser } = await import('@/server/auth.server')
+    return !!(await sessionUser())
+  })
+  if (refused) {
+    for (const [k, v] of Object.entries(HEADERS)) if (!refused.headers.has(k)) refused.headers.set(k, v)
+    return refused
+  }
+  return next()
+})
+
 export const startInstance = createStart(() => ({
   requestMiddleware: [
+    firewall,
     // Writes must come from this site (Sec-Fetch-Site / Origin / Referer): a
     // page on another domain can't make a visitor's browser edit or delete.
     // The MCP server (/mcp/…) is called by AI services from their own servers,

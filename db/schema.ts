@@ -71,3 +71,55 @@ export const apiTokens = pgTable(
   },
   (t) => [unique('api_tokens_hash_unique').on(t.tokenHash), index('api_tokens_user_idx').on(t.userId)],
 )
+
+// ---------------------------------------------------------------------------
+// Site security (src/server/firewall.server.ts, src/server/security-ai.server.ts)
+// ---------------------------------------------------------------------------
+
+// What the firewall saw: blocked attacks, limited floods, suspicious requests.
+// Kept 30 days (purged by the daily analysis). The IP is needed to block.
+export const securityEvents = pgTable(
+  'security_events',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    ip: text().notNull(),
+    method: text().notNull(),
+    path: text().notNull(),
+    // Signature or limit that matched (e.g. "sonde .env", "trop de requêtes").
+    rule: text().notNull(),
+    // attaque = blocked on sight; abus = rate limited; suspect = only noted.
+    severity: text().notNull(),
+    userAgent: text('user_agent').notNull().default(''),
+  },
+  (t) => [index('security_events_at_idx').on(t.at), index('security_events_ip_idx').on(t.ip, t.at)],
+)
+
+// Blocks and rules. kind: ip (an address), chemin (a text in the URL), agent
+// (a text in the User-Agent). status: actif, en_attente (waits for the admin),
+// refuse, leve (lifted). source: auto (firewall), ia (daily analysis), admin.
+export const securityBlocks = pgTable(
+  'security_blocks',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    kind: text().notNull(),
+    value: text().notNull(),
+    reason: text().notNull(),
+    source: text().notNull(),
+    status: text().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    hits: integer().notNull().default(0),
+  },
+  (t) => [index('security_blocks_status_idx').on(t.status)],
+)
+
+// The daily analyses (summary shown on the Security page).
+export const securityReports = pgTable('security_reports', {
+  id: uuid().primaryKey().defaultRandom(),
+  at: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  summary: text().notNull(),
+  // { events, ips, proposals, applied, error? }
+  stats: jsonb().notNull().default({}),
+})

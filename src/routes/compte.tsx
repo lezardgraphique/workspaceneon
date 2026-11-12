@@ -6,6 +6,7 @@ import { Bot, Check, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react'
 
 import { AccountMenu } from '@/components/AccountMenu'
 import { AppHeader } from '@/components/AppHeader'
+import { SiteSecurity } from '@/components/SiteSecurity'
 import { MIN_PASSWORD, checkPassword } from '@/lib/password'
 import { createToken, listTokens, revokeToken } from '@/server/api-tokens.functions'
 import type { TokenInfo } from '@/server/api-tokens.functions'
@@ -108,6 +109,7 @@ function Compte() {
 
         <McpTokens />
       </main>
+      <SiteSecurity />
     </div>
   )
 }
