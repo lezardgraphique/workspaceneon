@@ -1,6 +1,10 @@
 import { legacySpecs } from '@/lib/hubl-legacy'
-import { useMemo, useState } from 'react'
-import { AlertTriangle, Braces, Check, FileUp, Wrench, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, Braces, Check, Eye, FileUp, Wrench, X } from 'lucide-react'
+
+import { EmailFrame } from '@/components/EmailFrame'
+import { previewEmail } from '@/lib/hubl'
+import { countLogic } from '@/lib/logic'
 
 import { useEscape } from '@/hooks/use-escape'
 import { collectFields } from '@/lib/fields'
@@ -112,6 +116,21 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
     return { rows: [...blockRows, ...extra], missing, unknown }
   }, [prep, fieldsJson])
 
+  // What the module will look like, before replacing anything (debounced: large pastes stay fluid).
+  const [shownTree, setShownTree] = useState<ModuleTree | null>(null)
+  useEffect(() => {
+    const t = setTimeout(() => setShownTree(prep?.ok ? prep.tree : null), 300)
+    return () => clearTimeout(t)
+  }, [prep])
+  const preview = useMemo(() => {
+    if (!shownTree) return null
+    try {
+      return { html: previewEmail(shownTree, 'Import'), logic: countLogic(shownTree) }
+    } catch {
+      return null
+    }
+  }, [shownTree])
+
   const load = async (files: FileList | null) => {
     for (const f of Array.from(files ?? [])) {
       const text = await f.text()
@@ -127,21 +146,24 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
         if ((/fields/i.test(f.name) || Array.isArray(data)) && parseFieldsJson(text)) setJson(text)
         else if (!/^meta\.json$/i.test(f.name)) setOther(text)
       } else if (/\.css$/i.test(f.name)) setCss(text)
-      else if (/\.(html?|hubl)$/i.test(f.name)) setHtml(text)
+      else if (/\.(html?|hubl|hbs|handlebars|mustache|liquid|mjml|j2|jinja|twig)$/i.test(f.name)) setHtml(text)
     }
   }
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Importer un module HubSpot" className="fixed inset-0 z-50 flex items-end justify-center bg-void/80 backdrop-blur-sm sm:items-center sm:p-4">
+    <div role="dialog" aria-modal="true" aria-label="Importer un module" className="fixed inset-0 z-50 flex items-end justify-center bg-void/80 backdrop-blur-sm sm:items-center sm:p-4">
       <div className="flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-xl border border-line bg-night sm:rounded-xl">
         <div className="flex items-start gap-3 border-b border-line p-4">
           <Braces className="mt-0.5 size-5 shrink-0 text-violet" />
           <div className="min-w-0 flex-1">
-            <h2 className="font-display text-lg font-semibold">Importer un module HubSpot</h2>
+            <h2 className="font-display text-lg font-semibold">Importer un module</h2>
             <p className="text-sm text-mute">
               Colle ou dépose <code className="font-mono text-cyan">module.html</code> et son <code className="font-mono text-cyan">fields.json</code> (et{' '}
               <code className="font-mono text-cyan">module.css</code> si tu l'as), plus, si tu en as, le JSON d'un autre outil. Les champs gardent leurs noms, types et réglages
               exacts ; l'export les redonne à l'identique.
+            </p>
+            <p className="mt-1 text-xs text-mute">
+              Le code d’autres plateformes est converti : Liquid (Shopify, Klaviyo, Braze, Brevo), Handlebars et Mustache, balises Mailchimp, AMPscript, Mailjet, Marketo et MJML. Les variables de personnalisation sont reliées au contact, les autres données deviennent des champs, et la logique sans effet visible est masquée.
             </p>
           </div>
           <button onClick={onClose} aria-label="Fermer" className="rounded p-1.5 text-mute hover:bg-white/10 hover:text-white">
@@ -153,11 +175,11 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
           <div className="space-y-3">
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-line p-3 text-sm text-mute hover:border-cyan hover:text-white">
               <FileUp className="size-4" /> Choisir les fichiers (.html, fields.json, .css, autre .json)
-              <input type="file" multiple accept=".html,.htm,.json,.css,text/html,application/json,text/css" className="sr-only" onChange={(e) => void load(e.target.files)} />
+              <input type="file" multiple accept=".html,.htm,.hbs,.handlebars,.liquid,.mjml,.json,.css,text/html,application/json,text/css" className="sr-only" onChange={(e) => void load(e.target.files)} />
             </label>
             <label className="block">
-              <span className={caption}>module.html</span>
-              <textarea className={`${input} min-h-36`} value={html} onChange={(e) => setHtml(e.target.value)} placeholder={foreign?.html ? 'Repris du JSON importé (colle ici pour le remplacer)' : '<table>… {{ module.titre }} …'} />
+              <span className={caption}>module.html (ou le code d’une autre plateforme)</span>
+              <textarea className={`${input} min-h-36`} value={html} onChange={(e) => setHtml(e.target.value)} placeholder={foreign?.html ? 'Repris du JSON importé (colle ici pour le remplacer)' : '<table>… {{ module.titre }} … (ou Liquid, Handlebars, Mailchimp, MJML…)'} />
             </label>
             <label className="block">
               <span className={caption}>fields.json (facultatif, recommandé)</span>
@@ -195,6 +217,21 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
           </div>
 
           <section aria-label="Champs reconnus" className="min-w-0">
+            {preview && (
+              <div className="mb-4">
+                <h2 className="mb-2 flex items-center gap-1.5 font-display font-semibold">
+                  <Eye className="size-4 text-cyan" aria-hidden /> Aperçu de l’import
+                </h2>
+                <div className="overflow-hidden rounded-md border border-line bg-white">
+                  <EmailFrame html={preview.html} width={(shownTree?.width ?? 600) + 40} maxHeight={720} title="Aperçu du module importé" />
+                </div>
+                {preview.logic > 0 && (
+                  <p className="mt-1.5 text-xs text-mute">
+                    {preview.logic} ligne{preview.logic > 1 ? 's' : ''} de logique (conditions, boucles, variables) : appliquée{preview.logic > 1 ? 's' : ''} dans l’aperçu, masquée{preview.logic > 1 ? 's' : ''} dans la Structure.
+                  </p>
+                )}
+              </div>
+            )}
             <h2 className="mb-2 font-display font-semibold">Champs reconnus</h2>
             {!report && <p className="text-sm text-mute">Le détail des champs s'affiche ici dès que le code, le fields.json ou un JSON est collé : un JSON seul suffit, le module est alors construit à partir de ses champs.</p>}
             {report && 'error' in report && <p className="text-sm text-pink">{report.error}</p>}

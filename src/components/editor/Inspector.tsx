@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { guardedFetch } from '@/lib/session-guard'
-import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, BookmarkPlus, Check, Copy, Loader2, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, BookmarkPlus, Braces, Check, ChevronRight, Copy, Eye, GitBranch, Layers, Loader2, Repeat, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { BoxModel } from './BoxModel'
@@ -15,6 +15,11 @@ import { wrapForLibrary } from '@/lib/custom-blocks'
 import { saveBlock } from '@/lib/data'
 import { BLOCK_ICONS } from './Structure'
 import { htmlToBlocks, sanitizeHtml } from '@/lib/hubl'
+import { isLogicBlock } from '@/lib/hubl-render'
+import { countLogic, governed, logicFrames, logicInfo, removeLogic, setLogicExpr } from '@/lib/logic'
+import { getPref, setPref, SETTINGS_EVENT } from '@/lib/settings-sync'
+import { SHOW_LOGIC_KEY } from '@/lib/settings-keys'
+import { collectFields } from '@/lib/fields'
 import { BLOCK_LABELS } from '@/lib/types'
 import type { Align, Block, ButtonBlock, Columns, ModuleTree, Section, Spacing } from '@/lib/types'
 import { headingLine, headingWeight, spacingOf, textLine } from '@/lib/look'
@@ -450,7 +455,180 @@ function ConvertRaw({ html, onConvert }: { html: string; onConvert: (blocks: Blo
   )
 }
 
+// Shows or hides the logic lines in the Structure tab (synced preference; the tab re-reads it).
+function useShowLogic(): [boolean, (v: boolean) => void] {
+  const [on, setOn] = useState(() => getPref(SHOW_LOGIC_KEY) === '1')
+  return [
+    on,
+    (v) => {
+      setOn(v)
+      setPref(SHOW_LOGIC_KEY, v ? '1' : '0')
+      window.dispatchEvent(new CustomEvent(SETTINGS_EVENT, { detail: [SHOW_LOGIC_KEY] }))
+    },
+  ]
+}
+
+const blockName = (b: Block) =>
+  b.type === 'section' ? b.name || BLOCK_LABELS.section : 'field' in b && b.field?.label ? b.field.label : b.type === 'heading' ? b.text.replace(/<[^>]+>/g, '').slice(0, 40) || BLOCK_LABELS.heading : b.type === 'button' ? b.label.slice(0, 40) || BLOCK_LABELS.button : BLOCK_LABELS[b.type]
+
+// A logic line: what it does in plain words, the elements it governs, its
+// condition editable on its own, and « remove it but keep the content ».
+function LogicFields({ b, set, p }: { b: Extract<Block, { type: 'raw' }>; set: (patch: Partial<Block>) => void; p: Props }) {
+  const info = logicInfo(b, p.tree)!
+  const [showCode, setShowCode] = useState(false)
+  const kids = governed(p.tree, b.id)
+  const editable = info.kind === 'if' || info.kind === 'elif' || info.kind === 'for' || info.kind === 'set'
+  const Icon = info.kind === 'for' ? Repeat : info.kind === 'if' || info.kind === 'elif' || info.kind === 'else' ? GitBranch : Braces
+  return (
+    <>
+      <div className="rounded-lg border border-violet/40 bg-violet/10 p-3 text-sm">
+        <p className="mb-1 flex items-center gap-1.5 font-semibold text-[#e3a6ff]">
+          <Icon className="size-4 shrink-0" aria-hidden /> {info.title}
+        </p>
+        <p className="text-[#d6d6ea]">{info.summary}</p>
+        <p className="mt-2 text-xs text-mute">Une ligne de logique ne s’affiche jamais dans l’e-mail : seul son effet compte. Elle est masquée dans la Structure tant que tu n’affiches pas les lignes de logique.</p>
+      </div>
+      {editable && (
+        <Field label={info.kind === 'for' ? 'Liste parcourue (code)' : info.kind === 'set' ? 'Calcul (code)' : 'Condition (code)'}>
+          <input className={`${input} ${mono}`} value={info.expr} onChange={(e) => set({ html: setLogicExpr(b.html, e.target.value) })} spellCheck={false} />
+        </Field>
+      )}
+      {kids.length > 0 && (
+        <div>
+          <p className="mb-1 font-mono text-[10px] tracking-wider text-mute uppercase">{info.kind === 'for' ? 'Éléments répétés' : 'Éléments concernés'}</p>
+          <ul className="space-y-1">
+            {kids.map((k) => {
+              const KIcon = BLOCK_ICONS[k.type]
+              return (
+                <li key={k.id}>
+                  <button type="button" onClick={() => p.onSelect(k.id)} className="flex w-full items-center gap-2 rounded-md border border-line px-2.5 py-2 text-left text-sm hover:border-cyan lg:py-1.5">
+                    <KIcon className="size-3.5 shrink-0 text-cyan" aria-hidden />
+                    <span className="min-w-0 flex-1 truncate">{blockName(k)}</span>
+                    <ChevronRight className="size-3.5 shrink-0 text-mute" aria-hidden />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+      {(info.kind === 'if' || info.kind === 'for') && (
+        <button
+          type="button"
+          onClick={() => p.commit(removeLogic(p.tree, b.id), kids[0]?.id ?? null)}
+          className="flex w-full items-center justify-center gap-2 rounded-md border border-cyan/50 px-3 py-2 text-sm text-cyan hover:bg-cyan/10"
+        >
+          <Eye className="size-4" aria-hidden /> {info.kind === 'if' ? 'Toujours afficher (retirer la condition)' : 'Afficher une seule fois (retirer la boucle)'}
+        </button>
+      )}
+      {(info.kind === 'if' || info.kind === 'for') && (
+        <p className="-mt-2 text-xs text-mute">
+          {info.kind === 'if' ? 'Garde les éléments du premier cas ; les cas « sinon » sont retirés.' : 'Garde les éléments de la boucle, affichés une fois.'} « Annuler » revient en arrière.
+        </p>
+      )}
+      <button type="button" aria-expanded={showCode} onClick={() => setShowCode(!showCode)} className="flex items-center gap-1 text-xs text-mute hover:text-white">
+        <ChevronRight className={`size-3.5 transition-transform ${showCode ? 'rotate-90' : ''}`} aria-hidden /> Code de la ligne
+      </button>
+      {showCode && (
+        <Field label="Code (HuBL)">
+          <textarea className={`${input} ${mono} min-h-20`} value={b.html} onChange={(e) => set({ html: e.target.value })} spellCheck={false} />
+        </Field>
+      )}
+    </>
+  )
+}
+
+// Content inside a condition or a loop: says when it shows, and leads to the logic line.
+function LogicContext({ id, p }: { id: string; p: Props }) {
+  const frames = logicFrames(p.tree).get(id)
+  if (!frames?.length) return null
+  return (
+    <div className="rounded-lg border border-violet/40 bg-violet/5 p-2.5 text-xs">
+      {frames.map((f) => (
+        <div key={f.id} className="flex items-start gap-1.5 py-0.5">
+          {f.kind === 'for' ? <Repeat className="mt-0.5 size-3.5 shrink-0 text-[#e3a6ff]" aria-hidden /> : <GitBranch className="mt-0.5 size-3.5 shrink-0 text-[#e3a6ff]" aria-hidden />}
+          <span className="min-w-0 flex-1 text-[#d6d6ea]">{f.kind === 'for' ? `${f.text[0].toUpperCase()}${f.text.slice(1)}.` : `Affiché ${f.text}.`}</span>
+          <button type="button" onClick={() => p.onSelect(f.id)} className="tap-auto min-h-6 shrink-0 rounded px-1.5 py-0.5 text-[#e3a6ff] underline-offset-2 hover:underline">
+            Voir<span className="sr-only"> la {f.kind === 'for' ? 'boucle' : 'condition'}</span>
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Collapsible group of the module settings.
+function Panel({ title, children, open: initial = true }: { title: string; children: ReactNode; open?: boolean }) {
+  const [open, setOpen] = useState(initial)
+  return (
+    <section className="rounded-lg border border-line">
+      <h3>
+        <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-3 py-2.5 text-left">
+          <ChevronRight className={`size-3.5 shrink-0 text-mute transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden />
+          <span className="font-mono text-[10px] tracking-wider text-mute uppercase">{title}</span>
+        </button>
+      </h3>
+      {open && <div className="space-y-4 px-3 pb-3">{children}</div>}
+    </section>
+  )
+}
+
+// What the module holds, at a glance; logic lines can be shown from here.
+function ModuleSummary({ tree, onSelect }: { tree: ModuleTree; onSelect: (id: string) => void }) {
+  const [showLogic, setShowLogic] = useShowLogic()
+  let blocks = 0
+  const walk = (list: Block[]) => list.forEach((b) => (b.type === 'section' ? walk(b.cells.flat()) : !isLogicBlock(b) && blocks++))
+  tree.sections.forEach((s) => walk(s.cells.flat()))
+  const logic = countLogic(tree)
+  const fields = collectFields(tree).length + (tree.fields?.length ?? 0)
+  const stat = (n: number, one: string, many: string) => (
+    <div className="rounded-md bg-void px-2 py-1.5 text-center">
+      <span className="block font-display text-lg font-semibold leading-tight text-white">{n}</span>
+      <span className="block text-[10px] text-mute">{n > 1 ? many : one}</span>
+    </div>
+  )
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-1.5">
+        {stat(tree.sections.length, 'section', 'sections')}
+        {stat(blocks, 'élément', 'éléments')}
+        {stat(fields, 'champ', 'champs')}
+      </div>
+      {tree.sections.length > 0 && (
+        <ul className="space-y-1" aria-label="Sections du module">
+          {tree.sections.map((sec, i) => (
+            <li key={sec.id}>
+              <button type="button" onClick={() => onSelect(sec.id)} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-[#c9c9de] hover:bg-white/5 hover:text-white lg:py-1">
+                <Layers className="size-3.5 shrink-0 text-cyan" aria-hidden />
+                <span className="min-w-0 flex-1 truncate">{sec.name || `Section ${i + 1}`}</span>
+                <span className="shrink-0 text-[10px] text-mute">
+                  {sec.columns} col
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {logic > 0 && (
+        <div className="rounded-md border border-violet/40 bg-violet/5 p-2.5 text-xs">
+          <p className="flex items-start gap-1.5 text-[#d6d6ea]">
+            <Braces className="mt-0.5 size-3.5 shrink-0 text-[#e3a6ff]" aria-hidden />
+            <span>
+              {logic} ligne{logic > 1 ? 's' : ''} de logique (conditions, boucles, variables) : invisible{logic > 1 ? 's' : ''} dans l’e-mail, {showLogic ? 'affichée' : 'masquée'}
+              {logic > 1 ? 's' : ''} dans la Structure.
+            </span>
+          </p>
+          <button type="button" aria-pressed={showLogic} onClick={() => setShowLogic(!showLogic)} className="mt-1.5 rounded border border-violet/50 px-2 py-1 text-[#e3a6ff] hover:bg-violet/10">
+            {showLogic ? 'Les masquer dans la Structure' : 'Les afficher dans la Structure'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => void; p: Props }) {
+  if (b.type === 'raw' && isLogicBlock(b)) return <LogicFields b={b} set={set} p={p} />
   switch (b.type) {
     case 'heading':
       return (
@@ -678,8 +856,12 @@ export function Inspector(p: Props) {
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
         <div>
           <h2 className="font-display font-semibold">Réglages du module</h2>
-          <p className="text-xs text-mute">Touche ou clique un élément de l'aperçu pour le configurer.</p>
+          <p className="text-xs text-mute">Touche ou clique un élément de l'aperçu (ou une section ci-dessous) pour le configurer.</p>
         </div>
+        <Panel title="Contenu du module">
+          <ModuleSummary tree={t} onSelect={(id) => p.onSelect(id)} />
+        </Panel>
+        <Panel title="Mise en page">
         <RangeField label="Largeur max" value={t.width} min={320} max={800} onChange={(width) => p.commit({ ...t, width })} />
         <ColorField label="Fond du module" value={t.bg} onChange={(bg) => p.commit({ ...t, bg })} />
         <RangeField label="Marge au-dessus et en dessous du module" value={t.pad ?? 24} min={0} max={80} onChange={(pad) => p.commit({ ...t, pad: pad === 24 ? undefined : pad })} />
@@ -693,6 +875,7 @@ export function Inspector(p: Props) {
             {!FONTS.includes(t.font) && <option value={t.font}>{t.font}</option>}
           </select>
         </Field>
+        </Panel>
         <ConvertPanel tree={t} commit={(next) => p.commit(next)} onSelect={(id) => p.onSelect(id)} />
         {t.sections.length > 0 && (
           <div className="space-y-2">
@@ -726,17 +909,22 @@ export function Inspector(p: Props) {
       <div>
         {path.length > 1 && (
           <nav className="mb-2 flex flex-wrap items-center gap-1 font-mono text-[10px] text-mute">
-            {path.slice(0, -1).map((id, i) => (
-              <button key={id} onClick={() => p.onSelect(id)} className="hover:text-cyan">
-                {i === 0 ? 'Section' : 'Card'} ›
-              </button>
-            ))}
+            {path.slice(0, -1).map((id, i) => {
+              const anc = findNode(p.tree, id)
+              const name = anc?.type === 'section' && anc.name ? anc.name : i === 0 ? `Section ${p.tree.sections.findIndex((x) => x.id === id) + 1}` : 'Card'
+              return (
+                <button type="button" key={id} onClick={() => p.onSelect(id)} className="max-w-[10rem] truncate hover:text-cyan">
+                  {name} ›
+                </button>
+              )
+            })}
           </nav>
         )}
         <div className="flex items-center gap-2">
-          <Icon className="size-4 text-cyan" />
-          <h2 className="flex-1 font-display font-semibold">
-            {node.type === 'section' && path.length === 1 ? 'Section' : BLOCK_LABELS[node.type]}
+          {isLogicBlock(node) ? <Braces className="size-4 text-[#e3a6ff]" /> : <Icon className="size-4 text-cyan" />}
+          <h2 className="min-w-0 flex-1 font-display font-semibold">
+            {isLogicBlock(node) ? 'Ligne de logique' : node.type === 'section' && path.length === 1 ? 'Section' : BLOCK_LABELS[node.type]}
+            {node.type !== 'section' && 'field' in node && node.field?.label && <span className="block truncate font-sans text-xs font-normal text-mute">Champ « {node.field.label} »</span>}
           </h2>
           {[
             { icon: ArrowUp, label: 'Monter', fn: () => p.commit(moveNode(p.tree, node.id, -1)) },
@@ -752,6 +940,7 @@ export function Inspector(p: Props) {
         </div>
       </div>
       {saving === node.id && <SaveToLibrary key={`save-${node.id}`} items={[{ name: suggestName(node), section: wrapForLibrary(node) }]} defaultName={suggestName(node)} />}
+      {!isLogicBlock(node) && <LogicContext id={node.id} p={p} />}
       <BlockFields key={node.id} b={node} set={set} p={p} />
       {(node.type === 'heading' || node.type === 'text' || node.type === 'button' || node.type === 'image') && (
         <Segmented
@@ -765,7 +954,7 @@ export function Inspector(p: Props) {
         />
       )}
       <SpacingFields b={node} set={set} nested={path.length > 1} />
-      <EstimatePanel key={`est-${node.id}`} tree={p.tree} node={node} />
+      {!isLogicBlock(node) && <EstimatePanel key={`est-${node.id}`} tree={p.tree} node={node} />}
     </div>
   )
 }

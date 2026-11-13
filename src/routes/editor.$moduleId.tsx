@@ -50,6 +50,9 @@ import type { SampleContact } from '@/lib/hubl-render'
 import { checkPreview } from '@/lib/preview-check'
 import { fixCode, validateSyntax } from '@/lib/validator'
 import { keepTemplateWhole, upgradeImported } from '@/lib/import-repair'
+import { countLogic } from '@/lib/logic'
+import { getPref } from '@/lib/settings-sync'
+import { SHOW_LOGIC_KEY } from '@/lib/settings-keys'
 import { KOFI_URL } from '@/lib/links'
 import type { FieldSpec } from '@/lib/module-fields'
 import { applyValues } from '@/lib/json-import'
@@ -297,6 +300,8 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     const next = applyValues((res.imported && keepTemplateWhole(generated, synced, specs)) || synced, values ?? null).tree
     setNewFields((next.fields ?? []).map((f) => f.name))
     commit(next, null)
+    const logic = countLogic(next)
+    if (res.imported && logic && getPref(SHOW_LOGIC_KEY) !== '1') showNotice(`Import appliqué. ${logic} ligne${logic > 1 ? 's' : ''} de logique (conditions, boucles, variables) ${logic > 1 ? 'sont masquées' : 'est masquée'} dans la Structure : elle${logic > 1 ? 's' : ''} ne s’affiche${logic > 1 ? 'nt' : ''} pas dans l’e-mail. « Annuler » revient au module d’avant.`)
     return null
   }
 
@@ -454,8 +459,8 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     }`
   // Interpreted tree for the preview; `forced` = options switched on only to
   // show content they would otherwise hide entirely.
-  const { tree: previewTree, forced } = useMemo(() => {
-    if (pageHidden) return { tree, forced: [] as string[] }
+  const { tree: previewTree, forced, revealed } = useMemo(() => {
+    if (pageHidden) return { tree, forced: [] as string[], revealed: false }
     return interpretForPreview(tree, contact, selectedId)
   }, [tree, contact, selectedId, pageHidden])
   // What the preview shows that the code validator can't see (empty preview, example items…).
@@ -628,6 +633,11 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
                 {forced.length > 0 && (
                   <p role="status" className="mx-auto mb-3 max-w-[600px] rounded-lg border border-violet/50 bg-violet/10 px-3 py-2 text-xs text-[#e3a6ff]">
                     Tout le contenu dépend {forced.length > 1 ? 'des options' : 'de l’option'} « {forced.join(' », « ')} », désactivée{forced.length > 1 ? 's' : ''} dans le module : l’aperçu {forced.length > 1 ? 'les' : 'l’'}active pour te le montrer. Change sa valeur dans l’onglet Champs.
+                  </p>
+                )}
+                {revealed && (
+                  <p role="status" className="mx-auto mb-3 max-w-[600px] rounded-lg border border-violet/50 bg-violet/10 px-3 py-2 text-xs text-[#e3a6ff]">
+                    Avec les données d’exemple, les conditions du code masquent tout le contenu : l’aperçu montre leur premier cas (et un exemple pour les listes vides) pour que tu le voies. L’e-mail envoyé suit les vraies conditions.
                   </p>
                 )}
                 <div className="mx-auto overflow-hidden rounded-xl shadow-[0_0_0_1px_#262642,0_20px_60px_-20px_rgba(188,19,254,0.35)]" style={{ maxWidth: mobile ? 420 : tree.width + 80 }}>

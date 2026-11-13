@@ -12,6 +12,7 @@ import type { ForeignJson } from './json-import'
 import { parseFieldsJson } from './module-fields'
 import type { FieldSpec } from './module-fields'
 import { parseLenient } from './json-repair'
+import { convertForeign } from './foreign-syntax'
 import { fixCode, validateSyntax } from './validator'
 import { uid } from './types'
 import type { ModuleTree } from './types'
@@ -143,6 +144,13 @@ export function cleanSource(input: string): { code: string; repairs: string[]; s
     code = decodeEntities(code)
     repairs.push('HTML échappé (&lt; &gt;) décodé')
   }
+
+  // Another platform's template language (Liquid, Handlebars, Mailchimp,
+  // AMPscript, Mailjet, Marketo, MJML): HuBL, so it works instead of showing as code.
+  const foreign = convertForeign(code)
+  code = foreign.code
+  repairs.push(...foreign.repairs)
+  specs.push(...foreign.specs)
 
   // Template wrappers: the module's content is what's inside.
   const before = code
