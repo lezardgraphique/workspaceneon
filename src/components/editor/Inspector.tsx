@@ -22,7 +22,7 @@ import { SHOW_LOGIC_KEY } from '@/lib/settings-keys'
 import { collectFields } from '@/lib/fields'
 import { BLOCK_LABELS } from '@/lib/types'
 import type { Align, Block, ButtonBlock, Columns, ModuleTree, Section, Spacing } from '@/lib/types'
-import { headingLine, headingWeight, spacingOf, textLine } from '@/lib/look'
+import { headingLine, headingWeight, safeBgImage, spacingOf, textLine } from '@/lib/look'
 import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight } from '@/lib/vml'
 import {
   duplicateNode,
@@ -557,6 +557,50 @@ function LogicContext({ id, p }: { id: string; p: Props }) {
   )
 }
 
+// Background image of a section: upload (or address), retouch, Outlook (VML), removal.
+function BgImageFields({ s, set }: { s: Section; set: (patch: Partial<Section>) => void }) {
+  const add = (bgImage: string) => set({ bgImage, ...(s.columns === 1 && s.bgVml === undefined ? { bgVml: true } : {}) })
+  return (
+    <div className="space-y-3 rounded-lg border border-line p-3">
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-[10px] tracking-wider text-mute uppercase">Image de fond</span>
+        {s.bgImage && (
+          <button type="button" onClick={() => set({ bgImage: undefined, bgVml: undefined })} className="tap-auto ml-auto min-h-6 rounded px-1.5 text-xs text-mute underline-offset-2 hover:text-white hover:underline">
+            Retirer<span className="sr-only"> l'image de fond</span>
+          </button>
+        )}
+      </div>
+      {s.bgImage ? (
+        <div className="h-20 rounded-md border border-line bg-cover bg-center" style={{ backgroundColor: s.bg, backgroundImage: `url('${safeBgImage(s.bgImage)}')` }} role="img" aria-label="Aperçu de l'image de fond" />
+      ) : (
+        <ImageUpload onUploaded={add} label="Ajouter une image de fond" />
+      )}
+      <div className="flex items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <Field label={s.bgImage ? "URL de l'image de fond" : 'Ou URL (https://…)'}>
+            <input className={`${input} ${mono}`} value={s.bgImage ?? ''} onChange={(e) => (e.target.value.trim() ? (s.bgImage ? set({ bgImage: e.target.value.trim() }) : add(e.target.value.trim())) : set({ bgImage: undefined, bgVml: undefined }))} placeholder="https://…" />
+          </Field>
+        </div>
+        {s.bgImage && <PhotoButton src={s.bgImage} onSave={(bgImage) => set({ bgImage })} />}
+      </div>
+      {s.bgImage && s.columns === 1 && (
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" checked={!!s.bgVml} onChange={(e) => set({ bgVml: e.target.checked || undefined })} className="mt-0.5 size-4 shrink-0 accent-pink" />
+          <span>
+            Afficher aussi dans Outlook (VML)
+            <span className="block text-xs text-mute">Outlook sur Windows n'affiche une image de fond que dessinée en VML.</span>
+          </span>
+        </label>
+      )}
+      {s.bgImage && (
+        <p className="text-xs text-mute">
+          {s.columns > 1 ? "Outlook sur Windows n'affiche que la couleur de fond pour une section à plusieurs colonnes. " : ''}La couleur de fond reste visible quand les images sont bloquées : choisis-la proche de l'image et assure un bon contraste avec le texte.
+        </p>
+      )}
+    </div>
+  )
+}
+
 // Collapsible group of the module settings.
 function Panel({ title, children, open: initial = true }: { title: string; children: ReactNode; open?: boolean }) {
   const [open, setOpen] = useState(initial)
@@ -830,11 +874,7 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
             />
           )}
           <ColorField label="Fond" value={b.bg} onChange={(bg) => set({ bg })} />
-          <Field label="Image de fond (facultatif)">
-            <input className={`${input} ${mono}`} value={b.bgImage ?? ''} onChange={(e) => set({ bgImage: e.target.value.trim() || undefined })} placeholder="https://…" />
-          </Field>
-          {!b.bgImage && <ImageUpload compact onUploaded={(bgImage) => set({ bgImage })} />}
-          {b.bgImage && <p className="-mt-2 text-xs text-mute">La couleur de fond reste affichée là où l'image ne l'est pas (Outlook, images bloquées) : choisis-la proche de l'image.</p>}
+          <BgImageFields s={b} set={set} />
           {b.columns > 1 && (
             <OptRange label="Espace entre les colonnes" value={b.padX} base={b.padding} min={0} max={96} onChange={(padX) => set({ padX })} />
           )}

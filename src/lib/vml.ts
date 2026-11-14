@@ -98,3 +98,14 @@ export function msoCell(p: { bg: string; align: 'left' | 'center' | 'right'; loo
 // The Outlook-only branch; the regular link goes in the `[if !mso]` branch.
 export const msoOnly = (inner: string) => `<!--[if mso]>\n${inner}\n<![endif]-->`
 export const notMso = (inner: string) => `<!--[if !mso]><!-->\n${inner}\n<!--<![endif]-->`
+
+// Background image of a section for Outlook for Windows (bulletproof background):
+// a VML rectangle filled with the image, as wide as the section and growing with
+// its content; the section's padding becomes the text box's inset. Every other
+// client reads the CSS background-image and skips the conditional comments.
+export function vmlBackground(p: { src: string; color: string; width: number; inset: [number, number, number, number] }): [string, string] {
+  const [t, r, b, l] = p.inset
+  const color = p.color && p.color !== 'transparent' ? ` color="${p.color}"` : ''
+  const open = `<!--[if mso]><v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${p.width}px;"><v:fill type="frame" aspect="atleast" origin="0.5,0.5" position="0.5,0.5" src="${p.src}"${color} /><v:textbox inset="${l}px,${t}px,${r}px,${b}px" style="mso-fit-shape-to-text:true"><![endif]-->`
+  return [open, '<!--[if mso]></v:textbox></v:rect><![endif]-->']
+}

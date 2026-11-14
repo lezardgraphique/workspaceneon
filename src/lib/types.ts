@@ -193,6 +193,8 @@ export interface Section extends Spacing {
   borderColor?: string
   /** Background image (https), the colour stays as a fallback (Outlook). */
   bgImage?: string
+  /** Outlook for Windows draws the background image with a VML shape (1-column sections). */
+  bgVml?: boolean
   /** Width of the first column in % (2 columns only, 50 when absent). */
   ratio?: number
   valign?: 'top' | 'middle' | 'bottom'

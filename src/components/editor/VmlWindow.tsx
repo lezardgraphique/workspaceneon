@@ -178,6 +178,14 @@ function Outline({ tree, selectedId, onSelect }: { tree: ModuleTree; selectedId:
 
 // The whole module as Outlook for Windows draws it, live. Click an element to
 // edit it; the comparison switch shows the module without or with VML.
+
+// Without VML, background images drawn for Outlook go too (only the colour shows).
+const noBgVml = (s: Section): Section => ({
+  ...s,
+  bgVml: undefined,
+  cells: s.cells.map((c) => c.map((b) => (b.type === 'section' ? noBgVml(b) : b))),
+})
+
 function OutlookPreview({
   tree,
   name,
@@ -199,7 +207,7 @@ function OutlookPreview({
   const docRef = useRef<Document | null>(null)
 
   const { html, ids } = useMemo(() => {
-    const interp = interpretForPreview({ ...tree, vml: mode === 'avec' }, 'known').tree
+    const interp = interpretForPreview({ ...tree, vml: mode === 'avec', ...(mode === 'sans' ? { sections: tree.sections.map(noBgVml) } : {}) }, 'known').tree
     const client = CLIENTS.find((c) => c.id === (mode === 'normal' ? 'apple-mail' : 'outlook-win'))!
     return { html: renderForClient(standaloneEmail(interp, name), client, { imagesOff: false }), ids: orderedIds(interp.sections) }
   }, [tree, name, mode])

@@ -11,7 +11,7 @@ import { olAttr, olParse, olStyle } from './outlook'
 import { protectHubl, restoreDom, restoreTree } from './hubl-protect'
 import { normalizeHubl, withLegacySpecs } from './hubl-legacy'
 import { classAttr, columnWidths, dividerLine, headingLine, headingWeight, hasSpacing, hideClass, hideStyle, marginCss, responsiveCss, safeBgImage, sectionPad, spacingAttrs, spacingOf, spacingParse, textLine } from './look'
-import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonWidth, msoCell, msoOnly, notMso, outlookHeight, vmlShape } from './vml'
+import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonWidth, msoCell, msoOnly, notMso, outlookHeight, vmlBackground, vmlShape } from './vml'
 import { uid } from './types'
 import type { Align, Behavior, Block, Columns, ExtraField, FieldDef, ModuleTree, RawBlock, Section } from './types'
 
@@ -210,6 +210,8 @@ function renderSection(s: Section, ctx: Ctx, d: number, font: string, nested: bo
   const widths = columnWidths(s)
   const { x: padX, t: padT, b: padB, l: padL, r: padR } = sectionPad(s)
   const cls = `neon-section${s.behavior === 'stack' ? ' neon-stack' : ''}${s.hide ? ` ${hideClass(s.hide)}` : ''}`
+  // Outlook for Windows only shows a background image drawn in VML (one column).
+  const vmlBg = s.bgVml && s.columns === 1 ? safeBgImage(s.bgImage) : ''
   const cells = s.cells
     .map((cell, i) => {
       const left = i === 0 ? padL : padX / 2
@@ -218,6 +220,16 @@ function renderSection(s: Section, ctx: Ctx, d: number, font: string, nested: bo
       const inner = s.columns === 2 && s.ratio && s.ratio !== 50 ? Math.max(40, (avail * widths[i]) / 100 - left - right) : Math.max(40, (avail - padL - padR - padX * (s.columns - 1)) / s.columns)
       const blocks = renderCell(cell, ctx, d + 3, font, inner)
       const op = s.outlook?.pad
+      if (vmlBg) {
+        // The shape fills the whole cell; the padding becomes the text box's inset.
+        const [t, r, b, l] = op != null ? [op, op, op, op] : [padT, right, padB, left]
+        const [open, close] = vmlBackground({ src: vmlBg, color: escKeep(s.bg), width: Math.round(avail), inset: [t, r, b, l] })
+        return `${p}    <td${ctx.attrs({ neon: 'column' })} class="neon-col" width="${widths[i]}%" valign="${s.valign ?? 'top'}" style="padding:${padT}px ${right}px ${padB}px ${left}px;mso-padding-alt:0px;">
+${indent(open, p + '      ')}
+${blocks}
+${indent(close, p + '      ')}
+${p}    </td>`
+      }
       const msoPad = op != null ? `mso-padding-alt:${op}px ${i === s.cells.length - 1 ? op : op / 2}px ${op}px ${i === 0 ? op : op / 2}px;` : ''
       return `${p}    <td${ctx.attrs({ neon: 'column' })} class="neon-col" width="${widths[i]}%" valign="${s.valign ?? 'top'}" style="padding:${padT}px ${right}px ${padB}px ${left}px;${msoPad}">
 ${blocks}
@@ -245,6 +257,7 @@ ${p}    </td>`
     ...(s.pl != null ? { 'pad-l': s.pl } : {}),
     ...(s.borderWidth ? { 'border-width': s.borderWidth, 'border-color': s.borderColor ?? '#e3e3ee' } : {}),
     ...(img ? { 'bg-image': img } : {}),
+    ...(img && s.bgVml ? { 'bg-vml': 1 } : {}),
     ...(s.columns === 2 && s.ratio && s.ratio !== 50 ? { ratio: s.ratio } : {}),
     ...(s.valign && s.valign !== 'top' ? { valign: s.valign } : {}),
     ...(s.css ? { css: s.css } : {}),
@@ -583,6 +596,7 @@ function parseSection(el: Element): Section {
     ...optNum(g('pad-l'), 'pl', 0, 200),
     ...(g('border-width') ? { ...optNum(g('border-width'), 'borderWidth', 1, 20), borderColor: asColor(g('border-color'), '#e3e3ee') } : {}),
     ...(safeBgImage(g('bg-image') ?? '') ? { bgImage: safeBgImage(g('bg-image')!) } : {}),
+    ...(safeBgImage(g('bg-image') ?? '') && g('bg-vml') === '1' ? { bgVml: true } : {}),
     ...(cells.length === 2 ? optNum(g('ratio'), 'ratio', 20, 80) : {}),
     ...(g('valign') === 'middle' || g('valign') === 'bottom' ? { valign: g('valign') as 'middle' | 'bottom' } : {}),
     ...(g('css') && sanitizeStyle(g('css')!) ? { css: sanitizeStyle(g('css')!) } : {}),
@@ -727,12 +741,52 @@ function styleOf(el: Element, inh: Inherit): Inherit {
   }
 }
 
-const isButtonLink = (el: Element) =>
+// Class names of call-to-action links in the usual tools and frameworks
+// (btn, button, mcnButton, es-button, cta, ctaLink…), not words like "contact".
+const isButtonClass = (el: Element | null | undefined) => {
+  const c = el?.getAttribute('class') ?? ''
+  return /btn|button|bouton|(?:^|[\s_-])cta(?:$|[\s_-])/i.test(c) || /cta[A-Z]|[a-z]Cta/.test(c)
+}
+// A short label (a call to action, not a sentence).
+const shortLabel = (el: Element) => {
+  const t = el.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+  return !!t && t.length <= 60 && t.split(' ').length <= 10
+}
+// Nothing else than the link in its parent (no text around it).
+const aloneIn = (el: Element, parent: Element | null) => !!parent && (parent.textContent ?? '').replace(/\s+/g, '') === (el.textContent ?? '').replace(/\s+/g, '') && parent.querySelectorAll('a').length === 1 && !parent.querySelector('img')
+// Not part of a sentence: no text or inline element right next to the link.
+const standsAlone = (el: Element) =>
+  Array.from(el.parentElement?.childNodes ?? []).every(
+    (n) => n === el || (n.nodeType === Node.TEXT_NODE ? !(n.textContent ?? '').trim() : n.nodeType !== Node.ELEMENT_NODE || !INLINE.has((n as Element).tagName) || (n as Element).tagName === 'BR'),
+  )
+// A link drawn as a box: padding all around, or a border (ghost button).
+const boxedLink = (el: Element) => {
+  const st = css(el)
+  const raw = el.getAttribute('style') ?? ''
+  const v = px(st?.paddingTop) ?? 0
+  const h = px(st?.paddingLeft) ?? 0
+  const bw = px(st?.borderTopWidth) ?? 0
+  return /mso-padding-alt/i.test(raw) || (v >= 4 && h >= 8) || (bw >= 1 && !/none|hidden/.test(st?.borderTopStyle ?? '') && /border(?:-width)?\s*:/i.test(raw))
+}
+// Bulletproof button: the link alone in a coloured cell of a shrink-wrapped
+// table (<table align="center"><tr><td bgcolor="#e00" style="padding:12px 24px">).
+function cellButton(el: Element): Element | null {
+  let p = el.parentElement
+  for (let i = 0; p && i < 3 && p.tagName !== 'TD'; i++) p = INLINE.has(p.tagName) || p.tagName === 'P' || p.tagName === 'DIV' || p.tagName === 'CENTER' ? p.parentElement : null
+  if (!p || p.tagName !== 'TD' || !aloneIn(el, p)) return null
+  const table = p.closest('table')
+  const w = table ? (table.getAttribute('width') ?? css(table)?.width ?? '') : ''
+  const shrink = !!table && !/%/.test(w) && (px(w) ?? 0) < 400 && Array.from(table.querySelectorAll('td')).length <= 3
+  return (bgOf(p) || p.getAttribute('bgcolor')) && (shrink || isButtonClass(p) || isButtonClass(table)) ? p : null
+}
+
+const isButtonLink = (el: Element): boolean =>
   el.tagName === 'A' &&
   (!!toHex(css(el)?.backgroundColor) ||
     /inline-block|block/.test(css(el)?.display ?? '') ||
     /\b(btn|button|cta)\b/i.test(el.getAttribute('class') ?? '') ||
-    el.getAttribute('role') === 'button')
+    el.getAttribute('role') === 'button' ||
+    (shortLabel(el) && !el.querySelector('img') && (isButtonClass(el) || (isButtonClass(el.parentElement) && aloneIn(el, el.parentElement)) || (boxedLink(el) && standsAlone(el)) || !!cellButton(el))))
 
 const hasBlockChild = (el: Element): boolean =>
   Array.from(el.children).some((c) => !INLINE.has(c.tagName) || isButtonLink(c) || hasBlockChild(c))
@@ -788,7 +842,9 @@ function makeSection(cells: Block[][], bg: string, padding: number, radius = 0, 
   const bw = px(st?.borderTopWidth) ?? px(st?.borderWidth)
   const bc = toHex(st?.borderTopColor) ?? toHex(st?.borderColor)
   const border = bw && bw > 0 && bw <= 10 && (st?.borderTopStyle || st?.borderStyle || 'solid') !== 'none' ? { borderWidth: bw, ...(bc ? { borderColor: bc } : {}) } : {}
-  return { id: uid(), type: 'section', columns: kept.length as Columns, behavior: 'stack', bg, padding, radius, ...border, ...(extra ? { css: extra } : {}), cells: kept }
+  const img = from ? bgImageOf(from) : undefined
+  const bgImg = img ? { bgImage: img.src, ...(img.vml && kept.length === 1 ? { bgVml: true } : {}) } : {}
+  return { id: uid(), type: 'section', columns: kept.length as Columns, behavior: 'stack', bg, padding, radius, ...border, ...bgImg, ...(extra ? { css: extra } : {}), cells: kept }
 }
 
 // Style declarations driven by the module's fields ({{ module.spacing.css }},
@@ -819,18 +875,79 @@ function imageBlock(img: Element, s: Inherit): Block {
 }
 
 function buttonBlock(a: Element, s: Inherit): Block {
-  const bg = toHex(css(a)?.backgroundColor) ?? tokenStyle(a, ['background-color', 'background']) ?? cellBg(a)
+  const st = css(a)
+  const cell = cellButton(a)
+  const cs = cell ? css(cell) : undefined
+  // Border of a ghost button (or of the bulletproof cell).
+  const bw = px(st?.borderTopWidth) ?? 0
+  const border = bw >= 1 && bw <= 10 && !/none|hidden/.test(st?.borderTopStyle ?? '') && /border(?:-width)?\s*:/i.test(a.getAttribute('style') ?? '')
+  const borderColor = border ? toHex(st?.borderTopColor) : undefined
+  const bg = toHex(st?.backgroundColor) ?? tokenStyle(a, ['background-color', 'background']) ?? cellBg(a) ?? (border ? 'transparent' : undefined)
+  // Padding of the link, or of its cell for a bulletproof button.
+  const padY = px(st?.paddingTop) || (cs ? px(cs.paddingTop) : undefined)
+  const padX = px(st?.paddingLeft) || (cs ? px(cs.paddingLeft) : undefined)
+  const size = px(st?.fontSize)
+  const weight = st?.fontWeight
+  const radius = px(st?.borderRadius) ?? (cs ? px(cs.borderRadius) : undefined)
+  // The Outlook shape written next to the link (<v:roundrect style="width:200px">).
+  const vml = vmlNear(a)
   return {
     id: uid(),
     type: 'button',
-    label: a.textContent?.trim() || 'Bouton',
+    label: a.textContent?.replace(/\s+/g, ' ').trim() || 'Bouton',
     href: a.getAttribute('href') ?? '#',
     bg: bg ?? '#ff007f',
-    color: toHex(css(a)?.color) ?? (bg ? s.color : undefined) ?? '#ffffff',
+    color: toHex(st?.color) ?? (bg ? s.color : undefined) ?? borderColor ?? '#ffffff',
     align: s.align ?? 'left',
-    radius: Math.min(60, px(css(a)?.borderRadius) ?? 8),
-  }
+    radius: Math.min(60, radius ?? 8),
+    ...(padY != null && padY !== 12 && padY <= 60 ? { padY } : {}),
+    ...(padX != null && padX !== 26 && padX <= 80 ? { padX } : {}),
+    ...(size && size !== 15 && size >= 10 && size <= 40 ? { fontSize: size } : {}),
+    ...(weight && (weight === 'normal' || Number(weight) <= 500) ? { bold: false } : {}),
+    ...(border ? { borderWidth: bw, ...(borderColor ? { borderColor } : {}) } : {}),
+    ...(vml.width ? { vmlWidth: vml.width } : {}),
+  } as Block
 }
+
+// A VML button shape in the Outlook comments just before the link (or its wrappers).
+function vmlNear(a: Element): { width?: number } {
+  let el: Element | null = a
+  for (let i = 0; el && i < 3; i++, el = el.parentElement) {
+    let n = el.previousSibling
+    for (let k = 0; n && k < 4; k++, n = n.previousSibling) {
+      if (n.nodeType === Node.COMMENT_NODE && /<v:(roundrect|rect)\b/i.test(n.textContent ?? '')) {
+        const w = /<v:(?:roundrect|rect)\b[^>]*style="[^"]*\bwidth:\s*(\d+)px/i.exec(n.textContent ?? '')?.[1]
+        return w && Number(w) >= 40 && Number(w) <= 800 ? { width: Number(w) } : {}
+      }
+      if (n.nodeType === Node.ELEMENT_NODE) break
+    }
+    if (el.tagName === 'TD') break
+  }
+  return {}
+}
+
+// Background image of an imported box: background attribute, CSS
+// background(-image):url(…), or the src of a VML fill written for Outlook.
+function bgImageOf(el: Element): { src: string; vml: boolean } | undefined {
+  let vml = ''
+  // The shape is written inside the box, or just before a table it wraps.
+  let before = el.previousSibling
+  while (before && before.nodeType === Node.TEXT_NODE && !(before.textContent ?? '').trim()) before = before.previousSibling
+  const nodes = [...Array.from(el.childNodes), ...(el.tagName === 'TABLE' && before ? [before] : [])]
+  for (const n of nodes) {
+    if (n.nodeType !== Node.COMMENT_NODE) continue
+    const m = /<v:(?:fill|image)\b[^>]*\ssrc="([^"]+)"/i.exec(n.textContent ?? '')
+    if (m) {
+      vml = m[1].trim()
+      break
+    }
+  }
+  const style = /background(?:-image)?\s*:[^;]*?url\(\s*(['"]?)([^'")]+)\1\s*\)/i.exec(el.getAttribute('style') ?? '')?.[2]?.trim()
+  const src = safeBgImage(el.getAttribute('background')?.trim()) || safeBgImage(style) || safeBgImage(vml)
+  return src ? { src, vml: !!safeBgImage(vml) } : undefined
+}
+
+const loneButton = (blocks: Block[]) => blocks.length === 1 && blocks[0].type === 'button'
 
 // HuBL statements become raw blocks; the text between them stays editable.
 function splitHubl(text: string, push: (b: Block) => void, addInline: (html: string) => void, flush: () => void) {
@@ -939,7 +1056,8 @@ function convertTable(table: Element, inh: Inherit): Block[] {
         const blocks = convertNodes(td.childNodes, td.querySelector(':scope > table') ? rs : styleOf(td, rs))
         if (!blocks.length) continue
         const bg = bgOf(td)
-        out.push(...(bg || hublStyle(td) ? [makeSection([blocks], bg ?? 'transparent', px(css(td)?.paddingTop) ?? 16, 0, td)] : blocks))
+        const boxed = (bg || hublStyle(td)) && !loneButton(blocks)
+        out.push(...(boxed || bgImageOf(td) ? [makeSection([blocks], bg ?? 'transparent', px(css(td)?.paddingTop) ?? 16, 0, td)] : blocks))
       }
       continue
     }
@@ -952,14 +1070,17 @@ function convertTable(table: Element, inh: Inherit): Block[] {
       const { td, blocks } = cells[0]
       const bg = bgOf(td)
       const tdPad = px(css(td)?.paddingTop) ?? px(css(td)?.padding)
-      out.push(...(bg || hublStyle(td) ? [makeSection([blocks], bg ?? 'transparent', tdPad ?? 16, 0, td)] : flushCard && tdPad ? [makeSection([blocks], 'transparent', tdPad, 0)] : blocks))
+      // A bulletproof button's coloured cell is the button itself, not a card.
+      const boxed = (bg || hublStyle(td)) && !loneButton(blocks)
+      out.push(...(boxed || bgImageOf(td) ? [makeSection([blocks], bg ?? 'transparent', tdPad ?? 16, 0, td)] : flushCard && tdPad && !loneButton(blocks) ? [makeSection([blocks], 'transparent', tdPad, 0)] : blocks))
     } else if (cells.length > 1) {
       const bg = bgOf(tr) ?? bgOf(cells[0].td) ?? 'transparent'
       out.push(makeSection(cells.map((c) => c.blocks), bg, px(css(cells[0].td)?.paddingTop) ?? 8))
     }
   }
   const bg = tableBg
-  if ((bg || hublStyle(table)) && out.length) return [makeSection([out], bg ?? 'transparent', flushCard ? 0 : 16, px(css(table)?.borderRadius) ?? 0, table)]
+  if (shrink && loneButton(out) && !bgImageOf(table)) return out
+  if ((bg || hublStyle(table) || bgImageOf(table)) && out.length) return [makeSection([out], bg ?? 'transparent', flushCard ? 0 : 16, px(css(table)?.borderRadius) ?? 0, table)]
   return out
 }
 
@@ -1040,7 +1161,12 @@ function convertElement(el: Element, inh: Inherit): Block[] {
     }
     // A box with its own background becomes a card.
     const bg = tag !== 'BODY' ? bgOf(el) : undefined
-    return bg && blocks.length
+    const img = tag !== 'BODY' ? bgImageOf(el) : undefined
+    if (img && blocks.length) {
+      const sec = makeSection([blocks], bg ?? 'transparent', px(css(el)?.paddingTop) ?? 16, px(css(el)?.borderRadius) ?? 0)
+      return [{ ...sec, bgImage: img.src, ...(img.vml ? { bgVml: true } : {}) }]
+    }
+    return bg && blocks.length && !(loneButton(blocks) && bg === (blocks[0] as { bg?: string }).bg)
       ? [makeSection([blocks], bg, px(css(el)?.paddingTop) ?? 16, px(css(el)?.borderRadius) ?? 0)]
       : blocks
   }
@@ -1124,7 +1250,8 @@ export function importHtml(html: string): { sections: Section[]; bg?: string; fo
   const body = parseFragment(html)
   let blocks = convertNodes(body.childNodes, {})
   const wrappers: string[] = []
-  while (blocks.length === 1 && blocks[0].type === 'section' && blocks[0].columns === 1) {
+  // (A wrapper with a background image is the content itself: a banner.)
+  while (blocks.length === 1 && blocks[0].type === 'section' && blocks[0].columns === 1 && !blocks[0].bgImage) {
     wrappers.push(blocks[0].bg)
     blocks = blocks[0].cells[0]
   }

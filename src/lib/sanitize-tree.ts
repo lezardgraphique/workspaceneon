@@ -224,6 +224,7 @@ export function section(raw: unknown, depth = 0, count: { n: number } = { n: 0 }
     ...opt(raw.pl, 'pl', 0, 200),
     ...(typeof raw.borderWidth === 'number' && raw.borderWidth > 0 ? { ...opt(raw.borderWidth, 'borderWidth', 1, 20), borderColor: safeColor(raw.borderColor, '#e3e3ee') } : {}),
     ...(safeBgImage(typeof raw.bgImage === 'string' ? raw.bgImage : '') ? { bgImage: safeBgImage(raw.bgImage as string) } : {}),
+    ...(safeBgImage(typeof raw.bgImage === 'string' ? raw.bgImage : '') && raw.bgVml === true ? { bgVml: true } : {}),
     ...(cells.length === 2 ? opt(raw.ratio, 'ratio', 20, 80) : {}),
     ...(typeof raw.name === 'string' && raw.name.replace(/[<>{}]/g, '').trim() ? { name: raw.name.replace(/[<>{}]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40) } : {}),
     ...(raw.valign === 'middle' || raw.valign === 'bottom' ? { valign: raw.valign } : {}),

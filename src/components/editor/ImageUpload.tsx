@@ -5,7 +5,7 @@ import type { DragEvent } from 'react'
 import { firstImage, uploadImage } from '@/lib/images'
 
 // Upload button + drop zone used wherever an image URL can be typed.
-export function ImageUpload({ onUploaded, compact }: { onUploaded: (url: string) => void; compact?: boolean }) {
+export function ImageUpload({ onUploaded, compact, label }: { onUploaded: (url: string) => void; compact?: boolean; label?: string }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [over, setOver] = useState(false)
@@ -48,7 +48,7 @@ export function ImageUpload({ onUploaded, compact }: { onUploaded: (url: string)
         } ${over ? 'border-cyan bg-cyan/10 text-white' : 'border-line text-mute hover:border-cyan hover:text-white'}`}
       >
         {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-        {busy ? 'Téléversement…' : compact ? 'Téléverser' : 'Téléverser ou déposer une image'}
+        {busy ? 'Téléversement…' : label ?? (compact ? 'Téléverser' : 'Téléverser ou déposer une image')}
       </button>
       <input
         ref={inputRef}
