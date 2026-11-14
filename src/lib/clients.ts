@@ -118,6 +118,15 @@ const dropProps = (style: string, props: string[]) =>
 // Browsers can't draw VML: shapes are shown as the boxes Word would draw
 // (rounded, filled, sized as declared), tagged so the Word limits skip them.
 function simulateVml(html: string): string {
+  // Section backgrounds (v:rect + v:fill + v:textbox): a box painted with the image.
+  html = html
+    .replace(/<v:rect\b[^>]*>\s*<v:fill\b([^>]*?)\/?>\s*(?:<\/v:fill>\s*)?<v:textbox\b([^>]*)>/gi, (_m, fill: string, box: string) => {
+      const src = /\ssrc="([^"]*)"/i.exec(fill)?.[1] ?? ''
+      const color = /\scolor="([^"]*)"/i.exec(fill)?.[1]
+      const [l, t, r, b] = (/inset="([^"]*)"/i.exec(box)?.[1] ?? '0,0,0,0').split(',').map((v) => Number.parseFloat(v) || 0)
+      return `<div data-vml="1" style="${color ? `background-color:${color};` : ''}background-image:url('${src.replace(/['()\\]/g, '')}');background-size:cover;background-position:center;padding:${t}px ${r}px ${b}px ${l}px;">`
+    })
+    .replace(/<\/v:textbox>\s*<\/v:rect>/gi, '</div>')
   return html.replace(/<v:(roundrect|rect)\b([^>]*)>([\s\S]*?)<\/v:\1>/gi, (_m, _shape, attrs: string, inner: string) => {
     const num = (re: RegExp, d: number) => Number(re.exec(attrs)?.[1] ?? d)
     const w = num(/width:\s*(\d+)px/i, 200)
@@ -279,6 +288,12 @@ export function auditModule(tree: ModuleTree, name: string): { issues: Issue[]; 
   // mobileColumns: columns side by side on a phone around this section.
   const section = (s: Section, parentBg: string, mobileColumns: number) => {
     const bg = parseHex(s.bg) ? s.bg : parentBg
+    if (s.bgImage) {
+      if (s.bgVml && s.columns === 1)
+        add({ key: `bgvml-${s.id}`, level: 'info', title: 'Image de fond en VML', detail: 'Outlook sur Windows affiche l\'image de fond grâce à une forme VML ; la couleur de fond reste visible si les images sont bloquées.', clients: ['outlook-win'], blockId: s.id })
+      else
+        add({ key: `bgimg-${s.id}`, level: 'warn', title: 'Image de fond absente dans Outlook', detail: s.columns === 1 ? 'Outlook sur Windows n\'affiche que la couleur de fond : coche « Afficher aussi dans Outlook (VML) » dans les réglages de la section.' : 'Outlook sur Windows n\'affiche que la couleur de fond : le VML ne couvre que les sections à une colonne. Choisis une couleur proche de l\'image.', clients: ['outlook-win'], blockId: s.id })
+    }
     if (s.radius > 0)
       add({ key: 'radius-section', level: 'info', title: 'Cartes aux coins carrés', detail: 'Outlook sur Windows ignore border-radius sur les sections et les cards.', clients: ['outlook-win'], blockId: s.id })
     const mobileTotal = mobileColumns * (s.behavior === 'side' ? s.columns : 1)

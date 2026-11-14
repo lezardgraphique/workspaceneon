@@ -1,5 +1,6 @@
 import { createBlock, createSection } from './types'
-import type { Block, ButtonBlock, ImageBlock, RawBlock, Section } from './types'
+import type { Block, ButtonBlock, HeadingBlock, ImageBlock, RawBlock, Section, TextBlock } from './types'
+import { HERO_IMAGE } from './templates'
 
 // Ready-made blocks offered in Structure > Ajouter. They are plain cards made of
 // the usual blocks, so they stay editable, exportable to HuBL and parsed back.
@@ -36,6 +37,27 @@ const socialBar = () =>
   ).join('')}</tr></tbody></table>`
 
 export const PRESETS: Preset[] = [
+  {
+    id: 'bg-cta',
+    label: 'Image de fond + bouton',
+    hint: 'Titre, texte et bouton posés sur une image (Outlook compris)',
+    build: () => {
+      // The image is the section's background (CSS for every client, VML for
+      // Outlook for Windows); the dark colour shows when images are blocked, so
+      // the white text stays readable everywhere.
+      const heading: HeadingBlock = { ...(createBlock('heading') as HeadingBlock), text: 'Ton message en grand', level: 1, color: '#ffffff', align: 'center', size: 32 }
+      const text: TextBlock = { ...(createBlock('text') as TextBlock), html: 'Une phrase courte qui donne envie de cliquer.', color: '#f1f1f6', align: 'center', size: 17 }
+      return card(1, [[heading, text, button({ label: 'Je découvre', href: 'https://example.com', bg: '#ff007f', align: 'center', radius: 24, mt: 8 })]], {
+        bg: '#1a1033',
+        padding: 48,
+        radius: 0,
+        bgImage: HERO_IMAGE,
+        bgVml: true,
+        valign: 'middle',
+        name: 'Image de fond',
+      })
+    },
+  },
   {
     id: 'social',
     label: 'Social',
