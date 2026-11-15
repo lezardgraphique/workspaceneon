@@ -6,6 +6,7 @@ import { and, asc, desc, eq } from 'drizzle-orm'
 import { db } from '../../../db/index.js'
 import { customBlocks, modules } from '../../../db/schema.js'
 import { storeCustomBlock } from '@/server/custom-blocks.server'
+import { snapshot } from '@/server/versions.server'
 import { auditOf, blankTree, codeOf, exportOf, fieldsOf, parseCode, prepareDom } from '@/server/mcp/engine.server'
 import { FIELDS_SPEC, FORMAT_SPEC } from '@/lib/maily-prompts'
 import { stripTags } from '@/lib/sanitize'
@@ -191,6 +192,8 @@ export const TOOLS: Tool[] = [
         summary = parsed.summary
         warnings = parsed.warnings
       }
+      // An AI rewriting a module from outside: the version before is always kept.
+      await snapshot(row, 'ia', { name: newName, tree })
       const [saved] = await db
         .update(modules)
         .set({ name: newName, tree, updatedAt: new Date() })

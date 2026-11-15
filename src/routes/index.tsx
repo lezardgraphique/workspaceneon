@@ -4,6 +4,7 @@ import { ArrowRight, BookOpen, ChevronDown, Columns3, Code2, Download, Eye, Fold
 
 import { AccountMenu } from '@/components/AccountMenu'
 import { BackupPanel } from '@/components/BackupPanel'
+import { DeletedModules } from '@/components/DeletedModules'
 import { AppHeader, headerButton } from '@/components/AppHeader'
 import { LegalLink } from '@/components/LegalLink'
 import { EmailFrame } from '@/components/EmailFrame'
@@ -396,6 +397,7 @@ function Library() {
         <MyBlocksSection />
 
         <BackupPanel />
+        <DeletedModules />
       </main>
 
       <footer className="mx-auto max-w-6xl px-6 pb-10 text-center text-sm text-mute">

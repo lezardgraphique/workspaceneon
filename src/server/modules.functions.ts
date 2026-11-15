@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import { db } from '../../db/index.js'
 import { modules } from '../../db/schema.js'
+import { snapshot } from '@/server/versions.server'
 import { legacyOwner, requireUser } from '@/server/auth.server'
 import { sanitizeTree } from '@/lib/sanitize-tree'
 import { stripTags } from '@/lib/sanitize'
@@ -73,6 +74,8 @@ export const saveModule = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data }) => {
     const user = await requireUser()
+    const [before] = await db.select().from(modules).where(and(eq(modules.id, data.id), eq(modules.userId, user.id)))
+    if (before) await snapshot(before, 'auto', data)
     const [row] = await db
       .update(modules)
       .set({ name: data.name, tree: data.tree, updatedAt: new Date() })
@@ -85,6 +88,9 @@ export const deleteModule = createServerFn({ method: 'POST' })
   .validator(z.object({ id: z.uuid() }))
   .handler(async ({ data }) => {
     const user = await requireUser()
+    // Kept 30 days in the versions: a module deleted by mistake can come back.
+    const [before] = await db.select().from(modules).where(and(eq(modules.id, data.id), eq(modules.userId, user.id)))
+    if (before) await snapshot(before, 'suppression')
     await db.delete(modules).where(and(eq(modules.id, data.id), eq(modules.userId, user.id)))
     return { ok: true }
   })
@@ -108,6 +114,7 @@ export const syncModule = createServerFn({ method: 'POST' })
       const [copy] = await db.insert(modules).values({ userId: user.id, name, tree: data.tree }).returning()
       return { status: 'conflict', record: toRecord(row), copy: toRecord(copy) }
     }
+    await snapshot(row, 'auto', data)
     const [done] = await db
       .update(modules)
       .set({ name: data.name, tree: data.tree, updatedAt: new Date() })

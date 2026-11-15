@@ -285,3 +285,16 @@ export function stripTags(s: string): string {
   parser.end(sanitizeHtml(s))
   return text
 }
+
+/**
+ * For HTML shown in the app itself (not in an e-mail frame): an image address
+ * that is still HuBL (`src="{{ … }}"`) would be requested as a page of the app
+ * (/editor/{{ … }}). Such addresses are kept aside in data-hubl-* instead.
+ */
+export function inertHubl(html: string): string {
+  if (!/\{\{|\{%/.test(html)) return html
+  return html.replace(/(\s)(src|srcset|background|poster)\s*=\s*("([^"]*)"|'([^']*)')/gi, (m, sp: string, attr: string, q: string, d?: string, s?: string) => {
+    const v = d ?? s ?? ''
+    return /\{\{|\{%/.test(v) ? `${sp}data-hubl-${attr.toLowerCase()}=${q}` : m
+  })
+}

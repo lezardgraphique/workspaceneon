@@ -22,6 +22,7 @@ import { SHOW_LOGIC_KEY } from '@/lib/settings-keys'
 import { collectFields } from '@/lib/fields'
 import { BLOCK_LABELS } from '@/lib/types'
 import type { Align, Block, ButtonBlock, Columns, ModuleTree, Section, Spacing } from '@/lib/types'
+import { VersionsPanel } from '@/components/editor/VersionsPanel'
 import { headingLine, headingWeight, safeBgImage, spacingOf, textLine } from '@/lib/look'
 import { buttonBold, buttonBorder, buttonBorderColor, buttonFontSize, buttonHeight } from '@/lib/vml'
 import {
@@ -40,6 +41,9 @@ interface Props {
   selectedId: string | null
   onSelect: (id: string | null) => void
   commit: (t: ModuleTree, select?: string | null) => void
+  /** The open module (versions kept by the account) and how to apply one. */
+  moduleId?: string
+  onRestore?: (name: string, tree: ModuleTree) => void
 }
 
 // 16px below lg: iOS zooms into any smaller field on focus.
@@ -951,6 +955,11 @@ export function Inspector(p: Props) {
         <Panel title="Contenu du module">
           <ModuleSummary tree={t} onSelect={(id) => p.onSelect(id)} />
         </Panel>
+        {p.moduleId && p.onRestore && (
+          <Panel title="Versions précédentes" open={false}>
+            <VersionsPanel moduleId={p.moduleId} onRestore={p.onRestore} />
+          </Panel>
+        )}
         <Panel title="Mise en page">
         <RangeField label="Largeur max" value={t.width} min={320} max={800} onChange={(width) => p.commit({ ...t, width })} />
         <ColorField label="Fond du module" value={t.bg} onChange={(bg) => p.commit({ ...t, bg })} />

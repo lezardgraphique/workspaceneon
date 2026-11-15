@@ -596,7 +596,13 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
   }, [tree, contact, selectedId, pageHidden])
   // What the preview shows that the code validator can't see (empty preview, example items…).
   const previewNotes = useMemo(() => (pageHidden ? [] : checkPreview(tree, previewTree)), [tree, previewTree, pageHidden])
-  const treeProps = { tree, selectedId, onSelect: select, commit }
+  // A version kept by the account, applied like any change (undoable, autosaved).
+  const restoreVersion = (n: string, t: ModuleTree) => {
+    commit(t, null)
+    setName(n)
+    showNotice('Version restaurée. « Annuler » revient à la version d’avant.')
+  }
+  const treeProps = { tree, selectedId, onSelect: select, commit, moduleId: initial.id, onRestore: restoreVersion }
   const selected = selectedId ? findNode(tree, selectedId) : null
   const selectedLabel =
     selected && (selected.type === 'section' && findPath(tree, selected.id).length === 1 ? 'Section' : BLOCK_LABELS[selected.type])

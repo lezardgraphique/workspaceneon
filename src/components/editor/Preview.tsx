@@ -5,7 +5,7 @@ import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEven
 
 import { firstImage } from '@/lib/images'
 import { HtmlBlockEditor } from './HtmlBlockEditor'
-import { isSafeUrl, sanitizeHtml } from '@/lib/sanitize'
+import { inertHubl, isSafeUrl, sanitizeHtml } from '@/lib/sanitize'
 
 import type { MoveTarget } from '@/lib/tree'
 import { BLOCK_LABELS } from '@/lib/types'
@@ -183,7 +183,7 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
       return node(
         <div
           style={{ fontFamily: font, fontSize: b.size, lineHeight: textLine(b), letterSpacing: b.letterSpacing || undefined, color: b.color, textAlign: b.align }}
-          dangerouslySetInnerHTML={{ __html: sanitizeHtml(b.html) || '&nbsp;' }}
+          dangerouslySetInnerHTML={{ __html: inertHubl(sanitizeHtml(b.html)) || '&nbsp;' }}
         />,
       )
     case 'button':
@@ -248,7 +248,7 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
       // The tree reaching the preview is already interpreted: show the result.
       return node(
         b.html.trim() ? (
-          <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(b.html) }} />
+          <div dangerouslySetInnerHTML={{ __html: inertHubl(sanitizeHtml(b.html)) }} />
         ) : (
           <div className="h-3" />
         ),

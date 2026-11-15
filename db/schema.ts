@@ -123,3 +123,22 @@ export const securityReports = pgTable('security_reports', {
   // { events, ips, proposals, applied, error? }
   stats: jsonb().notNull().default({}),
 })
+
+// Earlier versions of each module, kept by the server whatever the editor does:
+// the state before a save when the last copy is over 10 minutes old, before a
+// restore and at deletion. 30 per module, 30 days. No foreign key: the copies of
+// a deleted module stay, so it can be brought back. Always scoped by user_id.
+export const moduleVersions = pgTable(
+  'module_versions',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    moduleId: uuid('module_id').notNull(),
+    userId: text('user_id').notNull(),
+    name: text().notNull(),
+    tree: jsonb().notNull(),
+    // auto | avant-restauration | suppression | ia (before a change by a connected AI, MCP)
+    reason: text().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('module_versions_owner_idx').on(t.userId, t.moduleId, t.createdAt)],
+)

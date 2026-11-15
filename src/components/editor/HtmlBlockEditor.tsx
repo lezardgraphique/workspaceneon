@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, Copy, CornerLeftUp, GripVertical, Trash2 } from 'lu
 import type { DragEvent, MouseEvent } from 'react'
 
 import { PATH_ATTR, canPlace, duplicateAt, factsOf, moveAt, removeAt, setAttr, setInner, stampPaths, stepAt, steppedPath } from '@/lib/html-block'
-import { isSafeUrl, sanitizeHtml } from '@/lib/sanitize'
+import { inertHubl, isSafeUrl, sanitizeHtml } from '@/lib/sanitize'
 
 // The selected "Bloc HTML", rendered from its own code and editable in place:
 // a click picks an element (outlined, with a small toolbar), a text is typed
@@ -103,7 +103,7 @@ export function HtmlBlockEditor({ html, font, onChange }: { html: string; font: 
       el.contentEditable = 'false'
       const path = editing
       setEditing(null)
-      onChange(setInner(html, path, sanitizeHtml(el.innerHTML)))
+      onChange(setInner(html, path, sanitizeHtml(el.innerHTML).replace(/(\s)data-hubl-(src|srcset|background|poster)=/g, '$1$2=')))
     }
     const keys = (e: KeyboardEvent) => {
       if (e.key === 'Escape') el.blur()
@@ -130,7 +130,7 @@ export function HtmlBlockEditor({ html, font, onChange }: { html: string; font: 
   if (!stamped.ok)
     return (
       <div>
-        <div style={{ fontFamily: font }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) || '&nbsp;' }} />
+        <div style={{ fontFamily: font }} dangerouslySetInnerHTML={{ __html: inertHubl(sanitizeHtml(html)) || '&nbsp;' }} />
         <p className="mt-1 rounded bg-[#fff4d6] px-2 py-1 font-sans text-[11px] text-[#7a5a00]">
           Ce code ne peut pas être modifié dans l'aperçu (balises de tableau isolées, par exemple) : modifie-le dans les Réglages.
         </p>
@@ -214,7 +214,7 @@ export function HtmlBlockEditor({ html, font, onChange }: { html: string; font: 
           setMoving(false)
           setDrop(null)
         }}
-        dangerouslySetInnerHTML={{ __html: shown }}
+        dangerouslySetInnerHTML={{ __html: inertHubl(shown) }}
       />
       {drop && (
         <div
