@@ -106,6 +106,31 @@ const isTyping = (el: EventTarget | null) =>
 const opensKeyboard = (el: EventTarget | null) =>
   isTyping(el) && !(el as HTMLElement).matches('input[type=range], input[type=color], select')
 
+// Emergency copy of unsaved changes, written synchronously when the page goes away.
+const rescueKey = (id: string) => `nsp-rescue-${id}`
+function writeRescue(id: string, name: string, tree: ModuleTree) {
+  try {
+    localStorage.setItem(rescueKey(id), JSON.stringify({ at: Date.now(), name, tree }))
+  } catch {
+    // Storage full or blocked: the normal save is still running.
+  }
+}
+function readRescue(id: string): { at: number; name: string; tree: ModuleTree } | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(rescueKey(id)) ?? 'null') as { at?: unknown; name?: unknown; tree?: { sections?: unknown } } | null
+    return v && typeof v.at === 'number' && typeof v.name === 'string' && v.tree && Array.isArray(v.tree.sections) ? (v as { at: number; name: string; tree: ModuleTree }) : null
+  } catch {
+    return null
+  }
+}
+function clearRescue(id: string) {
+  try {
+    localStorage.removeItem(rescueKey(id))
+  } catch {
+    // Nothing to do.
+  }
+}
+
 function EditorGate() {
   const server = Route.useLoaderData()
   const [local, setLocal] = useState<ModuleRecord | null>(null)
@@ -215,6 +240,20 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     if (select !== undefined) setSelectedId(select)
   }
 
+  // Changes that were still being saved when the page went away (closed, reloaded,
+  // killed in the background): put back, then saved like any change.
+  useEffect(() => {
+    const r = readRescue(initial.id)
+    if (!r) return
+    if (r.at <= Date.parse(initial.updatedAt) || (JSON.stringify(r.tree) === JSON.stringify(initial.tree) && r.name === initial.name)) return clearRescue(initial.id)
+    pushHistory(initial.tree)
+    setName(r.name)
+    setTree(r.tree)
+    setCode(treeToCode(r.tree, r.name))
+    showNotice('Tes dernières modifications, pas encore enregistrées quand la page s’est fermée, ont été récupérées. « Annuler » revient à la version précédente.')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // A module imported before templates were kept whole: repaired once when
   // opened, if putting its template back together shows it better (undo restores).
   useEffect(() => {
@@ -228,26 +267,37 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
   const onCodeChange = (text: string) => {
     codeTyped.current = true
     setCode(text)
+    setSave('dirty')
   }
+  // Code typed in the Code tab, read into the tree (also called at once when the
+  // page is hidden or left, so the last keystrokes are never lost). Returns the
+  // new tree, or null when there was nothing to read or the code doesn't parse.
+  const readTypedCode = (): ModuleTree | null => {
+    if (!codeTyped.current) return null
+    codeTyped.current = false
+    const res = codeToTree(code, tree)
+    if (!res.ok) {
+      setCodeError(res.error)
+      return null
+    }
+    setCodeError(null)
+    setCodeImported(!!res.imported)
+    pushHistory(tree)
+    const synced = syncExtraFields({ ...reconcileIds(res.tree, tree), fields: res.imported ? undefined : tree.fields }, undefined, res.imported ? code : undefined)
+    // Pasted template whose layout the blocks would lose: kept whole.
+    const next = (res.imported && keepTemplateWhole(code, synced)) || synced
+    const known = new Set((tree.fields ?? []).map((f) => f.name))
+    setNewFields((next.fields ?? []).map((f) => f.name).filter((n) => !known.has(n)))
+    setTree(next)
+    return next
+  }
+  const readTyped = useRef(readTypedCode)
+  readTyped.current = readTypedCode
   useEffect(() => {
-    if (!codeTyped.current || pageHidden) return
-    const t = setTimeout(() => {
-      codeTyped.current = false
-      const res = codeToTree(code, tree)
-      if (!res.ok) return setCodeError(res.error)
-      setCodeError(null)
-      setCodeImported(!!res.imported)
-      pushHistory(tree)
-      const synced = syncExtraFields({ ...reconcileIds(res.tree, tree), fields: res.imported ? undefined : tree.fields }, undefined, res.imported ? code : undefined)
-      // Pasted template whose layout the blocks would lose: kept whole.
-      const next = (res.imported && keepTemplateWhole(code, synced)) || synced
-      const known = new Set((tree.fields ?? []).map((f) => f.name))
-      setNewFields((next.fields ?? []).map((f) => f.name).filter((n) => !known.has(n)))
-      setTree(next)
-    }, 250)
+    if (!codeTyped.current) return
+    const t = setTimeout(() => readTyped.current(), 250)
     return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code, pageHidden])
+  }, [code])
 
   // « Reformater » / « Appliquer »: reads the code as it is now (even typed a
   // moment ago), repairs what is mechanical when it doesn't parse, then rewrites
@@ -334,34 +384,115 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     lastPush.current = 0
   }
 
-  const saveSeq = useRef(0)
-  const firstRender = useRef(true)
-  const persist = useCallback(async () => {
-    const seq = ++saveSeq.current
-    setSave('saving')
-    try {
-      const r = await persistModule(initial.id, name.trim() || 'Sans titre', tree)
-      if (seq !== saveSeq.current) return
-      setConflictCopy(r.copyId ?? null)
-      setSave(r.state)
-    } catch {
-      if (seq === saveSeq.current) setSave('error')
+  // ---- Autosave ------------------------------------------------------------
+  // Every change is written 1 s after the last one (locally first, then to the
+  // account). Saves never overlap: one runs at a time and, if something changed
+  // meanwhile, the newest version is saved right after. Hiding the page, leaving
+  // the editor or Ctrl+S save at once; a failed save is retried by itself.
+  const current = useRef({ name, tree })
+  current.current = { name, tree }
+  const version = useRef(0) // bumped on every change
+  const savedVersion = useRef(0) // the version last written
+  const running = useRef<Promise<void> | null>(null)
+  const retry = useRef<{ timer?: ReturnType<typeof setTimeout>; delay: number }>({ delay: 0 })
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
     }
-  }, [initial.id, name, tree])
+  }, [])
 
+  // Retried by itself: 3 s, 10 s, 30 s, then every minute (and as soon as the connection is back).
+  const later = () => {
+    const d = retry.current.delay
+    retry.current.delay = d ? (d < 10_000 ? 10_000 : d < 30_000 ? 30_000 : 60_000) : 3_000
+    clearTimeout(retry.current.timer)
+    retry.current.timer = setTimeout(() => void saveNow(), retry.current.delay)
+  }
+  const saveNow = useCallback((): Promise<void> => {
+    if (running.current) return running.current.then(() => (savedVersion.current < version.current && !retry.current.timer ? saveNow() : undefined))
+    clearTimeout(retry.current.timer)
+    retry.current.timer = undefined
+    const target = version.current
+    const { name: n, tree: t } = current.current
+    if (alive.current) setSave('saving')
+    running.current = persistModule(initial.id, n.trim() || 'Sans titre', t)
+      .then((r) => {
+        // Kept on this device only while the connection is up (the server didn't
+        // answer): not done yet, pushed again shortly. Offline, the sync on reconnect does it.
+        const pending = r.state === 'local' && navigator.onLine
+        if (!pending) {
+          savedVersion.current = Math.max(savedVersion.current, target)
+          retry.current.delay = 0
+          if (savedVersion.current >= version.current) clearRescue(initial.id)
+        }
+        if (!alive.current) return
+        setConflictCopy(r.copyId ?? null)
+        setSave(version.current > target ? 'dirty' : r.state)
+        if (pending) later()
+      })
+      .catch(() => {
+        if (!alive.current) return
+        setSave('error')
+        later()
+      })
+      .finally(() => {
+        running.current = null
+      })
+    // Newer changes made during this save: saved right after (a failed or
+    // pending save waits for its retry instead of looping).
+    return running.current.then(() => (savedVersion.current < version.current && version.current > target && alive.current ? saveNow() : undefined))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial.id])
+
+  // Everything pending (code being typed included), saved now. When the page
+  // goes away, a copy is also written synchronously on the device (localStorage):
+  // the asynchronous save may not finish before the page is gone.
+  const flush = useCallback(
+    (leaving = false): Promise<void> => {
+      const next = readTyped.current()
+      if (next) {
+        current.current = { ...current.current, tree: next }
+        version.current++
+      }
+      if (savedVersion.current >= version.current) return Promise.resolve()
+      if (leaving) writeRescue(initial.id, current.current.name, current.current.tree)
+      return saveNow()
+    },
+    [saveNow, initial.id],
+  )
+  const persist = () => flush()
+
+  const firstRender = useRef(true)
   useEffect(() => {
     if (firstRender.current) {
       firstRender.current = false
       return
     }
-    if (pageHidden) {
-      setSave('dirty')
-      return
-    }
+    version.current++
     setSave('dirty')
-    const t = setTimeout(persist, 1000)
+    const t = setTimeout(() => void saveNow(), 1000)
     return () => clearTimeout(t)
-  }, [persist, pageHidden])
+  }, [name, tree, saveNow])
+
+  // Hidden (tab switched, phone locked, app in the background) or closed: save at once.
+  useEffect(() => {
+    const now = () => void flush(true)
+    const onVisibility = () => document.visibilityState === 'hidden' && now()
+    const onOnline = () => savedVersion.current < version.current && void saveNow()
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', now)
+    window.addEventListener('online', onOnline)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', now)
+      window.removeEventListener('online', onOnline)
+      clearTimeout(retry.current.timer)
+      // Leaving the editor (another page of the app): what is pending is saved.
+      void flush(true)
+    }
+  }, [flush, saveNow])
 
   // Nothing unsaved (and not typing): the gate may swap in a newer version from another device.
   idle.current = save === 'saved' && !typing

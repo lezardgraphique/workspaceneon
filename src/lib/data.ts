@@ -211,10 +211,15 @@ export async function persistModule(id: string, name: string, tree: ModuleTree):
     return { state: 'saved' }
   }
   await ready()
-  try {
+  let stamp = now()
+  const write = async () => {
     const cur = await L.getLocalModule(id)
-    const stamp = now()
+    // Never older than what is stored (two saves in the same millisecond).
+    stamp = cur && cur.updatedAt >= stamp ? new Date(Date.parse(cur.updatedAt) + 1).toISOString() : stamp
     await L.putModule({ id, name, tree, createdAt: cur?.createdAt ?? stamp, updatedAt: stamp, base: cur?.base ?? null, dirty: true })
+  }
+  try {
+    await write()
   } catch {
     // No usable local store: behave like before.
     await saveModule({ data: { id, name, tree } })
@@ -222,11 +227,21 @@ export async function persistModule(id: string, name: string, tree: ModuleTree):
   }
   void refreshPending()
   if (isOffline()) return { state: 'local' }
-  const res = await syncAll()
+  let res = await syncAll()
+  // A sync that was already running may have put back an older copy over this
+  // one (it re-reads the module while pushing): if what is stored is no longer
+  // this version, write it again and push it.
+  let after = await L.getLocalModule(id).catch(() => undefined)
+  const lost = (m?: L.LocalModule) => !!m && (m.name !== name || JSON.stringify(m.tree) !== JSON.stringify(tree))
+  // (Not when a newer local edit replaced it: that one is pushed by its own save.)
+  if (lost(after) && !(after!.dirty && after!.updatedAt > stamp) && !res.conflicts.some((c) => c.id === id)) {
+    await write().catch(() => {})
+    res = await syncAll()
+    after = await L.getLocalModule(id).catch(() => undefined)
+  }
   pingWidgets()
   const copy = res.conflicts.find((c) => c.id === id)
   if (copy) return { state: 'conflict', copyId: copy.copyId }
-  const after = await L.getLocalModule(id).catch(() => undefined)
   return { state: after?.dirty ? 'local' : 'saved' }
 }
 

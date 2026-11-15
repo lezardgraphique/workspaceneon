@@ -96,6 +96,12 @@ export const setMeta = (k: string, v: unknown) => run<void>('meta', 'readwrite',
 
 // Signing out (or another account signing in) must not leave anyone's data behind.
 export async function wipeLocal(): Promise<void> {
+  // Emergency copies of unsaved edits (editor, written when a page closes) go too.
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith('nsp-rescue-')) localStorage.removeItem(k)
+  } catch {
+    // Storage blocked: nothing kept there either.
+  }
   if (!hasStore()) return
   try {
     const db = await open()
