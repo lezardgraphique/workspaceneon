@@ -172,7 +172,7 @@ ${p}</div>`
     case 'spacer':
       return `${p}<div${ctx.attrs({ neon: 'spacer', height: b.height, ...(b.mobileHeight != null ? { 'mobile-height': b.mobileHeight } : {}), ...spacingAttrs(b), ...olAttr(b.outlook) })}${classAttr(hideClass(b.hide), b.mobileHeight != null ? `neon-mh-${b.mobileHeight}` : '')} style="${hideStyle(b.hide)}${hasSpacing(b) ? marginCss(sp.t, sp.b, sp.l, sp.r) : ''}height:${b.height}px;line-height:${b.height}px;font-size:0;${b.outlook?.h != null ? `mso-line-height-alt:${b.outlook.h}px;mso-line-height-rule:exactly;` : ''}${olStyle(b.outlook)}">&nbsp;</div>`
     case 'raw':
-      if (b.verbatim) return verbatimCode(b, ctx.shown ? 'hubspot' : ctx.mode, p)
+      if (b.verbatim) return verbatimCode(b, ctx.shown ? 'shown' : ctx.mode, p)
       return ctx.mode === 'hubspot' ? `${p}${b.html}` : `${p}<div data-neon="raw"${b.cols ? ` data-cols="${b.cols}"` : ''}>${b.html}</div>`
     case 'section':
       return renderSection(b, ctx, d, font, true, avail)
@@ -290,18 +290,22 @@ ${body}
 // (never parsed as HTML, so cells printed by macros or loops stay where they are).
 const VERBATIM_RE = /<script type="text\/hubl" data-neon="raw"( data-cols="[23]")?>([\s\S]*?)<\/script>/g
 const STYLE_RE = /<style\b[^>]*>([\s\S]*?)<\/style>/gi
-function verbatimCode(b: RawBlock, mode: Mode, p: string): string {
+function verbatimCode(b: RawBlock, mode: Mode | 'shown', p: string): string {
   const css = b.css ? `<style type="text/css">\n${b.css}\n</style>\n` : ''
-  if (mode === 'hubspot') return `${p}${css}${b.html}`
-  const body = `${css}${b.html}`.replace(/<\/(script)/gi, '<\\/$1')
+  // The preview shows the interpreted, sanitized copy; the export the exact source.
+  if (mode === 'shown') return `${p}${css}${b.html}`
+  if (mode === 'hubspot') return b.source != null ? b.source : `${p}${css}${b.html}`
+  const body = (b.source ?? `${css}${b.html}`).replace(/<\/(script)/gi, '<\\/$1')
   return `${p}<script type="text/hubl" data-neon="raw"${b.cols ? ` data-cols="${b.cols}"` : ''}>\n${body}\n${p}</script>`
 }
+const SOURCE_MAX = 200_000
 /** A verbatim template from its code: <style> sheets apart, the rest sanitized as is. */
 export function verbatimBlock(src: string, cols?: number): RawBlock {
   const sheets: string[] = []
-  const html = src.replace(/<\\\/script/gi, '</script').replace(STYLE_RE, (_m, css: string) => (sheets.push(css.trim()), '')).trim()
+  const source = src.replace(/<\\\/script/gi, '</script').trim()
+  const html = source.replace(STYLE_RE, (_m, css: string) => (sheets.push(css.trim()), '')).trim()
   const css = sanitizeCssText(sheets.filter(Boolean).join('\n\n'))
-  return { id: uid(), type: 'raw', html: strictHtml(html).trim(), verbatim: true, ...(css ? { css } : {}), ...(cols === 2 || cols === 3 ? { cols } : {}) }
+  return { id: uid(), type: 'raw', html: strictHtml(html).trim(), verbatim: true, ...(css ? { css } : {}), ...(cols === 2 || cols === 3 ? { cols } : {}), ...(source.length <= SOURCE_MAX ? { source } : {}) }
 }
 
 export function treeToCode(tree: ModuleTree, name: string): string {
@@ -333,6 +337,11 @@ export function syncExtraFields(tree: ModuleTree, specs?: FieldSpec[], source?: 
       .map((f) => (specs?.length || source ? f : (prev.get(f.name) ?? f)))
   }
   if (source) fields = fields.map((f) => (f.keep ? f : { ...f, keep: true }))
+  // Imported with a fields.json: its order is kept (the export comes out identical).
+  if (specs?.length) {
+    const rank = new Map(specs.map((s, i) => [s.name, i]))
+    fields = fields.map((f, i) => [f, i] as const).sort(([a, i], [b, j]) => (rank.get(a.name) ?? 1e6 + i) - (rank.get(b.name) ?? 1e6 + j)).map(([f]) => f)
+  }
   const names = new Set(fields.map((f) => f.name))
   for (const f of prev.values()) if (f.keep && !names.has(f.name) && !exposed.has(f.name)) fields.push(f)
   if (JSON.stringify(fields) === JSON.stringify(tree.fields ?? [])) return tree
@@ -377,10 +386,14 @@ export function treeToHubSpot(tree: ModuleTree, name: string): HubSpotExport {
     tags: [],
     is_available_for_new_content: true,
   }
+  // A module that is one imported template, kept as written: exported exactly
+  // as it was imported (no wrapper, no comment), so it round-trips identically.
+  const only = tree.sections.length === 1 && tree.sections[0].cells.length === 1 && tree.sections[0].cells[0].length === 1 ? tree.sections[0].cells[0][0] : null
+  const template = only?.type === 'raw' && only.verbatim && only.source != null ? only.source : null
   return {
     // The name sits in a HuBL comment: it must not be able to close it.
-    'module.html': `{# ${name.replace(/[{}#%]/g, ' ').trim()} — généré par Neon Sandbox Pro #}\n${html}\n`,
-    'module.css': `${STACK_CSS}${responsiveCss(tree)}\n`,
+    'module.html': template != null ? `${template}\n` : `{# ${name.replace(/[{}#%]/g, ' ').trim()} — généré par Neon Sandbox Pro #}\n${html}\n`,
+    'module.css': template != null ? '' : `${STACK_CSS}${responsiveCss(tree)}\n`,
     'fields.json': JSON.stringify([...fields, ...extra], null, 2) + '\n',
     'meta.json': JSON.stringify(meta, null, 2) + '\n',
   }

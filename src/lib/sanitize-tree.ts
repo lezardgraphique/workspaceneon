@@ -193,6 +193,8 @@ function blockInner(raw: unknown, depth: number, count: { n: number }): Block | 
         ...(raw.cols === 2 || raw.cols === 3 ? { cols: raw.cols } : {}),
         ...(raw.verbatim === true ? { verbatim: true as const } : {}),
         ...(raw.verbatim === true && typeof raw.css === 'string' && sanitizeCssText(raw.css) ? { css: sanitizeCssText(raw.css) } : {}),
+        // The exact imported text, for the code and the export only (never rendered).
+        ...(raw.verbatim === true && typeof raw.source === 'string' && raw.source.length <= 200_000 ? { source: raw.source } : {}),
       }
     case 'section':
       return depth < MAX_DEPTH ? section(raw, depth + 1, count) : null

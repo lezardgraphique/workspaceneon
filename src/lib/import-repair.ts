@@ -6,7 +6,7 @@
 // is listed for the person. Browser only (codeToTree uses DOMParser).
 import { Parser } from 'htmlparser2'
 import { codeToTree, previewEmail, syncExtraFields, treeToHubSpot, verbatimBlock } from './hubl'
-import { previewScope, renderHubl } from './hubl-render'
+import { isLogicBlock, previewScope, renderHubl } from './hubl-render'
 import { applyValues, importSpecs, parseForeignJson } from './json-import'
 import type { ForeignJson } from './json-import'
 import { parseFieldsJson } from './module-fields'
@@ -124,7 +124,10 @@ export function cleanSource(input: string): { code: string; repairs: string[]; s
 
   // The code as a JSON string ("<table…\n…"), e.g. copied from an API answer.
   const t = code.trim()
-  if ((/^".*"$/s.test(t) && /\\[n"t\/]/.test(t)) || (!/\n/.test(t) && /\\n|\\"/.test(t) && /<[a-z]/i.test(t))) {
+  // Escapes inside HuBL ({% … replace('\\n', ' ') %}) are the template's own
+  // strings, not a JSON encoding: a module minified on one line keeps them.
+  const outside = t.replace(/\{%[\s\S]*?%\}|\{\{[\s\S]*?\}\}|\{#[\s\S]*?#\}/g, '')
+  if ((/^".*"$/s.test(t) && /\\[n"t\/]/.test(outside)) || (!/\n/.test(t) && /\\n|\\"/.test(outside) && /<[a-z]/i.test(t))) {
     try {
       // Quotes not already escaped get escaped (no lookbehind: Safari 15).
       const s = JSON.parse(/^".*"$/s.test(t) ? t : `"${t.replace(/\\?"/g, (q) => (q === '"' ? '\\"' : q))}"`)
@@ -379,8 +382,22 @@ export function keepTemplateWhole(source: string, tree: ModuleTree, specs?: Fiel
   if (/data-neon=["'](module|section)/.test(source) || !looksLikeTemplate(source)) return null
   const whole = renderedSize(renderHubl(source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ''), previewScope(tree)))
   const cut = renderedSize(previewEmail(tree, 'x'))
-  if (!showsMore(whole, cut)) return null
+  // Macros hold the content in code: blocks could only show their calls, so the
+  // template stays whole (and its export identical to what was imported).
+  if (!showsMore(whole, cut) && !mostlyCode(tree) && !/\{%-?\s*macro\b/.test(source)) return null
   return syncExtraFields({ ...tree, fields: undefined, sections: [wholeSection(source)] }, specs, source)
+}
+
+// Cutting a template into blocks is worth it only when most of what it shows
+// becomes editable blocks; mostly « Bloc HTML » pieces gain nothing and lose
+// the template's exact code (a HubSpot module re-imported must stay identical).
+function mostlyCode(tree: ModuleTree): boolean {
+  let raw = 0
+  let editable = 0
+  const walk = (list: ModuleTree['sections'][number]['cells'][number]) =>
+    list.forEach((b) => (b.type === 'section' ? b.cells.forEach(walk) : b.type === 'raw' ? !isLogicBlock(b) && raw++ : b.type !== 'spacer' && b.type !== 'divider' && editable++))
+  tree.sections.forEach((s) => s.cells.forEach(walk))
+  return raw > 0 && editable < raw
 }
 
 const wholeSection = (html: string): ModuleTree['sections'][number] => ({ id: uid(), type: 'section', columns: 1, behavior: 'stack', bg: 'transparent', padding: 0, radius: 0, cells: [[verbatimBlock(html)]] })

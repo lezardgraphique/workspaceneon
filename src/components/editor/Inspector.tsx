@@ -14,7 +14,7 @@ import { refreshCustomBlocks } from './useCustomBlocks'
 import { wrapForLibrary } from '@/lib/custom-blocks'
 import { saveBlock } from '@/lib/data'
 import { BLOCK_ICONS } from './Structure'
-import { htmlToBlocks, sanitizeHtml } from '@/lib/hubl'
+import { htmlToBlocks, sanitizeHtml, verbatimBlock } from '@/lib/hubl'
 import { isLogicBlock } from '@/lib/hubl-render'
 import { countLogic, governed, logicFrames, logicInfo, removeLogic, setLogicExpr } from '@/lib/logic'
 import { getPref, setPref, SETTINGS_EVENT } from '@/lib/settings-sync'
@@ -444,7 +444,16 @@ function VerbatimFields({ b, set, p }: { b: Extract<Block, { type: 'raw' }>; set
       <details className="rounded-md border border-line">
         <summary className="cursor-pointer px-2.5 py-2 text-xs text-mute hover:text-white">Voir ou modifier le code du modèle</summary>
         <div className="p-2.5 pt-0">
-          <textarea aria-label="Code du modèle" className={`${input} ${mono} min-h-40`} value={b.html} onChange={(e) => set({ html: e.target.value })} />
+          <textarea
+            aria-label="Code du modèle"
+            className={`${input} ${mono} min-h-40`}
+            value={b.source ?? b.html}
+            onChange={(e) => {
+              // The exact text is kept for the export; the preview gets its sanitized copy.
+              const v = verbatimBlock(e.target.value)
+              set({ html: v.html, css: v.css, source: v.source } as Partial<Block>)
+            }}
+          />
         </div>
       </details>
     </>

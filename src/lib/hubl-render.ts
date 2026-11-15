@@ -290,7 +290,7 @@ function tokenizeExpr(src: string): { t: string; v: string }[] {
       throw new Error(`Expression illisible : ${src.slice(start, start + 12)}`)
     }
     if (m[1] !== undefined) out.push({ t: 'num', v: m[1] })
-    else if (m[2] !== undefined) out.push({ t: 'str', v: m[2].slice(1, -1).replace(/\\(.)/g, '$1') })
+    else if (m[2] !== undefined) out.push({ t: 'str', v: m[2].slice(1, -1).replace(/\\(.)/g, (_, c: string) => ({ n: '\n', r: '\r', t: '\t' })[c] ?? c) })
     else if (m[3] !== undefined) out.push({ t: 'id', v: m[3] })
     else out.push({ t: 'op', v: m[4] })
   }

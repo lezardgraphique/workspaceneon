@@ -163,6 +163,12 @@ export interface RawBlock {
   verbatim?: true
   /** Its <style> sheets (exported in front of it, never injected into the app). */
   css?: string
+  /**
+   * The template exactly as imported (verbatim only): written back as is in the
+   * code and the export, so a module re-imported comes out identical. Never put
+   * in the DOM: the preview uses `html`, its sanitized copy.
+   */
+  source?: string
 }
 
 export type Columns = 1 | 2 | 3
