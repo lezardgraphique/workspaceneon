@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle, Braces, CheckCircle2, ChevronDown, Info, Sparkles, Wrench, XCircle } from 'lucide-react'
 
-import { explainIssue, fixCode, validateSyntax } from '@/lib/validator'
+import { applyIssueFix, explainIssue, fixCode, validateSyntax } from '@/lib/validator'
 import type { PreviewNote } from '@/lib/preview-check'
 
 // Live code validator under the code editor: lists errors and warnings with
 // their line and an explanation, jumps to a line on click, repairs what is
-// mechanical, adds what the preview shows (empty preview, example items…)
+// mechanical (each issue has its own exact « Corriger » button, and « Tout
+// corriger » applies them all), adds what the preview shows (empty preview, example items…)
 // and can hand everything to Maily to fix.
 export function ValidatorPanel({
   code,
@@ -25,7 +26,7 @@ export function ValidatorPanel({
 }) {
   const res = useMemo(() => validateSyntax(code), [code])
   const [open, setOpen] = useState(false)
-  const fixable = res.issues.filter((i) => i.fixable).length
+  const fixable = res.issues.filter((i) => i.fix).length
   const errors = res.errors + notes.filter((n) => n.severity === 'error').length
   const warnings = res.warnings + notes.filter((n) => n.severity === 'warning').length
   const infos = notes.filter((n) => n.severity === 'info').length
@@ -64,11 +65,11 @@ export function ValidatorPanel({
         {fixable > 0 && (
           <button
             type="button"
-            onClick={() => onFix(fixCode(code).code)}
-            title="Supprime les fermetures en trop et ajoute celles qui manquent"
+            onClick={() => onFix(fixCode(code, { all: true }).code)}
+            title="Applique la correction de chaque problème listé (annulable)"
             className="inline-flex shrink-0 items-center gap-1 rounded border border-cyan bg-cyan/10 px-2 py-1.5 text-cyan lg:py-1"
           >
-            <Wrench className="size-3" /> Corriger ({fixable})
+            <Wrench className="size-3" /> Tout corriger ({fixable})
           </button>
         )}
         {problems && onAskMaily && (
@@ -106,8 +107,8 @@ export function ValidatorPanel({
           {res.issues.map((i, k) => {
             const help = explainIssue(i.message)
             return (
-              <li key={k}>
-                <button type="button" onClick={() => onJump(i.line)} className="flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-void">
+              <li key={k} className="hover:bg-void">
+                <button type="button" onClick={() => onJump(i.line)} className="flex w-full items-start gap-2 px-3 pt-1.5 text-left">
                   <span className={`mt-1 size-1.5 shrink-0 rounded-full ${i.severity === 'error' ? 'bg-pink' : 'bg-[#ffd166]'}`} />
                   <span className="shrink-0 font-mono text-mute">L{i.line}</span>
                   <span className="min-w-0">
@@ -115,6 +116,23 @@ export function ValidatorPanel({
                     {help && <span className="mt-0.5 block text-mute">{help}</span>}
                   </span>
                 </button>
+                {i.fix ? (
+                  <div className="flex flex-wrap items-center gap-2 pb-1.5 pl-[3.25rem] pr-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => onFix(applyIssueFix(code, i))}
+                      className="inline-flex items-center gap-1 rounded border border-cyan bg-cyan/10 px-2 py-1 text-left text-cyan"
+                    >
+                      <Wrench className="size-3 shrink-0" aria-hidden />
+                      <span>
+                        Corriger<span className="sr-only"> ligne {i.line}</span> : {i.fix.label}
+                      </span>
+                    </button>
+                    {!i.fix.safe && <span className="text-mute">Vérifie le résultat : cette correction retire ou déplace du code.</span>}
+                  </div>
+                ) : (
+                  <div className="pb-1.5" />
+                )}
               </li>
             )
           })}

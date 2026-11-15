@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { guardedFetch } from '@/lib/session-guard'
-import { CheckCircle2, ChevronDown, ExternalLink, FileCode2, Heart, Lightbulb, Loader2, MessageCircle, Paperclip, Plus, Send, Square, Wand2, X } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ExternalLink, FileCode2, Heart, Lightbulb, Loader2, MessageCircle, Paperclip, Plus, RotateCcw, Send, Square, Wand2, X } from 'lucide-react'
 import { Streamdown } from 'streamdown'
 
 import { Maily } from '@/components/Maily'
@@ -12,7 +12,8 @@ import { parseFieldsJson } from '@/lib/module-fields'
 import { importSpecs, parseForeignJson } from '@/lib/json-import'
 import type { FieldSpec } from '@/lib/module-fields'
 import { validateModuleCode } from '@/lib/module-agent'
-import { extractCode, looksLikeCode, recognizeCode, wantsConversion } from '@/lib/recognize'
+import { fixCode, validateSyntax } from '@/lib/validator'
+import { codeFileName, extractCode, recognizeCode, wantsConversion } from '@/lib/recognize'
 import type { ModuleTree, Section } from '@/lib/types'
 import { slugify } from '@/lib/custom-blocks'
 import type { CustomBlock } from '@/lib/custom-blocks'
@@ -20,6 +21,7 @@ import { createLocalFirst, isNetworkError, isOffline, loadBlocks, loadModules, s
 import { guideAnswer, libraryNote, localSystemPrompt } from '@/lib/maily-prompts'
 import { formatReport, runSelfTests } from '@/lib/self-test'
 import { codeFromFields } from '@/lib/import-repair'
+import { CONTINUE_MARK, stripMark, wantsContinue } from '@/lib/continuation'
 import { localAiEnabled, localContextTokens, streamOfflineMaily } from '@/lib/offline-ai'
 import type { LocalMessage } from '@/lib/offline-ai'
 import { refreshCustomBlocks } from './useCustomBlocks'
@@ -52,19 +54,25 @@ interface Msg {
   created?: { id: string; name: string; existing?: boolean }[]
   // Custom blocks (library) Maily saved or reused from this answer
   blocks?: CustomBlock[]
+  /** Placeholder while Maily is reached (may show a waiting note). */
+  waiting?: boolean
+  /** The request failed: « Réessayer » sends the user's last message again. */
+  retry?: boolean
 }
 
 type Mode = 'chat' | 'build'
 
-const CODE_EXT = /\.(html?|hubl|txt|json)$/i
+// Code files Maily reads (HTML, HuBL, other platforms' templates, CSS, fields.json…).
+const CODE_EXT = /\.(html?|hubl|txt|json|css|mjml|liquid|hbs|handlebars|mustache|twig|njk|jinja2?|j2|tpl|xml|amp|ampscript|md)$/i
 // Images sent to Gemini are downscaled: enough to read a mockup, light to upload.
 const MAX_SIDE = 1400
 // Only the most recent images are resent with the history.
 const IMAGE_HISTORY = 2
 
 async function toAttachment(file: File): Promise<Attachment | null> {
-  if (CODE_EXT.test(file.name) || file.type === 'text/html' || file.type === 'application/json') {
-    return { name: file.name, kind: 'code', text: (await file.text()).slice(0, 140_000) }
+  if (CODE_EXT.test(file.name) || file.type === 'text/html' || file.type === 'application/json' || file.type === 'text/css' || file.type === 'text/plain') {
+    // A BOM in front of a fields.json or an HTML file would hide what it is.
+    return { name: file.name, kind: 'code', text: (await file.text()).replace(/^\uFEFF/, '').slice(0, 190_000) }
   }
   if (!file.type.startsWith('image/') || file.type === 'image/svg+xml') return null
   const img = new Image()
@@ -97,7 +105,10 @@ interface NeonBlock {
 
 // Splits Maily's streamed answer into the visible text and its ```neon blocks.
 // A plain ```neon block edits the open module; ```neon new <name> creates one.
-function splitReply(acc: string): { text: string; blocks: NeonBlock[]; building: boolean } {
+function splitReply(acc: string, build = false): { text: string; blocks: NeonBlock[]; building: boolean } {
+  // In « Modifier le module » a whole module written in a ```html fence instead
+  // of ```neon is still the module (the model sometimes picks the wrong label).
+  if (build && !/```neon/.test(acc)) acc = acc.replace(/```(?:html?|hubl)[^\n]*\n(?=[\s\S]*?data-neon=["']module["'])/i, '```neon\n')
   const blocks: NeonBlock[] = []
   let text = ''
   let rest = acc
@@ -181,8 +192,118 @@ async function* readText(body: ReadableStream<Uint8Array>): AsyncGenerator<strin
   const decoder = new TextDecoder()
   for (;;) {
     const { done, value } = await reader.read()
-    if (done) return
+    if (done) {
+      const tail = decoder.decode()
+      if (tail) yield tail
+      return
+    }
     yield decoder.decode(value, { stream: true })
+  }
+}
+
+// ---- reaching Maily online -------------------------------------------------------
+
+class MailyError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+  }
+}
+
+const pause = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const t = setTimeout(resolve, ms)
+    signal.addEventListener('abort', () => (clearTimeout(t), reject(new DOMException('Arrêté', 'AbortError'))), { once: true })
+  })
+
+const statusText = (status: number) =>
+  status === 413
+    ? 'Ta demande est trop lourde (images ou fichiers joints) : retire une pièce jointe et réessaie.'
+    : status === 429
+      ? 'Maily reçoit beaucoup de demandes : attends quelques secondes et réessaie.'
+      : 'Maily ne répond pas pour le moment. Réessaie dans un instant.'
+
+// Sends the request, trying again (up to 3 times) when the service is busy,
+// overloaded or the connection drops, with the wait shown in the chat.
+async function postMaily(body: object, signal: AbortSignal, onWait: (note: string) => void): Promise<ReadableStream<Uint8Array>> {
+  for (let attempt = 0; ; attempt++) {
+    let res: Response
+    try {
+      res = await guardedFetch('/api/maily', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal })
+    } catch (e) {
+      if (signal.aborted || isOffline() || attempt >= 2) throw e
+      onWait('La connexion a sauté, je réessaie…')
+      await pause(1500 * (attempt + 1), signal)
+      continue
+    }
+    if (res.ok && res.body) return res.body
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    const again = res.status === 429 || res.status === 408 || res.status >= 500
+    if (!again || attempt >= 2) throw new MailyError(data.error ?? statusText(res.status), res.status)
+    const wait = Math.min(20, Math.max(2, Number(res.headers.get('Retry-After')) || (res.status === 429 ? 8 : 3)))
+    onWait(res.status === 429 ? `Beaucoup de demandes en ce moment : nouvel essai dans ${wait} s…` : `Le service d’IA est surchargé : nouvel essai dans ${wait} s…`)
+    await pause(wait * 1000, signal)
+  }
+}
+
+// Keeps the request under the platform's size limit and the route's own limits:
+// older images go first, then long old messages are shortened.
+function fitPayload(payload: ReturnType<typeof toPayload>[]): ReturnType<typeof toPayload>[] {
+  const BUDGET = 4_200_000
+  let out = payload.map((m) => (m.content.length > 199_000 ? { ...m, content: `${m.content.slice(0, 198_000)}\n[… coupé : message trop long]` } : m))
+  const size = () => JSON.stringify(out).length
+  if (size() > BUDGET) out = out.map((m, i) => (i === out.length - 1 || !m.images ? m : { role: m.role, content: m.content }))
+  for (const max of [20_000, 4_000, 800]) {
+    if (size() <= BUDGET) break
+    out = out.map((m, i) => (i < out.length - 1 && m.content.length > max ? { ...m, content: `${m.content.slice(0, max)}\n[… coupé]` } : m))
+  }
+  return out
+}
+
+// Maily's answer as text chunks. An answer cut on the way (platform time limit,
+// dropped connection, model stopped inside a module) is resumed: the partial
+// answer is sent back and the rest follows, up to 4 times.
+async function* askMaily(body: object, signal: AbortSignal, onWait: (note: string) => void): AsyncGenerator<string> {
+  let written = ''
+  for (let round = 0; round < 5; round++) {
+    let stream: ReadableStream<Uint8Array>
+    try {
+      stream = await postMaily(round ? { ...body, partial: written } : body, signal, onWait)
+    } catch (e) {
+      // The start of the answer is shown; what follows is reported as cut.
+      if (round && !signal.aborted) return
+      throw e
+    }
+    let held = ''
+    let broken = false
+    try {
+      for await (const chunk of readText(stream)) {
+        // The resume mark is held back until the end (never shown).
+        if (held || chunk.includes(CONTINUE_MARK[0])) {
+          held += chunk
+          continue
+        }
+        written += chunk
+        yield chunk
+      }
+    } catch (e) {
+      if (signal.aborted) throw e
+      broken = true
+    }
+    const resume = wantsContinue(held)
+    if (held) {
+      const rest = stripMark(held)
+      written += rest
+      if (rest) yield rest
+    }
+    if (!written) {
+      if (broken) throw new MailyError(statusText(0), 0)
+      return
+    }
+    if (!resume && !broken && !splitReply(written).building) return
+    onWait('')
   }
 }
 
@@ -346,39 +467,44 @@ export function MailyPanel({
         chars - used,
       )
       source = streamOfflineMaily(system, turns, reserve, signal)
+      push({ role: 'assistant', content: '' })
     } else {
-      const res = await guardedFetch('/api/maily', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: history.slice(-40).map((m, i, arr) => toPayload(m, withImages.has(i + history.length - arr.length))),
+      // Shown at once, with what is happening while Maily is reached.
+      push({ role: 'assistant', content: '', waiting: true })
+      const onWait = (note: string) => {
+        if (!note) return
+        setMessages((prev) => {
+          const last = prev.at(-1)
+          if (!last?.waiting) return prev
+          return [...prev.slice(0, -1), { ...last, content: `_${note}_` }]
+        })
+      }
+      const sent = history.slice(-40)
+      source = askMaily(
+        {
+          messages: fitPayload(sent.map((m, i) => toPayload(m, withImages.has(i + history.length - sent.length)))),
           mode,
-          code: ctx.requestCode,
+          code: ctx.requestCode?.slice(0, 399_000),
           moduleName,
           imported: ctx.imported,
-          issue: ctx.issue,
-          fields,
+          issue: ctx.issue?.slice(0, 500),
+          fields: fields.slice(0, 8_000),
           fieldSpecs: ctx.specs.length ? JSON.stringify(ctx.specs).slice(0, 20_000) : undefined,
-        }),
+        },
         signal,
-      })
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error ?? 'Maily est indisponible.')
-      }
-      source = readText(res.body)
+        onWait,
+      )
     }
-    push({ role: 'assistant', content: '' })
     let acc = ''
     for await (const chunk of source) {
       acc += chunk
-      const part = splitReply(acc)
+      const part = splitReply(acc, mode === 'build')
       // Hide a ```neon fence that is still arriving.
       const visible = part.building || part.blocks.length ? part.text : part.text.replace(/`{1,3}(n(e(on?)?)?)?$/, '')
       setLast({ role: 'assistant', content: visible, building: part.building || part.blocks.length > 0 })
     }
 
-    const reply = splitReply(acc)
+    const reply = splitReply(acc, mode === 'build')
     // Internal tests asked by Maily (```neon test): run here, shown in the chat,
     // then handed back to her so she explains them and acts on them.
     if (reply.blocks.some((b) => b.kind === 'test')) {
@@ -400,7 +526,10 @@ export function MailyPanel({
     if (!reply.blocks.length) {
       setLast({
         role: 'assistant',
-        content: reply.text || (reply.building ? '⚠️ La génération du module a été coupée avant la fin. Réessaie.' : ''),
+        content:
+          (reply.text ? `${reply.text}${reply.building ? '\n\n' : ''}` : '') +
+          (reply.building ? '⚠️ La génération du module a été coupée avant la fin, même après reprise.' : reply.text ? '' : '⚠️ Je n’ai reçu aucune réponse.'),
+        retry: reply.building || !reply.text || undefined,
       })
       setMood('happy')
       return
@@ -416,7 +545,10 @@ export function MailyPanel({
     for (const block of reply.blocks) {
       if (block.kind === 'test') continue
       const label = block.kind === 'block' ? `le bloc « ${block.name} »` : block.name ? `« ${block.name} »` : 'le module ouvert'
-      const check = validateModuleCode(block.code, tree, ctx.specs)
+      // Mechanical slips (a missing {% endif %}, an unfinished {{ x }…) are
+      // repaired exactly by the validator instead of costing a correction round.
+      const repaired = validateSyntax(block.code).issues.some((i) => i.fix?.safe) ? fixCode(block.code).code : block.code
+      const check = validateModuleCode(repaired, tree, ctx.specs)
       if (!check.ok || !check.tree) {
         problems.push(`${label} : ${check.issues.join(' ') || check.summary}`)
         continue
@@ -467,7 +599,7 @@ export function MailyPanel({
           continue
         }
       } else {
-        const error = applyCode(block.code, ctx.specs)
+        const error = applyCode(repaired, ctx.specs)
         if (error) {
           problems.push(`${label} : ${error}`)
           continue
@@ -505,40 +637,59 @@ export function MailyPanel({
     setMood(applied || created.length || savedBlocks.length ? 'success' : 'happy')
   }
 
-  const send = async (text: string) => {
+  // Last request, so « Réessayer » can send it again as it was.
+  const dropPlaceholder = () =>
+    setMessages((prev) => {
+      const last = prev.at(-1)
+      return last?.role === 'assistant' && (last.waiting || !last.content.trim()) ? prev.slice(0, -1) : prev
+    })
+
+  const send = async (text: string, attached: Attachment[] = files, base: Msg[] = messages) => {
     const content = text.trim()
-    if ((!content && !files.length) || loading) return
+    if ((!content && !attached.length) || loading) return
     setInput('')
     setFiles([])
 
-    // Code typed in the message becomes an attachment, like pasted code.
+    // Code typed in the message becomes attachments, like pasted code (several
+    // fenced blocks: HTML, CSS and fields.json are told apart).
     const typed = extractCode(content)
-    const sent = typed ? [...files.slice(0, 3), { name: 'code-colle.html', kind: 'code' as const, text: typed.code }] : files
+    const sent = typed ? [...attached.slice(0, 3), ...typed.files.map((f) => ({ name: f.name, kind: 'code' as const, text: f.text }))].slice(0, 6) : attached
     const instruction = typed ? typed.instruction : content
     const jsonFiles = sent.filter((f) => f.kind === 'code' && /\.json$/i.test(f.name))
     // An attached fields.json gives the exact names, labels and defaults; any
     // other JSON (another tool's fields, values, schema, API module…) helps too.
-    const fieldsJson = jsonFiles.flatMap((f) => (/^\s*\[/.test(f.text ?? '') ? (parseFieldsJson(f.text ?? '') ?? []) : []))
-    const foreign = jsonFiles.map((f) => (/^\s*\[/.test(f.text ?? '') ? null : parseForeignJson(f.text ?? ''))).find((x) => !!x) ?? null
-    const pasted = sent
-      .filter((f) => f.kind === 'code' && !/\.json$/i.test(f.name))
+    const fieldsJson = jsonFiles.flatMap((f) => (/^\s*(\/[/*][^\n]*\n\s*)*\[/.test(f.text ?? '') ? (parseFieldsJson(f.text ?? '') ?? []) : []))
+    const foreign = jsonFiles.map((f) => (/^\s*(\/[/*][^\n]*\n\s*)*\[/.test(f.text ?? '') ? null : parseForeignJson(f.text ?? ''))).find((x) => !!x) ?? null
+    const codeFiles = sent.filter((f) => f.kind === 'code' && !/\.json$/i.test(f.name))
+    // A style sheet sent beside the HTML is applied to it (its rules are inlined at import).
+    const css = codeFiles.filter((f) => /\.css$/i.test(f.name)).map((f) => f.text ?? '').join('\n')
+    const markup = codeFiles
+      .filter((f) => !/\.css$/i.test(f.name))
       .map((f) => f.text)
       .join('\n')
+    const pasted = markup && css.trim() ? `<style>\n${css}\n</style>\n${markup}` : markup
     // No code but a fields.json / module JSON: a module is built from the fields.
-    const fieldDefs = fieldsJson ?? (foreign?.specs.length ? foreign.specs : null)
+    const fieldDefs = fieldsJson.length ? fieldsJson : foreign?.specs.length ? foreign.specs : null
     const source = pasted || foreign?.html || (fieldDefs ? codeFromFields(fieldDefs) : '')
     const specs = source ? (importSpecs(source, fieldsJson, foreign) ?? []) : fieldsJson
 
     // Recognised code is rendered right away; Maily then reviews it (or
-    // recreates it herself when the direct conversion is too lossy).
+    // improves it herself when the direct conversion is incomplete).
     let requestCode = code
     let imported: string | undefined
     let issue: string | undefined
+    let partialImport: string | undefined
     if (source && wantsConversion(instruction, mode)) {
       const rec = recognizeCode(source, tree, specs)
       if (rec.ok && rec.complete && !applyCode(rec.source, specs, foreign?.values)) {
         imported = rec.summary
         requestCode = treeToCode(rec.tree, moduleName)
+      } else if (rec.ok && !applyCode(rec.source, specs, foreign?.values)) {
+        // Incomplete but usable: shown at once (undoable), so the user has a
+        // render even if Maily can't be reached; she then completes it.
+        partialImport = `${rec.summary}\n\nCe n'est pas encore parfait (${rec.issue ?? 'conversion incomplète'}) : je l'améliore…`
+        requestCode = treeToCode(rec.tree, moduleName)
+        issue = `${rec.kind} reconnu, conversion directe incomplète : ${rec.issue ?? 'application impossible'}. Cette première conversion est déjà appliquée (module actuel ci-dessous) : améliore-la à partir du code d'origine joint, garde ce qui est déjà bien converti`
       } else {
         issue = rec.ok ? `${rec.kind} reconnu, conversion directe incomplète : ${rec.issue ?? 'application impossible'}` : `${rec.kind} : ${rec.error}`
       }
@@ -550,28 +701,37 @@ export function MailyPanel({
       files: sent.length ? sent : undefined,
       imported,
     }
-    const history: Msg[] = [...messages, userMsg]
-    setMessages(imported ? [...history, { role: 'assistant', content: imported, applied: true }] : history)
+    const history: Msg[] = [...base, userMsg]
+    const note = imported ?? partialImport
+    setMessages(note ? [...history, { role: 'assistant', content: note, applied: true }] : history)
     setLoading(true)
     setMood('thinking')
     const ctrl = new AbortController()
     abortRef.current = ctrl
 
     const ctx = { requestCode, imported: !!imported, issue, specs }
+    const canLocal = () => localAiEnabled() && localAi.status === 'ready'
     try {
       try {
         await converse(history, { ...ctx, local: isOffline() && localAiEnabled() }, 0, ctrl.signal)
       } catch (e) {
-        // The connection dropped before Maily answered: the on-device model takes over.
-        if (ctrl.signal.aborted || !(isOffline() || isNetworkError(e)) || !localAiEnabled()) throw e
+        // Maily can't be reached (no connection, or the service stays down
+        // after the retries): the on-device model takes over when there is one.
+        const network = isOffline() || isNetworkError(e)
+        if (ctrl.signal.aborted || (e as Error).name === 'AbortError' || !(network ? localAiEnabled() : canLocal() && e instanceof MailyError && e.status !== 413 && e.status !== 400)) throw e
+        dropPlaceholder()
         await converse(history, { ...ctx, local: true }, 0, ctrl.signal)
       }
     } catch (e) {
       if ((e as Error).name === 'AbortError' || ctrl.signal.aborted) {
-        setMessages((prev) => prev.map((m) => (m.building ? { ...m, building: false, content: m.content || 'Génération arrêtée.' } : m)))
+        setMessages((prev) =>
+          prev.filter((m, i) => !(i === prev.length - 1 && m.waiting)).map((m) => (m.building ? { ...m, building: false, content: m.content || 'Génération arrêtée.' } : m)),
+        )
       } else if (isOffline() || isNetworkError(e)) {
+        dropPlaceholder()
         push({
           role: 'assistant',
+          retry: true,
           content: localAiEnabled()
             ? '⚠️ Mon modèle hors ligne n’a pas pu répondre. Réessaie, ou attends le retour de la connexion : l’éditeur, lui, continue de fonctionner.'
             : // No model on the device: Maily still answers, from her built-in guide
@@ -581,13 +741,28 @@ export function MailyPanel({
               : guideAnswer(userMsg.content),
         })
       } else {
-        push({ role: 'assistant', content: `⚠️ ${(e as Error).message}` })
+        dropPlaceholder()
+        push({
+          role: 'assistant',
+          retry: true,
+          content: `⚠️ ${(e as Error).message}${note ? '\n\nLe code joint est quand même appliqué dans l’éditeur (↶ pour annuler).' : ''}`,
+        })
       }
       setMood('happy')
     } finally {
       setLoading(false)
       abortRef.current = null
     }
+  }
+
+  // Sends the last user message again, as it was (after a failure).
+  const retryLast = () => {
+    let idx = messages.length - 1
+    while (idx >= 0 && !(messages[idx].role === 'user' && !messages[idx].hidden)) idx--
+    if (idx < 0 || loading) return
+    const m = messages[idx]
+    // The original files come back; code typed in the message is in them already.
+    void send(m.content, m.files ?? [], messages.slice(0, idx))
   }
 
   // The validator's request: sent once, as if the user had typed it.
@@ -684,6 +859,15 @@ export function MailyPanel({
                     <p className={`flex items-center gap-2 text-mute ${m.content ? 'mt-2' : ''}`}>
                       <Loader2 className="size-4 animate-spin text-pink" /> Maily construit ton module…
                     </p>
+                  )}
+                  {m.retry && i === messages.length - 1 && !loading && (
+                    <button
+                      type="button"
+                      onClick={retryLast}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-cyan/40 bg-cyan/5 px-2 py-1.5 text-xs text-cyan hover:bg-cyan/10"
+                    >
+                      <RotateCcw className="size-3.5" aria-hidden /> Réessayer
+                    </button>
                   )}
                   {m.applied && (
                     <p className="mt-2 flex items-center gap-1.5 text-xs text-cyan">
@@ -789,11 +973,13 @@ export function MailyPanel({
                 attach(pasted)
                 return
               }
-              // Long HTML is kept as an attachment so the textarea stays usable.
+              // Long code (HTML, HuBL, CSS, fields.json…) is kept as an attachment
+              // named after its kind, so the textarea stays usable.
               const html = e.clipboardData.getData('text/plain')
-              if (html.length > 300 && looksLikeCode(html)) {
+              const name = html.length > 300 ? codeFileName(html) : null
+              if (name) {
                 e.preventDefault()
-                setFiles((prev) => [...prev, { name: 'code-colle.html', kind: 'code' as const, text: html.slice(0, 140_000) }].slice(0, 4))
+                setFiles((prev) => [...prev, { name, kind: 'code' as const, text: html.slice(0, 190_000) }].slice(0, 4))
               }
             }}
             onKeyDown={(e) => {

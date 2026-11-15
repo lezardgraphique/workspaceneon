@@ -17,7 +17,8 @@
   status = 200
   force = true
   [redirects.rate_limit]
-    window_limit = 20
+    # One message can take several calls (automatic correction, resumed answer).
+    window_limit = 40
     window_size = 60
     aggregate_by = ["ip", "domain"]
 
