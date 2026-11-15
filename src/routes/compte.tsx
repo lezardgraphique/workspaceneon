@@ -6,6 +6,7 @@ import { Bot, Check, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react'
 
 import { AccountMenu } from '@/components/AccountMenu'
 import { AppHeader } from '@/components/AppHeader'
+import { LegalLink } from '@/components/LegalLink'
 import { SiteSecurity } from '@/components/SiteSecurity'
 import { MIN_PASSWORD, checkPassword } from '@/lib/password'
 import { createToken, listTokens, revokeToken } from '@/server/api-tokens.functions'
@@ -68,7 +69,7 @@ function Compte() {
         <AccountMenu />
       </AppHeader>
 
-      <main className="mx-auto max-w-md px-6 pb-20">
+      <main id="contenu" className="mx-auto max-w-md px-6 pb-20">
         <h1 className="font-display text-3xl font-bold">Mon compte</h1>
         <p className="mt-1 text-sm text-mute">{user?.email}</p>
 
@@ -110,6 +111,9 @@ function Compte() {
         <McpTokens />
       </main>
       <SiteSecurity />
+      <footer className="pb-10 text-center text-sm">
+        <LegalLink />
+      </footer>
     </div>
   )
 }

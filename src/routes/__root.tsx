@@ -41,6 +41,9 @@ function ReducedMotionGuard() {
   return null
 }
 
+// Pages anyone can open without an account.
+const PUBLIC = ['/connexion', '/mentions-legales']
+
 export const Route = createRootRoute({
   // The whole app is behind the sign-in page. This is only the front door:
   // every server function and API route checks the session again.
@@ -63,7 +66,7 @@ export const Route = createRootRoute({
       bindUser(user?.id)
       bindSettingsUser(user?.id)
     }
-    if (!user && !location.pathname.startsWith('/connexion')) throw redirect({ to: '/connexion' })
+    if (!user && !PUBLIC.some((p) => location.pathname.startsWith(p))) throw redirect({ to: '/connexion' })
     return { user }
   },
   head: () => ({
@@ -86,12 +89,6 @@ export const Route = createRootRoute({
       { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
       { rel: 'manifest', href: '/manifest.webmanifest' },
       { rel: 'apple-touch-icon', href: '/icon-192.png' },
-      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
-      { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
-      {
-        rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap',
-      },
     ],
   }),
   shellComponent: RootDocument,
@@ -104,6 +101,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <a href="#contenu" className="skip-link">
+          Aller au contenu
+        </a>
         <ReducedMotionGuard />
         <AppleFixes />
         <AuthLinkRedirect />

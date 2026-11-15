@@ -22,7 +22,7 @@ export function AuthIllustration() {
           <span className="size-2.5 rounded-full bg-pink/80" />
           <span className="size-2.5 rounded-full bg-[#ffd479]/80" />
           <span className="size-2.5 rounded-full bg-cyan/80" />
-          <span className="ml-3 font-mono text-[10px] text-mute">newsletter.html</span>
+          <span className="ml-3 font-mono text-xs text-mute">newsletter.html</span>
         </div>
 
         <div className="grid grid-cols-[1fr_1.15fr]">
@@ -47,7 +47,7 @@ export function AuthIllustration() {
           </div>
 
           {/* Code side */}
-          <div className="overflow-hidden bg-void p-4 font-mono text-[10.5px] leading-[1.7]">
+          <div className="overflow-hidden bg-void p-4 font-mono text-xs leading-[1.6]">
             <Line>
               <span className="hl-tag">&lt;div</span> <span className="hl-attr">data-neon</span>=<span className="hl-neon">"section"</span>
               <span className="hl-tag">&gt;</span>

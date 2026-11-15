@@ -99,7 +99,7 @@ function ModulePreview() {
         </div>
       </header>
 
-      <main className="neon-grid flex-1 p-3 sm:p-8">
+      <main id="contenu" className="neon-grid flex-1 p-3 sm:p-8">
         <div
           className={`mx-auto overflow-hidden bg-white shadow-[0_0_0_1px_#262642,0_30px_80px_-30px_rgba(188,19,254,0.45)] transition-[max-width] ${
             mobile ? 'rounded-[32px] border-[8px] border-[#22223a]' : 'rounded-xl'

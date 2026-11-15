@@ -14,6 +14,7 @@ import { Route as CompteRouteImport } from './routes/compte'
 import { Route as ConnexionRouteImport } from './routes/connexion'
 import { Route as CountdownDotgifRouteImport } from './routes/countdown[.]gif'
 import { Route as FichiersRouteImport } from './routes/fichiers'
+import { Route as MentionsLegalesRouteImport } from './routes/mentions-legales'
 import { Route as ApercuModuleIdRouteImport } from './routes/apercu.$moduleId'
 import { Route as ApiFilesRouteImport } from './routes/api.files'
 import { Route as ApiGenerateRouteImport } from './routes/api.generate'
@@ -49,6 +50,11 @@ const CountdownDotgifRoute = CountdownDotgifRouteImport.update({
 const FichiersRoute = FichiersRouteImport.update({
   id: '/fichiers',
   path: '/fichiers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MentionsLegalesRoute = MentionsLegalesRouteImport.update({
+  id: '/mentions-legales',
+  path: '/mentions-legales',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApercuModuleIdRoute = ApercuModuleIdRouteImport.update({
@@ -113,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/connexion': typeof ConnexionRoute
   '/countdown.gif': typeof CountdownDotgifRoute
   '/fichiers': typeof FichiersRoute
+  '/mentions-legales': typeof MentionsLegalesRoute
   '/apercu/$moduleId': typeof ApercuModuleIdRoute
   '/api/files': typeof ApiFilesRoute
   '/api/generate': typeof ApiGenerateRoute
@@ -131,6 +138,7 @@ export interface FileRoutesByTo {
   '/connexion': typeof ConnexionRoute
   '/countdown.gif': typeof CountdownDotgifRoute
   '/fichiers': typeof FichiersRoute
+  '/mentions-legales': typeof MentionsLegalesRoute
   '/apercu/$moduleId': typeof ApercuModuleIdRoute
   '/api/files': typeof ApiFilesRoute
   '/api/generate': typeof ApiGenerateRoute
@@ -150,6 +158,7 @@ export interface FileRoutesById {
   '/connexion': typeof ConnexionRoute
   '/countdown.gif': typeof CountdownDotgifRoute
   '/fichiers': typeof FichiersRoute
+  '/mentions-legales': typeof MentionsLegalesRoute
   '/apercu/$moduleId': typeof ApercuModuleIdRoute
   '/api/files': typeof ApiFilesRoute
   '/api/generate': typeof ApiGenerateRoute
@@ -170,6 +179,7 @@ export interface FileRouteTypes {
     | '/connexion'
     | '/countdown.gif'
     | '/fichiers'
+    | '/mentions-legales'
     | '/apercu/$moduleId'
     | '/api/files'
     | '/api/generate'
@@ -188,6 +198,7 @@ export interface FileRouteTypes {
     | '/connexion'
     | '/countdown.gif'
     | '/fichiers'
+    | '/mentions-legales'
     | '/apercu/$moduleId'
     | '/api/files'
     | '/api/generate'
@@ -206,6 +217,7 @@ export interface FileRouteTypes {
     | '/connexion'
     | '/countdown.gif'
     | '/fichiers'
+    | '/mentions-legales'
     | '/apercu/$moduleId'
     | '/api/files'
     | '/api/generate'
@@ -225,6 +237,7 @@ export interface RootRouteChildren {
   ConnexionRoute: typeof ConnexionRoute
   CountdownDotgifRoute: typeof CountdownDotgifRoute
   FichiersRoute: typeof FichiersRoute
+  MentionsLegalesRoute: typeof MentionsLegalesRoute
   ApercuModuleIdRoute: typeof ApercuModuleIdRoute
   ApiFilesRoute: typeof ApiFilesRoute
   ApiGenerateRoute: typeof ApiGenerateRoute
@@ -273,6 +286,13 @@ declare module '@tanstack/react-router' {
       path: '/fichiers'
       fullPath: '/fichiers'
       preLoaderRoute: typeof FichiersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mentions-legales': {
+      id: '/mentions-legales'
+      path: '/mentions-legales'
+      fullPath: '/mentions-legales'
+      preLoaderRoute: typeof MentionsLegalesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/apercu/$moduleId': {
@@ -361,6 +381,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnexionRoute: ConnexionRoute,
   CountdownDotgifRoute: CountdownDotgifRoute,
   FichiersRoute: FichiersRoute,
+  MentionsLegalesRoute: MentionsLegalesRoute,
   ApercuModuleIdRoute: ApercuModuleIdRoute,
   ApiFilesRoute: ApiFilesRoute,
   ApiGenerateRoute: ApiGenerateRoute,

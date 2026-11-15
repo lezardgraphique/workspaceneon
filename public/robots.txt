@@ -1,5 +1,6 @@
 User-agent: *
 Allow: /connexion
+Allow: /mentions-legales
 Allow: /countdown.gif
 Allow: /social/
 Disallow: /api/
@@ -7,3 +8,5 @@ Disallow: /editor/
 Disallow: /apercu/
 Disallow: /fichiers
 Disallow: /compte
+
+Sitemap: https://workspaceneon.netlify.app/sitemap.xml

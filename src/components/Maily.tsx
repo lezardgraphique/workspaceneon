@@ -102,5 +102,7 @@ export function Maily({
 }
 
 export function NeonLogo({ size = 32 }: { size?: number }) {
-  return <img src="/favicon.svg" width={size} height={size} alt="" aria-hidden="true" className="shrink-0" />
+  // logo.svg is the favicon drawn at 64 px (the favicon says 512): the browser
+  // then sees a file the size it shows. Lazy: in view, it loads at once anyway.
+  return <img src="/logo.svg" width={size} height={size} alt="" aria-hidden="true" loading="lazy" decoding="async" className="shrink-0" />
 }

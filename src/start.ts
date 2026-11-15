@@ -14,8 +14,8 @@ const CSP = [
   "default-src 'self'",
   // 'wasm-unsafe-eval': WebAssembly of the on-device Maily model (WebLLM), no JS eval.
   "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' data: https://fonts.gstatic.com",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self' data:",
   "img-src 'self' data: blob: https:",
   "media-src 'self'",
   // Offline Maily (Gemma through WebLLM): model files downloaded once from
@@ -75,7 +75,55 @@ const securityHeaders = createMiddleware({ type: 'request' }).server(async ({ re
   if (res?.status === 404 && method === 'GET') {
     await import('@/server/firewall.server').then((f) => f.logEvent(request, 'page introuvable', 'suspect')).catch(() => {})
   }
-  if (res) {
+  if (res && /text\/html/i.test(res.headers.get('content-type') ?? '') && !res.headers.has('Content-Security-Policy')) {
+    // Pages: every inline script of this very page is allowed by its SHA-256
+    // fingerprint. Browsers that know hashes then ignore 'unsafe-inline', so an
+    // injected script can't run; the oldest ones still get the page working.
+    const html = await res.text()
+    const hashes = await inlineScriptHashes(html)
+    const page = new Response(html, { status: res.status, statusText: res.statusText, headers: res.headers })
+    page.headers.delete('content-length')
+    page.headers.set('Content-Security-Policy', CSP.replace("script-src 'self' 'unsafe-inline'", `script-src 'self' 'unsafe-inline' ${hashes.join(' ')}`))
+    ;(result as { response?: Response }).response = page
+    if (anonymousPublicPage(request, url, method, page)) {
+      // Same HTML for every visitor without a session: kept by Netlify's CDN,
+      // so the sign-in and legal pages show at once instead of waiting for the
+      // server. A signed-in visitor (nf_jwt cookie) never shares this copy;
+      // a new deploy empties the cache.
+      page.headers.set('Cache-Control', 'public, max-age=0, must-revalidate')
+      page.headers.set('Netlify-CDN-Cache-Control', 'public, durable, s-maxage=600, stale-while-revalidate=86400')
+      page.headers.set('Netlify-Vary', 'cookie=nf_jwt')
+    }
+    return withHeaders(result, page, url, method)
+  }
+  if (res) return withHeaders(result, res, url, method)
+  return result
+})
+
+// Pages anyone sees the same way when signed out.
+const CDN_PAGES = /^\/(connexion|mentions-legales)\/?$/
+
+function anonymousPublicPage(request: Request, url: URL, method: string, res: Response): boolean {
+  if (method !== 'GET' || res.status !== 200 || url.search || !CDN_PAGES.test(url.pathname)) return false
+  if (res.headers.has('Set-Cookie')) return false
+  return !/(^|;\s*)nf_jwt=/.test(request.headers.get('cookie') ?? '')
+}
+
+// The inline <script> elements of a page (no src), fingerprinted for the CSP.
+async function inlineScriptHashes(html: string): Promise<string[]> {
+  const out = new Set<string>()
+  const re = /<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi
+  for (let m = re.exec(html); m; m = re.exec(html)) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(m[1]))
+    out.add(`'sha256-${btoa(String.fromCharCode(...new Uint8Array(digest)))}'`)
+  }
+  // At least one source, so 'unsafe-inline' is always disabled by modern browsers.
+  if (!out.size) out.add("'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='")
+  return [...out]
+}
+
+function withHeaders<T>(result: T, res: Response, url: URL, method: string): T {
+  {
     for (const [k, v] of Object.entries(HEADERS)) {
       // Routes that set their own policy (file downloads) keep it.
       if (!res.headers.has(k)) res.headers.set(k, v)
@@ -86,7 +134,7 @@ const securityHeaders = createMiddleware({ type: 'request' }).server(async ({ re
     else if (!res.headers.has('Cache-Control')) res.headers.set('Cache-Control', 'private, no-cache')
   }
   return result
-})
+}
 
 // Firewall first: attacks and blocked addresses never reach the app
 // (src/server/firewall.server.ts). Loaded on the server only.

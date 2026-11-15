@@ -112,8 +112,6 @@ self.addEventListener('message', (event) => {
   if (event.data === 'widgets') event.waitUntil(refreshWidgets())
 })
 
-const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com']
-
 self.addEventListener('fetch', (event) => {
   const req = event.request
   if (req.method !== 'GET') return
@@ -121,12 +119,11 @@ self.addEventListener('fetch', (event) => {
   if (url.origin === self.location.origin) {
     if (url.pathname.startsWith('/assets/')) return event.respondWith(cacheFirst(req, ASSETS))
     if (req.mode === 'navigate') return event.respondWith(navigate(req, url))
-    if (/^\/(favicon\.svg|icon-.*\.png|img\/|social\/|manifest\.webmanifest)/.test(url.pathname) || url.pathname.startsWith('/api/images/')) {
+    if (/^\/(favicon\.svg|logo\.svg|icon-.*\.png|img\/|social\/|manifest\.webmanifest)/.test(url.pathname) || url.pathname.startsWith('/api/images/')) {
       return event.respondWith(staleWhileRevalidate(req, RUNTIME))
     }
     return
   }
-  if (FONT_HOSTS.includes(url.hostname)) event.respondWith(staleWhileRevalidate(new Request(req.url, { mode: 'cors', credentials: 'omit' }), RUNTIME))
 })
 
 async function cacheFirst(req, name) {

@@ -5,6 +5,7 @@ import { Check, Copy, Download, FileText, FolderOpen, Loader2, Trash2, Upload } 
 
 import { AccountMenu } from '@/components/AccountMenu'
 import { AppHeader } from '@/components/AppHeader'
+import { LegalLink } from '@/components/LegalLink'
 import { isOffline } from '@/lib/data'
 import { FILE_TYPES, MAX_FILE_BYTES, PAGE_SIZE, formatSize, isImageType } from '@/lib/files'
 import type { FileList, StoredFile } from '@/lib/files'
@@ -96,7 +97,7 @@ function FilesPage() {
         <AccountMenu />
       </AppHeader>
 
-      <main className="mx-auto max-w-6xl px-6 pb-20">
+      <main id="contenu" className="mx-auto max-w-6xl px-6 pb-20">
         <div className="mb-6 flex flex-wrap items-end gap-4">
           <div>
             <h1 className="font-display text-3xl font-bold">
@@ -217,6 +218,9 @@ function FilesPage() {
           </div>
         )}
       </main>
+      <footer className="pb-10 text-center text-sm">
+        <LegalLink />
+      </footer>
     </div>
   )
 }

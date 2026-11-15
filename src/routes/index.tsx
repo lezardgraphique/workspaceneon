@@ -5,6 +5,7 @@ import { ArrowRight, BookOpen, ChevronDown, Columns3, Code2, Download, Eye, Fold
 import { AccountMenu } from '@/components/AccountMenu'
 import { BackupPanel } from '@/components/BackupPanel'
 import { AppHeader, headerButton } from '@/components/AppHeader'
+import { LegalLink } from '@/components/LegalLink'
 import { EmailFrame } from '@/components/EmailFrame'
 import { Maily } from '@/components/Maily'
 import { NeonCube } from '@/components/NeonCube'
@@ -160,7 +161,7 @@ function Library() {
         <AccountMenu />
       </AppHeader>
 
-      <main className="mx-auto max-w-6xl px-6 pb-24">
+      <main id="contenu" className="mx-auto max-w-6xl px-6 pb-24">
         {/* Computer and tablet: text and Maily centred in the screen's height under the bar.
             Phone held sideways: from the top. Phone upright: Maily small, beside her bubble, just above the buttons. */}
         <section className="relative grid items-center gap-10 py-12 max-md:gap-0 max-md:overflow-x-clip max-md:pt-5 max-md:pb-8 md:min-h-[calc(100svh-4.25rem)] md:grid-cols-[1.4fr_1fr] md:content-center md:py-8 short:min-h-0 short:content-start short:pt-3">
@@ -402,6 +403,10 @@ function Library() {
         <a href={KOFI_URL} target="_blank" rel="noreferrer" className="text-pink hover:underline">
           Écris-moi sur Ko-fi
         </a>
+        <span className="mx-2" aria-hidden>
+          ·
+        </span>
+        <LegalLink />
       </footer>
     </div>
   )

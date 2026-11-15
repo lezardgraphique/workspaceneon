@@ -5,13 +5,17 @@ import { acceptInvite, getUser, handleAuthCallback, login, refreshSession, reque
 import { ArrowRight, Loader2, LogIn } from 'lucide-react'
 
 import { AuthIllustration } from '@/components/AuthIllustration'
+import { LegalLink } from '@/components/LegalLink'
 import { Maily, NeonLogo } from '@/components/Maily'
 import { NeonCube } from '@/components/NeonCube'
 import { MIN_PASSWORD, checkPassword, leakCount } from '@/lib/password'
 import { getSession } from '@/server/session.functions'
 
 export const Route = createFileRoute('/connexion')({
-  head: () => ({ meta: [{ title: 'Connexion · Neon Sandbox Pro' }] }),
+  head: () => ({
+    meta: [{ title: 'Connexion · Neon Sandbox Pro' }],
+    links: [{ rel: 'canonical', href: 'https://workspaceneon.netlify.app/connexion' }],
+  }),
   component: Connexion,
 })
 
@@ -218,7 +222,7 @@ function Connexion() {
   }
 
   return (
-    <main className="neon-grid fixed inset-0 overflow-hidden overscroll-none">
+    <main id="contenu" className="neon-grid fixed inset-0 overflow-hidden overscroll-none">
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
         <span className="auth-tile left-[6%] top-[8%] size-14" style={{ '--tile': '#ff007f', '--r': '-8deg' } as React.CSSProperties} />
         <span className="auth-tile right-[8%] top-[14%] h-10 w-20" style={{ '--tile': '#00e5ff', '--r': '6deg', animationDelay: '1.2s' } as React.CSSProperties} />
@@ -240,9 +244,9 @@ function Connexion() {
                   Neon Sandbox <span className="text-pink">Pro</span>
                 </span>
               </div>
-              <h1 className="font-display text-[1.75rem] leading-tight font-bold [@media(max-height:600px)]:text-2xl">
+              <p className="font-display text-[1.75rem] leading-tight font-bold [@media(max-height:600px)]:text-2xl">
                 Tes modules, <span className="neon-text">à la vitesse de la lumière.</span>
-              </h1>
+              </p>
               <div className="mt-5 hidden gap-2 [@media(max-height:500px)]:grid">
                 <IntroButtons onEnter={enter} />
               </div>
@@ -346,6 +350,7 @@ function Connexion() {
           <AuthIllustration />
         </div>
       </div>
+      <LegalLink className="absolute right-3 bottom-[calc(env(safe-area-inset-bottom)+0.25rem)] z-10 text-xs" />
     </main>
   )
 }

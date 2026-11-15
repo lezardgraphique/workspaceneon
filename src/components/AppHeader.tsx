@@ -16,7 +16,7 @@ export function AppHeader({ web, children }: { web?: boolean; children?: ReactNo
           Neon Sandbox <span className="text-pink">Pro</span>
         </span>
       </Link>
-      {web && <span className="ml-1 hidden rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-mute sm:inline">WEB</span>}
+      {web && <span className="ml-1 hidden rounded border border-line px-1.5 py-0.5 font-mono text-xs text-mute sm:inline">WEB</span>}
       <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">{children}</div>
     </header>
     </div>

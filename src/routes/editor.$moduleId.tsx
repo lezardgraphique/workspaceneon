@@ -628,7 +628,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
               </div>
             </aside>
 
-            <main className={`${vis('preview', true)} neon-grid min-h-0 min-w-0 flex-1 flex-col`}>
+            <main id="contenu" className={`${vis('preview', true)} neon-grid min-h-0 min-w-0 flex-1 flex-col`}>
               <div className={`min-h-0 flex-1 overflow-auto overscroll-contain p-3 sm:p-6 tablet:!p-3 ${showSelectionBar ? 'max-lg:pb-24' : ''}`}>
                 {forced.length > 0 && (
                   <p role="status" className="mx-auto mb-3 max-w-[600px] rounded-lg border border-violet/50 bg-violet/10 px-3 py-2 text-xs text-[#e3a6ff]">
