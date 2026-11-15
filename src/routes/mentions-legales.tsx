@@ -54,6 +54,10 @@ function MentionsLegales() {
             Neon Sandbox Pro est édité à titre personnel par <strong className="text-white">Thomas Champeau</strong>, particulier, directeur de la publication.
           </p>
           <p>
+            Statut : personne physique agissant à titre non professionnel. Le site n'est pas édité par une société : il n'a donc ni dénomination ou raison sociale, ni forme
+            juridique, ni capital social, ni siège social, ni numéro RCS, SIREN ou SIRET, ni numéro de TVA intracommunautaire.
+          </p>
+          <p>
             Contact : par le formulaire « Laisser un commentaire » de la page{' '}
             <a href={KOFI_URL} target="_blank" rel="noreferrer" className={ext}>
               ko-fi.com/thomaslzg75

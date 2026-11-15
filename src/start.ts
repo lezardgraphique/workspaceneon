@@ -89,9 +89,10 @@ const securityHeaders = createMiddleware({ type: 'request' }).server(async ({ re
       // Same HTML for every visitor without a session: kept by Netlify's CDN,
       // so the sign-in and legal pages show at once instead of waiting for the
       // server. A signed-in visitor (nf_jwt cookie) never shares this copy;
-      // a new deploy empties the cache.
+      // a new deploy empties the cache, so the copy can live a day (a week stale
+      // while it is refreshed): the first visitor after a deploy is the only slow one.
       page.headers.set('Cache-Control', 'public, max-age=0, must-revalidate')
-      page.headers.set('Netlify-CDN-Cache-Control', 'public, durable, s-maxage=600, stale-while-revalidate=86400')
+      page.headers.set('Netlify-CDN-Cache-Control', 'public, durable, s-maxage=86400, stale-while-revalidate=604800')
       page.headers.set('Netlify-Vary', 'cookie=nf_jwt')
     }
     return withHeaders(result, page, url, method)
