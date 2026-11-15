@@ -13,6 +13,7 @@ import {
   APP_GUIDE,
   FIELDS_SPEC,
   GUIDE_INTRO,
+  EXPERT_SPEC,
   MAILY_PERSONA,
   MODULE_REPLY_SPEC,
   RESEARCH_SPEC,
@@ -117,7 +118,7 @@ export const Route = createFileRoute('/api/maily')({
           .then(([m, b]) => libraryNote(m.map((x) => x.name), b))
           .catch(() => '')
         const today = todayFr()
-        const systemInstruction = `${MAILY_PERSONA}\nNous sommes le ${today}.\n${GUIDE_INTRO}\n\n${APP_GUIDE}\n\n${RESEARCH_SPEC}\n\n${SCOPE_SPEC}\n\n${MODULE_REPLY_SPEC}\n\n${FIELDS_SPEC}${notes}${library}${context}${fieldsContext}`
+        const systemInstruction = `${MAILY_PERSONA}\nNous sommes le ${today}.\n${GUIDE_INTRO}\n\n${APP_GUIDE}\n\n${RESEARCH_SPEC}\n\n${EXPERT_SPEC}\n\n${SCOPE_SPEC}\n\n${MODULE_REPLY_SPEC}\n\n${FIELDS_SPEC}${notes}${library}${context}${fieldsContext}`
         // Building a module deserves a little more thought; a chat answer must come fast.
         const level = mode === 'build' || issue ? 'medium' : 'low'
 
