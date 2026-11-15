@@ -207,7 +207,7 @@ export function cleanSource(input: string): { code: string; repairs: string[]; s
     const fixed = fixCode(code)
     if (fixed.fixed) {
       code = fixed.code
-      repairs.push(`${plural(fixed.fixed, 'erreur corrigée', 'erreurs corrigées')} par le validateur (fermetures manquantes ou en trop)`)
+      repairs.push(`${plural(fixed.fixed, 'erreur corrigée', 'erreurs corrigées')} par le validateur (fermetures manquantes ou en trop, balises HuBL inachevées, guillemets…)`)
     }
   }
   return { code: code.trim(), repairs, specs }

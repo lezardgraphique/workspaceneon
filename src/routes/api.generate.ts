@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { sessionUser, unauthorized } from '@/server/auth.server'
 import { sanitizeHtml, stripTags } from '@/lib/sanitize'
-import { MAILY_PERSONA, MODEL, ai, stripFences } from '@/lib/gemini.server'
+import { MAILY_PERSONA, generateResilient, stripFences } from '@/lib/gemini.server'
 
 // Rewrites the text of a single block. Whole-module generation goes through
 // the Maily chat (/api/maily).
@@ -24,8 +24,8 @@ export const Route = createFileRoute('/api/generate')({
         const data = parsed.data
 
         try {
-          const res = await ai.models.generateContent({
-            model: MODEL,
+          // Another model takes over when the main one is overloaded.
+          const res = await generateResilient({
             contents: `Consigne : ${data.instruction}
 
 Texte d'origine :
@@ -39,7 +39,7 @@ Renvoie uniquement le nouveau texte${data.html ? ' (HTML inline autorisé : stro
           return Response.json({ text: data.html ? sanitizeHtml(text) : stripTags(text) })
         } catch (err) {
           console.error('Generate error', err)
-          return Response.json({ error: 'Maily n\'a pas pu générer de réponse.' }, { status: 502 })
+          return Response.json({ error: 'Maily n\'a pas pu générer de réponse (service d’IA surchargé). Réessaie dans un instant.' }, { status: 503, headers: { 'Retry-After': '3' } })
         }
       },
     },

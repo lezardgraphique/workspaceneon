@@ -40,7 +40,7 @@ const MIN = 60_000
 
 // Matched against the path of write requests (and the costly AI routes).
 export const RULES: Array<{ test: (path: string, method: string) => boolean; rule: Rule }> = [
-  { test: (p) => p === '/api/maily' || p === '/api/generate', rule: { name: 'ai', max: 20, windowMs: MIN } },
+  { test: (p) => p === '/api/maily' || p === '/api/generate', rule: { name: 'ai', max: 40, windowMs: MIN } },
   { test: (p, m) => (p === '/api/images' || p === '/api/files') && m === 'POST', rule: { name: 'upload', max: 30, windowMs: MIN } },
   // Public image loaded by mail clients: generous, only meant to stop a flood of distinct dates (each one is drawn, ~25 ms).
   { test: (p) => p === '/countdown.gif', rule: { name: 'countdown', max: 300, windowMs: MIN } },

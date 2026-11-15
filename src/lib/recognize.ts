@@ -3,6 +3,7 @@ import { isLogicBlock } from '@/lib/hubl-render'
 import { withLegacySpecs } from '@/lib/hubl-legacy'
 import { validateSyntax } from '@/lib/validator'
 import { cleanSource, keepTemplateWhole } from '@/lib/import-repair'
+import { parseLenient } from '@/lib/json-repair'
 import type { FieldBinding, FieldSpec } from '@/lib/module-fields'
 import type { Block, ModuleTree } from '@/lib/types'
 
@@ -10,35 +11,110 @@ import type { Block, ModuleTree } from '@/lib/types'
 // turn it into a rendered module locally, before asking the model anything.
 // Only when the local import is too lossy is the model asked to recreate it.
 
-const FENCE = /```(?:html?|hubl|jinja2?|xml|neon)?[^\n]*\n([\s\S]*?)```/i
 const TAG =
-  /<\/?(table|tr|td|div|p|h[1-6]|img|a|span|section|body|html|head|style|center|ul|ol|li|br|hr|strong|em|button|header|footer|main|article)\b[^>]*>/gi
+  /<\/?(table|thead|tbody|tfoot|tr|td|th|caption|colgroup|col|div|p|h[1-6]|img|a|span|section|body|html|head|style|title|meta|link|center|font|b|i|u|s|strike|small|big|sup|sub|ul|ol|li|dl|dt|dd|br|hr|strong|em|button|header|footer|main|article|aside|nav|figure|figcaption|picture|source|video|blockquote|pre|code|label|form|input|iframe|mjml|mj-[\w-]+|v:[\w]+|o:[\w]+)\b[^>]*>/gi
+// Template syntaxes: HuBL/Jinja/Liquid/Django, Handlebars, Mailchimp merge tags, AMPscript, Mailjet.
+const TOKEN = /\{%[\s\S]*?%\}|\{\{[#/^]?\s*[\w.'"[\]-]+[\s\S]*?\}\}|\*\|[A-Z0-9_:]+\|\*|%%\[|%%=|\[\[(?:var|data):/
 
-export const looksLikeCode = (text: string) =>
-  (text.match(TAG)?.length ?? 0) >= 3 || /\{%[\s\S]*?%\}[\s\S]*<[a-z]/i.test(text)
+export function looksLikeCode(text: string): boolean {
+  const tags = text.match(TAG)?.length ?? 0
+  if (tags >= 3) return true
+  const closes = /<\/[a-z][\w:-]*\s*>/i.test(text)
+  // Unfinished tokens count too ({{ contact.firstname } is code to repair).
+  if (tags >= 1 && closes && (TOKEN.test(text) || /\{[{%]\s*[\w.]+/.test(text))) return true
+  // A full document or an MJML template, even short.
+  return tags >= 2 && /<(mjml|html|!doctype|mj-body)\b/i.test(text)
+}
 
-// Separates code typed in a message from the instruction around it.
-export function extractCode(text: string): { code: string; instruction: string } | null {
-  const f = FENCE.exec(text)
-  if (f && looksLikeCode(f[1])) {
-    return { code: f[1].trim(), instruction: `${text.slice(0, f.index)} ${text.slice(f.index + f[0].length)}`.trim() }
+// A style sheet alone (rules, no markup).
+const looksLikeCss = (text: string) => !/<[a-z]/i.test(text) && /[^{}]+\{[^{}]*:[^{}]*\}/.test(text) && !/^\s*[[{]/.test(text)
+
+// JSON (fields.json, another tool's JSON), comments and trailing commas allowed.
+function looksLikeJson(text: string): boolean {
+  const t = text.trim()
+  if (!/^(\/[/*][^\n]*\n\s*)*[[{]/.test(t) || !/[\]}]$/.test(t) || !/["']\s*:/.test(t)) return false
+  const v = parseLenient(t)?.value
+  return !!v && typeof v === 'object'
+}
+
+/** File name for code pasted or typed in the chat, so it is read as what it is. */
+export function codeFileName(text: string, lang = ''): string | null {
+  if (/^json/i.test(lang) || looksLikeJson(text)) return /^\s*(\/[/*][^\n]*\n\s*)*\[/.test(text) ? 'fields.json' : 'donnees.json'
+  if (/^(s?css|less)$/i.test(lang) || (!lang && looksLikeCss(text) && /[;}]\s*$/.test(text.trim()))) return 'styles.css'
+  if (looksLikeCode(text) || (/^(html?|hubl|jinja2?|j2|liquid|mjml|xml|neon|handlebars|hbs|mustache|twig|njk|django|ampscript)$/i.test(lang) && (new RegExp(TAG.source, 'i').test(text) || TOKEN.test(text)))) {
+    return 'code-colle.html'
   }
-  if (!looksLikeCode(text)) return null
-  const start = text.search(/<[a-z!]|\{[%{#]/i)
-  const end = Math.max(text.lastIndexOf('>'), text.lastIndexOf('%}') + 1, text.lastIndexOf('}}') + 1) + 1
-  if (start < 0 || end <= start) return null
-  return { code: text.slice(start, end).trim(), instruction: `${text.slice(0, start)} ${text.slice(end)}`.trim() }
+  return null
+}
+
+export interface TypedCode {
+  /** All markup found, joined (HTML/HuBL/other templates). */
+  code: string
+  instruction: string
+  /** Every piece of code found, named by kind (code-colle.html, styles.css, fields.json…). */
+  files: { name: string; text: string }[]
+}
+
+// Separates code typed in a message from the instruction around it. Several
+// fenced blocks are read one by one (HTML + CSS + fields.json in one message).
+export function extractCode(text: string): TypedCode | null {
+  const files: TypedCode['files'] = []
+  let instruction = text
+  for (const f of [...text.matchAll(/```([\w+-]*)[^\n]*\n([\s\S]*?)```/g)]) {
+    const name = codeFileName(f[2], f[1])
+    if (!name) continue
+    files.push({ name, text: f[2].trim() })
+    instruction = instruction.replace(f[0], ' ')
+  }
+  if (!files.length) {
+    if (looksLikeCode(text)) {
+      // Merge tags of other platforms (*|FNAME|*, %%[ ]%%, [[var:x]]) are part of the code.
+      const start = text.search(/<[a-z!]|\{[%{#]|\*\|[A-Z]|%%[[=]|\[\[(?:var|data):/i)
+      const end =
+        Math.max(text.lastIndexOf('>'), text.lastIndexOf('%}') + 1, text.lastIndexOf('}}') + 1, text.lastIndexOf('|*') + 1, text.lastIndexOf(']]') + 1, text.lastIndexOf(']%%') + 2, text.lastIndexOf('=%%') + 2) + 1
+      if (start < 0 || end <= start) return null
+      files.push({ name: 'code-colle.html', text: text.slice(start, end).trim() })
+      instruction = `${text.slice(0, start)} ${text.slice(end)}`
+    } else {
+      // A JSON pasted after the instruction (« voici mon fields.json : [ … ] »).
+      const j = /(^|[:\n])\s*((?:\[\s*\{|\{\s*["'])[\s\S]*[\]}])\s*$/.exec(text)
+      if (!j || !looksLikeJson(j[2])) return null
+      files.push({ name: codeFileName(j[2]) ?? 'donnees.json', text: j[2].trim() })
+      instruction = text.slice(0, j.index + j[1].length)
+    }
+  }
+  // Two HTML parts are one module (e.g. head styles + body), given once.
+  const markup = files.filter((f) => f.name.endsWith('.html'))
+  const merged = markup.length > 1 ? [{ name: 'code-colle.html', text: markup.map((f) => f.text).join('\n') }, ...files.filter((f) => !f.name.endsWith('.html'))] : files
+  return { code: markup.map((f) => f.text).join('\n'), instruction: instruction.replace(/\s+/g, ' ').trim(), files: merged }
 }
 
 const CONVERT =
-  /(cr[ée]+|recr[ée]|transform|convert|import|rendu|affich|reprodu|int[ée]gr|utilis|appliqu|charg|refai|reconstrui|visualis|mets?[- ]le|colle)/i
+  /(cr[ée]+|recr[ée]|transform|convert|import|rendu|affich|reprodu|int[ée]gr|utilis|appliqu|charg|refai|reconstrui|visualis|mets?[- ]le|colle|corrig|r[ée]pare|am[ée]lior|modifi|adapt|optimis|nettoi|mets? [àa] jour|actualis|voici|voil[àa]|reprend|[ée]dit|ajout|remplac|traduis|r[ée]cup[èe]r|rends?[- ]le|fais[- ]en|ouvre)/i
+// A plain question about the code (« pourquoi… », « que fait… ») only gets an answer.
+const QUESTION = /^\s*(pourquoi|comment|qu['’]est|est-ce|que (fait|veut|signifie)|c['’]est quoi|explique|à quoi|a quoi|quel(le)?s?\b)/i
+const STRONG = /(transform|convert|import|recr[ée]|refai|corrig|r[ée]pare|applique)/i
 
 // In Conseil mode a question about a piece of code shouldn't replace the module.
 export const wantsConversion = (instruction: string, mode: 'chat' | 'build') =>
-  mode === 'build' || !instruction || CONVERT.test(instruction)
+  mode === 'build' || !instruction || (CONVERT.test(instruction) && (!QUESTION.test(instruction) || STRONG.test(instruction)))
 
-function kindOf(code: string): string {
+// The platform the code was written for, read on the code as received.
+function platformOf(input: string): string | undefined {
+  if (/<mjml\b|<mj-(body|section|column)\b/i.test(input)) return 'du MJML'
+  if (/<meta\s[^>]*class=["']mkto|\{\{\s*(lead|my)\./i.test(input)) return 'un modèle Marketo'
+  if (/%%\[|%%=\s*v\(/i.test(input)) return 'un modèle Salesforce Marketing Cloud (AMPscript)'
+  if (/\*\|[A-Z0-9_:]+\|\*|\smc:(edit|repeatable)/.test(input)) return 'un modèle Mailchimp'
+  if (/\[\[(var|data):/.test(input)) return 'un modèle Mailjet'
+  if (/\{\{[#/](if|each|unless|with)\b/.test(input)) return 'un modèle Handlebars'
+  if (/\{%-?\s*(assign|capture|case|when|elsif|endcase|tablerow|unsubscribe)\b|\{\{[^}]*\|\s*\w+\s*:/.test(input)) return 'un modèle Liquid'
+  return undefined
+}
+
+function kindOf(code: string, input = code): string {
   if (/data-neon=["']section/.test(code)) return 'un module Neon Sandbox'
+  const platform = platformOf(input)
+  if (platform) return `${platform} (converti en HuBL)`
   if (/\{\{\s*module\.|\{%\s*(module|widget)/.test(code)) return 'un module HuBL avec des champs {{ module.… }}'
   const hubl = /\{%[\s\S]*?%\}|\{\{[\s\S]*?\}\}/.test(code)
   const email = /<table\b/i.test(code) && /role=["']presentation|cellpadding|bgcolor|<!--\[if mso/i.test(code)
@@ -60,7 +136,7 @@ export function recognizeCode(input: string, current: ModuleTree, given?: FieldS
   const withTags = clean.specs.length ? [...(given ?? []), ...clean.specs.filter((s) => !(given ?? []).some((g) => g.name === s.name))] : given
   // Fields declared by old template tags ({% text "titre" … %}) count like a fields.json.
   const specs = withLegacySpecs(code, withTags)
-  const kind = kindOf(code)
+  const kind = kindOf(code, input)
   const res = codeToTree(code, current, specs)
   if (!res.ok) return { ok: false, kind, error: res.error }
 
@@ -94,7 +170,11 @@ export function recognizeCode(input: string, current: ModuleTree, given?: FieldS
   const syntax = validateSyntax(code)
   const issue =
     syntax.errors > 0
-      ? `${plural(syntax.errors, 'erreur de syntaxe', 'erreurs de syntaxe')} dans le code (ligne ${syntax.issues.find((i) => i.severity === 'error')!.line} : ${syntax.issues.find((i) => i.severity === 'error')!.message})`
+      ? `${plural(syntax.errors, 'erreur de syntaxe', 'erreurs de syntaxe')} dans le code (${syntax.issues
+          .filter((i) => i.severity === 'error')
+          .slice(0, 3)
+          .map((i) => `ligne ${i.line} : ${i.message}${i.fix ? ` — correction proposée : ${i.fix.label}` : ''}`)
+          .join(' ; ')})`
       : left > 0
       ? `${plural(left, 'variable', 'variables')} {{ module.… }} (${unbound.join(', ')}) non liée${left > 1 ? 's' : ''} à un champ`
       : !kept && st.blocks && st.raw / st.blocks > 0.5
