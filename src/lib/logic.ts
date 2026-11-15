@@ -52,6 +52,11 @@ export function humanValue(expr: string, labels: Labels = new Map()): string {
   return `« ${e.length > 48 ? `${e.slice(0, 46)}…` : e} »`
 }
 
+// « de » + a value: « du champ », « des lignes », « de la propriété ».
+const deValue = (v: string) => v.replace(/^le /, 'du ').replace(/^les /, 'des ').replace(/^(la |l’)/, 'de $1').replace(/^(?!du |des |de )/, 'de ')
+// « connu » agreeing with its subject (« la ville du contact est connue »).
+const known = (v: string, word = 'connu') => `${v} est ${/^(la |l’entreprise)/.test(v) ? `${word}e` : word}`
+
 const literal = (s: string) => s.trim().replace(/^(["'])([\s\S]*)\1$/, '« $2 »')
 
 /** A condition in French (« le prénom du contact est connu »). */
@@ -62,7 +67,7 @@ export function humanCondition(expr: string, labels: Labels = new Map()): string
     const parts = e.split(/\s+(and|or)\s+/)
     return parts.map((p, i) => (i % 2 ? (p === 'and' ? 'et' : 'ou') : humanCondition(p, labels))).join(' ')
   }
-  if ((m = /^not\s+([\s\S]+)$/.exec(e))) return /^contact\./.test(m[1].trim()) ? `${humanValue(m[1], labels)} est inconnu` : `${humanValue(m[1], labels)} est vide ou désactivé`
+  if ((m = /^not\s+([\s\S]+)$/.exec(e))) return /^contact\./.test(m[1].trim()) ? known(humanValue(m[1], labels), 'inconnu') : `${humanValue(m[1], labels)} est vide ou désactivé`
   if ((m = /^([\s\S]+?)\s*(==|!=|>=|<=|>|<)\s*([\s\S]+)$/.exec(e))) {
     const op = { '==': 'vaut', '!=': 'ne vaut pas', '>=': 'vaut au moins', '<=': 'vaut au plus', '>': 'dépasse', '<': 'est inférieur à' }[m[2]]
     if (/^(true|True)$/.test(m[3])) return `${humanValue(m[1], labels)} est ${m[2] === '==' ? 'activé' : 'désactivé'}`
@@ -73,7 +78,7 @@ export function humanCondition(expr: string, labels: Labels = new Map()): string
   if ((m = /^([\s\S]+?)\s+is\s+(not\s+)?(\w+)/.exec(e))) return `${humanValue(m[1], labels)} ${m[2] ? 'n’est pas' : 'est'} ${m[3] === 'defined' ? 'défini' : m[3]}`
   if (/^(true|True|1)$/.test(e)) return 'toujours'
   const field = /^(?:module|widget)\.(\w+)$/.exec(e)
-  if (/^contact\./.test(e)) return `${humanValue(e, labels)} est connu`
+  if (/^contact\./.test(e)) return known(humanValue(e, labels))
   if (field && labels.get(field[1])?.type === 'boolean') return `${humanValue(e, labels)} est activé`
   return `${humanValue(e, labels)} est rempli`
 }
@@ -106,7 +111,7 @@ export function logicInfo(b: Block, tree?: ModuleTree): LogicInfo | null {
       return { kind: 'end', name, expr, title: 'Fin de boucle', summary: 'Ferme la boucle ouverte plus haut.' }
     case 'for': {
       const f = /^([\w\s,]+?)\s+in\s+([\s\S]+)$/.exec(expr)
-      return { kind: 'for', name, expr, title: 'Boucle', summary: `Les éléments qui suivent sont répétés pour chaque élément de ${humanValue(f?.[2] ?? expr, labels)}.` }
+      return { kind: 'for', name, expr, title: 'Boucle', summary: `Les éléments qui suivent sont répétés pour chaque élément ${deValue(humanValue(f?.[2] ?? expr, labels))}.` }
     }
     case 'set': {
       const f = /^(\w+)\s*=\s*([\s\S]+)$/.exec(expr)
@@ -154,7 +159,7 @@ export function logicFrames(tree: ModuleTree): Map<string, LogicFrame[]> {
         if (info.kind === 'if') stack.push({ id: b.id, kind: 'if', text: `${neg ? 'sauf si' : 'si'} ${humanCondition(info.expr, labels)}` })
         else if (info.kind === 'for') {
           const f = /\s+in\s+([\s\S]+)$/.exec(info.expr)
-          stack.push({ id: b.id, kind: 'for', text: `répété pour chaque élément de ${humanValue(f?.[1] ?? info.expr, labels)}` })
+          stack.push({ id: b.id, kind: 'for', text: `répété pour chaque élément ${deValue(humanValue(f?.[1] ?? info.expr, labels))}` })
         } else if (info.kind === 'elif' && stack.length) stack[stack.length - 1] = { id: b.id, kind: 'if', text: `sinon, si ${humanCondition(info.expr, labels)}` }
         else if (info.kind === 'else' && stack.length) {
           const top = stack[stack.length - 1]

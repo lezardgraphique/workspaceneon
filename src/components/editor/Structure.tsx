@@ -73,7 +73,8 @@ const preview = (b: Block) => {
     case 'image':
       return b.alt || b.src
     case 'raw':
-      return b.html
+      // A whole imported template: what it is, never its code.
+      return b.verbatim ? 'Gardé tel quel · contenus dans Champs' : b.html
     case 'spacer':
       return `${b.height}px`
     case 'section':
@@ -109,7 +110,7 @@ const useTree = () => useContext(TreeCtx)!
 const countIn = (s: Section): number => s.cells.reduce((n, c) => n + c.reduce((m, b) => m + 1 + (b.type === 'section' ? countIn(b) : 0), 0), 0)
 
 const labelOf = (b: Block, nested?: boolean) =>
-  b.type === 'section' ? (b.name ? b.name : nested ? BLOCK_LABELS.section : 'Section') : isLogicBlock(b) ? (logicInfo(b)?.title ?? 'Logique') : BLOCK_LABELS[b.type]
+  b.type === 'section' ? (b.name ? b.name : nested ? BLOCK_LABELS.section : 'Section') : isLogicBlock(b) ? (logicInfo(b)?.title ?? 'Logique') : b.type === 'raw' && b.verbatim ? 'Modèle importé' : BLOCK_LABELS[b.type]
 
 // Hidden row: a logic line, or a section of logic lines only (shown when searching or selected).
 const hiddenRow = (b: Block, t: TreeState) =>

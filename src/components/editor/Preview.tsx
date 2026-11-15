@@ -163,9 +163,9 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
     <Node
       id={b.id}
       hidden={hidden}
-      label={`${b.type !== 'section' && 'field' in b && b.field?.label ? b.field.label : BLOCK_LABELS[b.type]}${hide === 'mobile' ? ' · masqué sur mobile' : hide === 'desktop' ? ' · mobile seulement' : ''}`}
+      label={`${b.type !== 'section' && 'field' in b && b.field?.label ? b.field.label : b.type === 'raw' && b.verbatim ? 'Modèle importé' : BLOCK_LABELS[b.type]}${hide === 'mobile' ? ' · masqué sur mobile' : hide === 'desktop' ? ' · mobile seulement' : ''}`}
       editable={b.type === 'heading' || b.type === 'text' || b.type === 'button'}
-      hint={b.type === 'raw' && b.verbatim ? ' · modèle importé tel quel : son contenu se modifie dans l’onglet Champs, son code dans l’onglet Code' : b.type === 'raw' && /<[a-zA-Z]/.test(b.html) ? ' · clique un élément pour le modifier, glisse-le pour le déplacer' : undefined}
+      hint={b.type === 'raw' && b.verbatim ? ' · gardé tel quel : ses contenus se changent dans Réglages ou Champs' : b.type === 'raw' && /<[a-zA-Z]/.test(b.html) ? ' · clique un élément pour le modifier, glisse-le pour le déplacer' : undefined}
       selectedId={p.selectedId} onSelect={p.onSelect} style={{ marginTop: sp.t || undefined, marginBottom: sp.b || undefined, marginLeft: sp.l || undefined, marginRight: sp.r || undefined, ...style }} onDropImage={p.onDropImage}>
       {children}
     </Node>

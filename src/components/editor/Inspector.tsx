@@ -426,6 +426,31 @@ function RawFields({ html, p }: { html: string; p: Props }) {
   )
 }
 
+// A whole imported template kept as written: its contents are edited through
+// its fields; the code stays folded (it is the template itself, not content).
+function VerbatimFields({ b, set, p }: { b: Extract<Block, { type: 'raw' }>; set: (patch: Partial<Block>) => void; p: Props }) {
+  const names = new Set([...b.html.matchAll(/module\.(\w+)/g)].map((m) => m[1]))
+  const used = (p.tree.fields ?? []).filter((f) => names.has(f.name)).length
+  return (
+    <>
+      <div className="rounded-md border border-cyan/30 bg-cyan/5 p-2.5 text-xs text-[#d6d6ea]">
+        <p className="font-semibold text-white">Modèle importé, gardé tel quel</p>
+        <p className="mt-1">
+          Sa mise en page vient de calculs et de boucles que des blocs ne reproduiraient pas fidèlement : il reste entier pour s'afficher comme dans la plateforme d'origine.
+          {used > 0 ? ' Change ses textes, images, liens et options ci-dessous (ou dans l’onglet Champs), sans toucher au code.' : ' Il n’utilise aucun champ : ses contenus se changent dans le code.'}
+        </p>
+      </div>
+      <RawFields html={b.html} p={p} />
+      <details className="rounded-md border border-line">
+        <summary className="cursor-pointer px-2.5 py-2 text-xs text-mute hover:text-white">Voir ou modifier le code du modèle</summary>
+        <div className="p-2.5 pt-0">
+          <textarea aria-label="Code du modèle" className={`${input} ${mono} min-h-40`} value={b.html} onChange={(e) => set({ html: e.target.value })} />
+        </div>
+      </details>
+    </>
+  )
+}
+
 // Turns a raw block into editable blocks. Logic ({% … %}) stays raw around
 // them, so conditions and loops keep working.
 function ConvertRaw({ html, onConvert }: { html: string; onConvert: (blocks: Block[]) => void }) {
@@ -624,6 +649,13 @@ function ModuleSummary({ tree, onSelect }: { tree: ModuleTree; onSelect: (id: st
   const walk = (list: Block[]) => list.forEach((b) => (b.type === 'section' ? walk(b.cells.flat()) : !isLogicBlock(b) && blocks++))
   tree.sections.forEach((s) => walk(s.cells.flat()))
   const logic = countLogic(tree)
+  const findKept = (list: Block[]): Block | undefined => {
+    for (const b of list) {
+      const hit = b.type === 'section' ? findKept(b.cells.flat()) : b.type === 'raw' && b.verbatim ? b : undefined
+      if (hit) return hit
+    }
+  }
+  const kept = findKept(tree.sections)
   const fields = collectFields(tree).length + (tree.fields?.length ?? 0)
   const stat = (n: number, one: string, many: string) => (
     <div className="rounded-md bg-void px-2 py-1.5 text-center">
@@ -652,6 +684,14 @@ function ModuleSummary({ tree, onSelect }: { tree: ModuleTree; onSelect: (id: st
             </li>
           ))}
         </ul>
+      )}
+      {kept && (
+        <div className="rounded-md border border-cyan/30 bg-cyan/5 p-2.5 text-xs text-[#d6d6ea]">
+          <p>Ce module contient un modèle importé gardé tel quel. Ses contenus se changent dans l’onglet Champs, ou ici en le sélectionnant.</p>
+          <button type="button" onClick={() => onSelect(kept.id)} className="mt-1.5 rounded border border-cyan/50 px-2 py-1 text-cyan hover:bg-cyan/10">
+            Sélectionner le modèle
+          </button>
+        </div>
       )}
       {logic > 0 && (
         <div className="rounded-md border border-violet/40 bg-violet/5 p-2.5 text-xs">
@@ -808,6 +848,7 @@ function BlockFields({ b, set, p }: { b: Block; set: (patch: Partial<Block>) => 
         </>
       )
     case 'raw':
+      if (b.verbatim) return <VerbatimFields b={b} set={set} p={p} />
       return (
         <>
           <Field label="Bloc HTML (HTML, HuBL…)">
@@ -963,7 +1004,7 @@ export function Inspector(p: Props) {
         <div className="flex items-center gap-2">
           {isLogicBlock(node) ? <Braces className="size-4 text-[#e3a6ff]" /> : <Icon className="size-4 text-cyan" />}
           <h2 className="min-w-0 flex-1 font-display font-semibold">
-            {isLogicBlock(node) ? 'Ligne de logique' : node.type === 'section' && path.length === 1 ? 'Section' : BLOCK_LABELS[node.type]}
+            {isLogicBlock(node) ? 'Ligne de logique' : node.type === 'raw' && node.verbatim ? 'Modèle importé' : node.type === 'section' && path.length === 1 ? 'Section' : BLOCK_LABELS[node.type]}
             {node.type !== 'section' && 'field' in node && node.field?.label && <span className="block truncate font-sans text-xs font-normal text-mute">Champ « {node.field.label} »</span>}
           </h2>
           {[
