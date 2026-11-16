@@ -106,6 +106,9 @@ export function MailyOffline({ offline }: { offline: boolean }) {
           {s.fromAccount ? ' depuis la copie de ton compte' : ''}
           {pct !== null && ` : ${pct} %`}
           <progress className="mt-1 block h-1 w-full accent-cyan" max={100} value={pct ?? undefined} aria-label="Téléchargement du modèle local" />
+          {!s.fromAccount && (
+            <span className="mt-1 block text-mute">Garde cette page ouverte et l’écran allumé (Wi-Fi conseillé). Coupé en route ? « Préparer » reprend où il s’était arrêté.</span>
+          )}
         </span>
       </>
     )
