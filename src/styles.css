@@ -27,6 +27,8 @@
 @custom-variant touch (@media (any-pointer: coarse) and (min-width: 48rem));
 /* Two columns but little height: phones held sideways. */
 @custom-variant short (@media (min-width: 48rem) and (max-height: 34rem));
+/* Phones held sideways (below the desktop layout): little height, room in width. */
+@custom-variant land (@media (orientation: landscape) and (max-height: 31.25rem) and (max-width: 63.99rem));
 @custom-variant tablet (@media (any-pointer: coarse) and (min-width: 64rem) and (max-width: 89.99rem));
 
 @theme {

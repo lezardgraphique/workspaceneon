@@ -797,8 +797,8 @@ export function MailyPanel({
           Dépose une capture, une maquette ou un fichier HTML/HuBL : Maily le transforme en rendu.
         </div>
       )}
-      <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-        <Maily size={48} mood={mood} />
+      <div className="flex items-center gap-3 border-b border-line px-4 py-3 land:py-1.5">
+        <Maily size={48} mood={mood} className="land:hidden" />
         <div className="min-w-0">
           <p className="font-display font-semibold tracking-wide">NEON AI CHAT</p>
           <p className="text-xs text-mute">{loading ? 'Maily réfléchit…' : onDevice ? 'Maily · hors ligne · sur l’appareil' : !online ? 'Maily · hors ligne · guide intégré' : 'Maily · en ligne · recherche web'}</p>
@@ -806,7 +806,7 @@ export function MailyPanel({
       </div>
       <MailyOffline offline={!online} />
 
-      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto p-4 max-sm:space-y-2.5 max-sm:p-3">
+      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto p-4 max-sm:space-y-2.5 max-sm:p-3 land:p-2">
         <button
           onClick={() => setTip((t) => (t + 1) % TIPS.length)}
           className="w-full rounded-lg border border-cyan/30 bg-cyan/5 p-3 text-left"
@@ -912,8 +912,8 @@ export function MailyPanel({
         )}
       </div>
 
-      <div className="border-t border-line p-3">
-        <div className="mb-2 flex rounded-md border border-line bg-void p-0.5 text-xs">
+      <div className="border-t border-line p-3 land:p-1.5">
+        <div className="mb-2 flex rounded-md border border-line bg-void p-0.5 text-xs land:mb-1">
           {(
             [
               { k: 'chat', label: 'Conseil', icon: MessageCircle },
@@ -1012,7 +1012,7 @@ export function MailyPanel({
           href={KOFI_URL}
           target="_blank"
           rel="noreferrer"
-          className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-mute hover:text-pink"
+          className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-mute hover:text-pink land:hidden"
         >
           <Heart className="size-3" /> Un commentaire ou un coup de pouce ? Ko-fi
         </a>

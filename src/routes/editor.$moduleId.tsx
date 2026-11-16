@@ -583,7 +583,10 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     if (id && rightTab !== 'code') setRightTab('inspector')
   }
 
-  const vis = (k: Pane, desktop: boolean) => `${pane === k ? 'flex' : 'hidden'} ${desktop ? 'lg:flex' : 'lg:hidden'}`
+  // Phones held sideways (land): the preview stays on screen and the chosen
+  // panel opens beside it, on the right.
+  const vis = (k: Pane, desktop: boolean) =>
+    `${pane === k ? 'flex' : 'hidden'} ${desktop ? 'lg:flex' : 'lg:hidden'} ${k === 'preview' ? 'land:flex' : 'land:order-last land:w-[min(50%,27rem)] land:shrink-0 land:border-l land:border-line'}`
   const tabBtn = (active: boolean) =>
     `flex flex-1 items-center justify-center gap-1.5 border-b-2 py-2.5 text-xs font-semibold ${
       active ? 'border-pink text-white' : 'border-transparent text-mute hover:text-white'
@@ -609,8 +612,8 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
   const showSelectionBar = !!selected && (pane === 'preview' || pane === 'structure') && !typing
 
   return (
-    <div className="flex h-[var(--app-h,100dvh)] flex-col bg-void">
-      <header className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line bg-space px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:flex-nowrap sm:gap-2 sm:px-3">
+    <div className="flex h-[var(--app-h,100dvh)] flex-col bg-void land:grid land:grid-cols-[4.25rem_minmax(0,1fr)] land:grid-rows-[auto_minmax(0,1fr)]">
+      <header className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line bg-space px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:flex-nowrap sm:gap-2 sm:px-3 land:col-span-2 land:py-1 land:pt-[max(0.25rem,env(safe-area-inset-top))]">
         <Link to="/" title="Mes modules" aria-label="Mes modules" className="flex items-center gap-2 rounded-md p-1 hover:bg-white/5">
           <NeonLogo size={28} />
         </Link>
@@ -714,7 +717,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
           rel="noreferrer"
           aria-label="Fichiers"
           title="Fichiers (nouvel onglet)"
-          className="hidden shrink-0 items-center rounded-md border border-line px-2 py-1.5 text-mute hover:border-cyan hover:text-cyan sm:inline-flex"
+          className="hidden shrink-0 items-center rounded-md border border-line px-2 py-1.5 text-mute hover:border-cyan hover:text-cyan sm:inline-flex land:hidden"
         >
           <FolderOpen className="size-4" />
         </a>
@@ -724,7 +727,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
           rel="noreferrer"
           aria-label="Laisser un commentaire sur Ko-fi"
           title="Laisser un commentaire (Ko-fi)"
-          className="hidden shrink-0 items-center rounded-md border border-line px-2 py-1.5 text-mute hover:border-pink hover:text-pink sm:inline-flex"
+          className="hidden shrink-0 items-center rounded-md border border-line px-2 py-1.5 text-mute hover:border-pink hover:text-pink sm:inline-flex land:hidden"
         >
           <Heart className="size-4" />
         </a>
@@ -737,7 +740,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
         </button>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col [@media(max-height:500px)]:flex-row">
+      <div className={`flex min-h-0 flex-1 flex-col [@media(max-height:500px)]:flex-row land:row-start-2 ${typing ? 'land:col-span-2 land:col-start-1' : 'land:col-start-2'}`}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1">
             <aside aria-label="Structure, champs et Maily" className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-72 lg:shrink-0 lg:border-r xl:w-80 tablet:!w-60">
@@ -904,7 +907,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
 
       <nav
         aria-label="Panneaux de l'éditeur"
-        className={`${typing ? 'hidden' : 'grid'} shrink-0 grid-cols-6 border-t border-line bg-space pb-[max(0px,env(safe-area-inset-bottom))] lg:hidden`}
+        className={`${typing ? 'hidden' : 'grid'} shrink-0 grid-cols-6 border-t border-line bg-space pb-[max(0px,env(safe-area-inset-bottom))] lg:hidden land:col-start-1 land:row-start-2 land:grid land:grid-cols-1 land:grid-rows-6 land:border-t-0 land:border-r land:pb-[max(0px,env(safe-area-inset-bottom))]`}
       >
         {(
           [
@@ -920,11 +923,11 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
             key={t.k}
             onClick={() => setPane(t.k)}
             aria-current={pane === t.k ? 'page' : undefined}
-            className={`relative flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors sm:text-[11px] [@media(max-height:500px)]:min-h-11 ${
+            className={`relative flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors sm:text-[11px] [@media(max-height:500px)]:min-h-11 land:min-h-0 land:gap-0.5 land:text-[10px] ${
               pane === t.k ? 'text-white' : 'text-mute active:text-white'
             }`}
           >
-            {pane === t.k && <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-pink-fill shadow-[0_0_10px_#ff007f]" />}
+            {pane === t.k && <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-pink-fill shadow-[0_0_10px_#ff007f] land:inset-x-auto land:inset-y-2 land:left-0 land:h-auto land:w-0.5" />}
             <span className={`relative rounded-full px-2.5 py-0.5 ${pane === t.k ? 'bg-pink/15 text-pink' : ''}`}>
               <t.icon className="size-5" />
               {t.dot && <span className={`absolute top-0 right-2 size-1.5 rounded-full ${t.k === 'code' ? 'bg-pink-fill' : 'bg-cyan'}`} />}

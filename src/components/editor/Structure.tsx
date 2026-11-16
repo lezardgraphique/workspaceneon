@@ -611,7 +611,8 @@ export function Structure(p: Props) {
   }
   return (
     <TreeCtx.Provider value={{ collapsed, toggle, query, shown, drop, setDrop, dragging, renaming, setRenaming, showLogic, frames, selPath }}>
-      <div className="flex min-h-0 flex-1 flex-col">
+      {/* Phones held sideways: the whole column scrolls (too little height for a fixed list and footer). */}
+      <div className="flex min-h-0 flex-1 flex-col land:overflow-y-auto">
         <div className="space-y-1.5 border-b border-line p-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-mute" aria-hidden />
@@ -660,7 +661,7 @@ export function Structure(p: Props) {
             </button>
           )}
         </div>
-        <div ref={list} onKeyDown={onKeyDown} className="min-h-0 flex-1 overflow-y-auto p-2">
+        <div ref={list} onKeyDown={onKeyDown} className="min-h-0 flex-1 overflow-y-auto p-2 land:flex-none land:overflow-visible">
           {p.tree.sections.map((s) => (
             <SectionTree key={s.id} s={s} depth={0} p={p} />
           ))}

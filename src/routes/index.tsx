@@ -168,7 +168,7 @@ function Library() {
         <section className="relative grid items-center gap-10 py-12 max-md:gap-0 max-md:overflow-x-clip max-md:pt-5 max-md:pb-8 md:min-h-[calc(100svh-4.25rem)] md:grid-cols-[1.4fr_1fr] md:content-center md:py-8 short:min-h-0 short:content-start short:pt-3">
           <div className="max-md:contents touch:-translate-y-[2px]">
             <p className="mb-4 font-mono text-xs uppercase tracking-[0.25em] text-cyan">Modules email & web · HTML · HuBL</p>
-            <h1 className="font-display text-4xl leading-[1.05] font-bold md:text-6xl">
+            <h1 className="font-display text-4xl leading-[1.05] font-bold md:text-6xl land:text-4xl">
               Construis tes modules email &amp; web <span className="neon-text">à la vitesse de la lumière.</span>
             </h1>
             <p className="mt-6 max-w-xl text-lg text-mute max-sm:mt-4 max-sm:text-base">
