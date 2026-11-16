@@ -20,7 +20,7 @@ export const Route = createFileRoute('/mentions-legales')({
   component: MentionsLegales,
 })
 
-const UPDATED = '15 novembre 2026'
+const UPDATED = '16 novembre 2026'
 
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
@@ -127,6 +127,16 @@ function MentionsLegales() {
             </a>
             ).
           </p>
+        </Section>
+
+        <Section id="suppression-du-compte" title="Supprimer ton compte">
+          <p>
+            Depuis le site ou l’application : <strong className="text-white">Mon compte</strong> (ton adresse en haut à droite), puis « Supprimer mon compte », écris SUPPRIMER et confirme.
+            Sont effacés aussitôt : tes modules et leurs versions, tes blocs, tes fichiers, tes réglages, tes accès IA (MCP) et ton identifiant de connexion. Les images insérées dans des
+            e-mails restent en ligne, car elles apparaissent dans des e-mails déjà envoyés : demande leur retrait par la page Ko-fi ci-dessus. Le journal de sécurité (adresses IP) s’efface
+            de lui-même au bout de 30 jours.
+          </p>
+          <p>Si tu n’as plus accès à ton compte, demande la suppression par la page Ko-fi en donnant l’adresse e-mail du compte.</p>
         </Section>
 
         <Section id="propriete" title="Propriété intellectuelle">

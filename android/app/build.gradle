@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Version: versionCode must grow with every upload to Google Play; the
+// workflow passes the run number (-PversionCode=…).
+def code = (project.findProperty('versionCode') ?: '1') as Integer
+def name = (project.findProperty('versionName') ?: '1.0.0') as String
+
+android {
+    namespace 'com.lezardgraphique.neonsandbox'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.lezardgraphique.neonsandbox'
+        minSdk 24
+        targetSdk 36
+        versionCode code
+        versionName name
+    }
+
+    // Upload key (Play App Signing re-signs with Google's key). Given by the
+    // workflow from the repository secrets; never committed.
+    signingConfigs {
+        release {
+            def ks = System.getenv('ANDROID_KEYSTORE_FILE')
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+            if (System.getenv('ANDROID_KEYSTORE_FILE')) signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}

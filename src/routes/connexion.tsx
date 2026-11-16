@@ -122,6 +122,19 @@ function Connexion() {
     return () => els.forEach((e, i) => (e.style.overflow = prev[i]))
   }, [])
 
+  // After « Supprimer mon compte » (DeleteAccount): what happened, then a clean address.
+  useEffect(() => {
+    const done = new URLSearchParams(location.search).get('compte')
+    if (!done) return
+    history.replaceState(null, '', location.pathname)
+    setIntro('off')
+    setInfo(
+      done === 'supprime'
+        ? 'Ton compte et toutes ses données ont été supprimés.'
+        : 'Toutes tes données ont été supprimées. Ton identifiant de connexion sera retiré par l’administrateur : écris via Ko-fi si tu veux une confirmation.',
+    )
+  }, [])
+
   // Links in e-mails (confirmation, recovery, invitation) land here with a token in the URL hash.
   useEffect(() => {
     handleAuthCallback()

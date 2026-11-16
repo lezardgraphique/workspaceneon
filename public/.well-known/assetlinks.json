@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.lezardgraphique.neonsandbox",
+      "sha256_cert_fingerprints": [
+        "25:67:D2:B2:65:D9:5C:08:45:67:7D:CC:BB:41:01:12:D3:D8:1B:B5:E4:5B:CF:37:AE:2E:C8:17:7D:62:67:68"
+      ]
+    }
+  }
+]

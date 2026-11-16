@@ -6,6 +6,7 @@ import { Bot, Check, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react'
 
 import { AccountMenu } from '@/components/AccountMenu'
 import { AppHeader } from '@/components/AppHeader'
+import { DeleteAccount } from '@/components/DeleteAccount'
 import { LegalLink } from '@/components/LegalLink'
 import { SiteSecurity } from '@/components/SiteSecurity'
 import { MIN_PASSWORD, checkPassword } from '@/lib/password'
@@ -109,6 +110,7 @@ function Compte() {
         </form>
 
         <McpTokens />
+        <DeleteAccount />
       </main>
       <SiteSecurity />
       <footer className="pb-10 text-center text-sm">

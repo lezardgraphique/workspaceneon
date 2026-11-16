@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Neon Sandbox</string>
+    <string name="launch_url">https://workspaceneon.netlify.app/</string>
+    <string name="provider_authority">com.lezardgraphique.neonsandbox.fileprovider</string>
+    <string name="asset_statements" translatable="false">[{ \"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": { \"namespace\": \"web\", \"site\": \"https://workspaceneon.netlify.app\" } }]</string>
+</resources>

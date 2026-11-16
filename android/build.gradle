@@ -1,0 +1,8 @@
+// Neon Sandbox Pro for Google Play: a Trusted Web Activity that opens
+// https://workspaceneon.netlify.app full screen (no browser bar). The app is the
+// site itself, so every deploy updates it; this project only changes for the
+// icon, the name, the colours or a new store version. Built by the GitHub
+// workflow .github/workflows/android.yml (see android/README.md).
+plugins {
+    id 'com.android.application' version '8.9.1' apply false
+}
