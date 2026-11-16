@@ -9,6 +9,7 @@ import { customBlocks, modules } from '../../db/schema.js'
 import { ai, attemptsFor, configRefused, retryable, sleep, statusOf, thinkingFor } from '@/lib/gemini.server'
 import type { Attempt } from '@/lib/gemini.server'
 import { CONTINUE_MARK, CONTINUE_PROMPT, trimOverlap } from '@/lib/continuation'
+import { CLAUDE_MODELS, CLAUDE_NOTE, claudeEnabled, claudeStream, takeClaudeTurn, type ClaudeTurn } from '@/server/claude.server'
 import {
   APP_GUIDE,
   FIELDS_SPEC,
@@ -131,8 +132,56 @@ export const Route = createFileRoute('/api/maily')({
         }))
         const resume = (before: string): Content[] => [...base, { role: 'model', parts: [{ text: before }] }, { role: 'user', parts: [{ text: CONTINUE_PROMPT }] }]
 
+        // Claude, Maily's expert for code: first when she recognises, builds or
+        // fixes a module (within the account's daily allowance); Gemini after it.
+        const lastAsk = messages[messages.length - 1]?.content ?? ''
+        const aboutCode = mode === 'build' || !!issue || !!fieldSpecs || (lastAsk.length > 80 && /<[a-z!][\s\S]*>|\{%|\{\{|\*\|[A-Z_]+\|\*|%%\[/i.test(lastAsk))
+        const useClaude = claudeEnabled() && aboutCode && (partial ? true : await takeClaudeTurn(user.id))
+        const turns: ClaudeTurn[] = messages.map((m) => ({ role: m.role, text: m.content || 'Recrée ce module.', images: m.images }))
+        const claudeTurnsFor = (before?: string): ClaudeTurn[] =>
+          before ? [...turns, { role: 'assistant', text: before }, { role: 'user', text: CONTINUE_PROMPT }] : turns
+        const claudeSystem = systemInstruction + CLAUDE_NOTE
+
+        // Opens a Claude stream that has started to answer (null if none could).
+        const openClaude = async (before?: string): Promise<{ first: Chunk; rest: AsyncIterator<Chunk>; attempt: Attempt } | null> => {
+          for (let i = 0; i < CLAUDE_MODELS.length; i++) {
+            const model = CLAUDE_MODELS[i]
+            const left = BUDGET_MS - (Date.now() - started) - 10_000
+            if (left < 8_000) return null
+            const ctrl = new AbortController()
+            const onAbort = () => ctrl.abort()
+            request.signal.addEventListener('abort', onAbort, { once: true })
+            try {
+              const it = claudeStream(model, claudeSystem, claudeTurnsFor(before), ctrl.signal)[Symbol.asyncIterator]()
+              for (;;) {
+                const r = await withTimeout(it.next(), Math.min(i === 0 ? 30_000 : 18_000, left), onAbort)
+                if (r.done) throw new Error('empty answer')
+                if (r.value) {
+                  const rest: AsyncIterator<Chunk> = {
+                    next: async () => {
+                      const n = await it.next()
+                      return n.done ? { done: true, value: undefined } : { done: false, value: { text: n.value } }
+                    },
+                  }
+                  return { first: { text: r.value }, rest, attempt: { model, tools: false, thinking: false } }
+                }
+              }
+            } catch (err) {
+              if (request.signal.aborted) throw err
+              console.error(`Maily ${model} :`, statusOf(err) || '', String((err as Error)?.message ?? err).slice(0, 300))
+            } finally {
+              request.signal.removeEventListener('abort', onAbort)
+            }
+          }
+          return null
+        }
+
         // Opens a stream that has started to answer, trying the models in turn.
-        const open = async (contents: Content[], withTools: boolean): Promise<{ first: Chunk; rest: AsyncIterator<Chunk>; attempt: Attempt }> => {
+        const open = async (contents: Content[], withTools: boolean, before?: string): Promise<{ first: Chunk; rest: AsyncIterator<Chunk>; attempt: Attempt }> => {
+          if (useClaude) {
+            const c = await openClaude(before)
+            if (c) return c
+          }
           let last: unknown
           const attempts = attemptsFor(withTools)
           for (let i = 0; i < attempts.length; i++) {
@@ -189,7 +238,7 @@ export const Route = createFileRoute('/api/maily')({
         const contents = partial ? resume(partial) : base
         let opened: Awaited<ReturnType<typeof open>>
         try {
-          opened = await open(contents, true)
+          opened = await open(contents, true, partial)
         } catch (err) {
           console.error('Maily error', err)
           const s = statusOf(err)
@@ -265,7 +314,7 @@ export const Route = createFileRoute('/api/maily')({
                     if (resumes < 2 && BUDGET_MS - (Date.now() - started) > 15_000) {
                       resumes++
                       try {
-                        const again = await open(resume(written), attempt.tools)
+                        const again = await open(resume(written), attempt.tools, written)
                         ;({ rest, attempt } = again)
                         hold = ''
                         push(again.first.text ?? '')

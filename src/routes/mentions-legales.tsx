@@ -6,7 +6,7 @@ import { KOFI_URL } from '@/lib/links'
 
 // Public page (no account needed): legal notice (LCEN art. 6 III) and the
 // privacy policy (RGPD art. 13). Keep it in step with what the code really
-// sends where: Netlify (hosting, accounts, data), Google Gemini through the
+// sends where: Netlify (hosting, accounts, data), Google Gemini and Anthropic Claude through the
 // Netlify AI Gateway (Maily), Have I Been Pwned (5 hash characters),
 // Hugging Face (offline model, on request), the security journal (30 days).
 export const Route = createFileRoute('/mentions-legales')({
@@ -88,8 +88,9 @@ function MentionsLegales() {
               aperçus que tu choisis de partager. Conservés tant que tu ne les supprimes pas.
             </li>
             <li>
-              <strong className="text-white">Maily, l'assistante IA</strong> : quand tu lui écris (ou demandes une génération), ton message et le code utile du module sont envoyés à Google
-              Gemini par l'AI Gateway de Netlify, pour produire la réponse. Rien n'est envoyé si tu ne la sollicites pas. Le mode hors ligne, lui, fonctionne entièrement sur ton appareil.
+              <strong className="text-white">Maily, l'assistante IA</strong> : quand tu lui écris (ou demandes une génération), ton message et le code utile du module sont envoyés par l'AI Gateway de
+              Netlify à Google Gemini (conversation, recherche web) ou à Anthropic Claude (reconnaissance, création et correction du code), pour produire la réponse. L'AI Gateway de
+              Netlify ne conserve ni tes messages ni les réponses. Rien n'est envoyé si tu ne la sollicites pas. Le mode hors ligne, lui, fonctionne entièrement sur ton appareil.
             </li>
             <li>
               <strong className="text-white">Vérification des mots de passe</strong> : à la création d'un mot de passe, seuls les 5 premiers caractères de son empreinte SHA-1 sont envoyés à
@@ -112,7 +113,7 @@ function MentionsLegales() {
 
         <Section id="destinataires" title="Destinataires et transferts">
           <p>
-            Les seuls destinataires sont les prestataires techniques cités : Netlify (hébergement, comptes, AI Gateway) et Google (Gemini, pour les réponses de Maily). Ils sont établis aux
+            Les seuls destinataires sont les prestataires techniques cités : Netlify (hébergement, comptes, AI Gateway), Google (Gemini) et Anthropic (Claude), pour les réponses de Maily. Ils sont établis aux
             États-Unis ; les transferts reposent sur le cadre de protection des données UE–États-Unis (Data Privacy Framework) et les clauses contractuelles types de la Commission
             européenne. Tes données ne sont ni vendues ni utilisées à des fins publicitaires.
           </p>
@@ -141,7 +142,7 @@ function MentionsLegales() {
 
         <Section id="propriete" title="Propriété intellectuelle">
           <p>
-            Le code du site est publié sur GitHub. Les modules, textes et images que tu crées restent les tiens. Les marques citées (HubSpot, Netlify, Google…) appartiennent à leurs
+            Le code du site est publié sur GitHub. Les modules, textes et images que tu crées restent les tiens. Les marques citées (HubSpot, Netlify, Google, Anthropic…) appartiennent à leurs
             propriétaires.
           </p>
         </Section>
