@@ -20,14 +20,29 @@ const anthropic = () => (client ??= new Anthropic())
 
 const dayKey = (userId: string) => `${userId}/${new Date().toISOString().slice(0, 10)}`
 
+// A continuation (`partial`, sent by the editor when an answer was cut) is
+// free only right after a counted answer, and only as many times as the editor
+// resumes (≤ 4): otherwise `partial` would let any request skip the allowance.
+const FREE_RESUMES = 4
+const RESUME_WINDOW_MS = 10 * 60_000
+
 /** Takes one Claude answer from today's allowance (false when it is used up). */
-export async function takeClaudeTurn(userId: string): Promise<boolean> {
+export async function takeClaudeTurn(userId: string, continuation = false): Promise<boolean> {
   try {
     const store = getStore('maily-usage')
+    const lastKey = `${userId}/last`
+    if (continuation) {
+      const last = JSON.parse(String((await store.get(lastKey)) ?? 'null')) as { at?: number; resumes?: number } | null
+      if (last && typeof last.at === 'number' && Date.now() - last.at < RESUME_WINDOW_MS && (last.resumes ?? 0) < FREE_RESUMES) {
+        await store.set(lastKey, JSON.stringify({ at: last.at, resumes: (last.resumes ?? 0) + 1 }))
+        return true
+      }
+    }
     const key = dayKey(userId)
     const n = Number((await store.get(key)) ?? 0) || 0
     if (n >= CLAUDE_PER_DAY) return false
     await store.set(key, String(n + 1))
+    await store.set(lastKey, JSON.stringify({ at: Date.now(), resumes: 0 }))
     return true
   } catch {
     // Counter unavailable: Claude is still allowed (the gateway rate limit stays).

@@ -136,7 +136,7 @@ export const Route = createFileRoute('/api/maily')({
         // fixes a module (within the account's daily allowance); Gemini after it.
         const lastAsk = messages[messages.length - 1]?.content ?? ''
         const aboutCode = mode === 'build' || !!issue || !!fieldSpecs || (lastAsk.length > 80 && /<[a-z!][\s\S]*>|\{%|\{\{|\*\|[A-Z_]+\|\*|%%\[/i.test(lastAsk))
-        const useClaude = claudeEnabled() && aboutCode && (partial ? true : await takeClaudeTurn(user.id))
+        const useClaude = claudeEnabled() && aboutCode && (await takeClaudeTurn(user.id, !!partial))
         const turns: ClaudeTurn[] = messages.map((m) => ({ role: m.role, text: m.content || 'Recrée ce module.', images: m.images }))
         const claudeTurnsFor = (before?: string): ClaudeTurn[] =>
           before ? [...turns, { role: 'assistant', text: before }, { role: 'user', text: CONTINUE_PROMPT }] : turns
