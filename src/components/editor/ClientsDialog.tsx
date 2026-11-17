@@ -61,7 +61,7 @@ export function ClientsDialog({
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Test clients de messagerie" className="fixed inset-0 z-50 flex flex-col bg-void/97 backdrop-blur-sm">
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line bg-space px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line bg-space px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] land:py-1.5 land:pt-[max(0.375rem,env(safe-area-inset-top))]">
         <MailCheck className="size-5 text-cyan" />
         <div className="min-w-0 flex-1">
           <h2 className="font-display text-lg leading-tight font-semibold">Test clients de messagerie</h2>
@@ -81,7 +81,7 @@ export function ClientsDialog({
         </button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row land:flex-row">
         <div className="neon-grid min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
           {current ? (
             <>
@@ -143,7 +143,7 @@ export function ClientsDialog({
           )}
         </div>
 
-        <aside className="flex max-h-[45dvh] shrink-0 flex-col border-t border-line bg-space lg:max-h-none lg:w-[360px] lg:border-t-0 lg:border-l">
+        <aside className="flex max-h-[45dvh] shrink-0 flex-col border-t border-line bg-space lg:max-h-none lg:w-[360px] lg:border-t-0 lg:border-l land:max-h-none land:w-[min(42%,20rem)] land:border-t-0 land:border-l">
           <div className="border-b border-line px-4 py-3">
             <h2 className="font-display font-semibold">{current ? `Points à vérifier · ${clientLabel(current)}` : 'Points à vérifier'}</h2>
             <div className="mt-2">

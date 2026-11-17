@@ -43,18 +43,18 @@ export function ExportDialog({ tree, name, onClose }: { tree: ModuleTree; name: 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-4 land:p-2" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Exporter le module"
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl border border-line bg-night pb-[max(0px,env(safe-area-inset-bottom))] shadow-2xl sm:max-h-[90vh] sm:rounded-2xl sm:pb-0"
+        className="flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl border border-line bg-night pb-[max(0px,env(safe-area-inset-bottom))] shadow-2xl sm:max-h-[90vh] sm:rounded-2xl sm:pb-0 land:h-full land:max-h-none"
       >
-        <div className="flex items-start gap-3 border-b border-line p-5">
+        <div className="flex items-start gap-3 border-b border-line p-5 land:items-center land:px-4 land:py-2">
           <div className="flex-1">
-            <h2 className="font-display text-xl font-semibold">Exporter le module</h2>
-            <p className="mt-1 text-sm text-mute">
+            <h2 className="font-display text-xl font-semibold land:text-base">Exporter le module</h2>
+            <p className="mt-1 text-sm text-mute land:hidden">
               <code className="font-mono text-cyan">page.html</code> contient le rendu complet, prêt pour un email ou une page web.
               Les fichiers <code className="font-mono text-cyan">module.html</code>, <code className="font-mono text-cyan">fields.json</code> et{' '}
               <code className="font-mono text-cyan">meta.json</code> forment un module réutilisable dont les textes, boutons et images
@@ -65,29 +65,29 @@ export function ExportDialog({ tree, name, onClose }: { tree: ModuleTree; name: 
             <X className="size-5" />
           </button>
         </div>
-        <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 py-2">
+        <div className="flex flex-wrap items-center gap-1 border-b border-line px-3 py-2 land:py-1.5">
           {names.map((f) => (
             <button
               key={f}
               onClick={() => setActive(f)}
-              className={`rounded-md px-3 py-1.5 font-mono text-xs ${active === f ? 'bg-pink-fill text-white' : 'text-mute hover:text-white'}`}
+              className={`shrink-0 rounded-md px-3 py-1.5 font-mono text-xs land:px-2 ${active === f ? 'bg-pink-fill text-white' : 'text-mute hover:text-white'}`}
             >
               {f}
             </button>
           ))}
           <span className="flex-1" />
-          <button onClick={copy} className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs hover:border-cyan">
+          <button onClick={copy} className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-line px-3 py-1.5 text-xs hover:border-cyan">
             {copied ? <Check className="size-3.5 text-cyan" /> : <Copy className="size-3.5" />} {copied ? 'Copié' : 'Copier'}
           </button>
           <button
             onClick={() => download(active)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs hover:border-cyan"
+            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-line px-3 py-1.5 text-xs hover:border-cyan"
           >
             <Download className="size-3.5" /> Télécharger
           </button>
           <button
             onClick={() => names.forEach((f, i) => setTimeout(() => download(f), i * 250))}
-            className="inline-flex items-center gap-1.5 rounded-md bg-pink-fill px-3 py-1.5 text-xs font-semibold text-white"
+            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-pink-fill px-3 py-1.5 text-xs font-semibold text-white"
           >
             <Download className="size-3.5" /> Tout télécharger
           </button>

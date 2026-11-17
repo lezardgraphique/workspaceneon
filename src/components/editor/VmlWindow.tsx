@@ -427,6 +427,8 @@ export function VmlWindow({
   const [tab, setTab] = useState<'structure' | 'apercu' | 'edition'>('apercu')
   const [edit, setEdit] = useState<'edit' | 'outlook' | 'code'>('edit')
   const row = useMedia('(max-height: 500px)')
+  // Phone held sideways: the panel takes the whole work area (no room to share it).
+  const land = useMedia('(orientation: landscape) and (max-height: 31.25rem) and (max-width: 63.99rem)')
   const desk = useMedia('(min-width: 1024px)')
   const [size, setSize] = useState<number | null>(null)
   useEffect(() => {
@@ -447,7 +449,7 @@ export function VmlWindow({
   }, [size])
   const frac = size ?? (row ? 0.55 : desk ? 0.45 : 0.6)
   // Sideways on a phone the panel can't shrink to its title bar: always open.
-  const min = minState && !row
+  const min = minState && !row && !land
   const asideRef = useRef<HTMLElement>(null)
   const resizeTo = (x: number, y: number) => {
     const box = asideRef.current?.parentElement?.getBoundingClientRect()
@@ -484,10 +486,10 @@ export function VmlWindow({
       ref={asideRef}
       aria-label="Volet VML pour Outlook"
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
-      style={min ? undefined : { flexBasis: `${frac * 100}%` }}
-      className={`relative flex min-h-0 min-w-0 shrink-0 grow-0 flex-col bg-night ${row ? 'border-l' : 'border-t'} border-line`}
+      style={min || land ? undefined : { flexBasis: `${frac * 100}%` }}
+      className={`relative flex min-h-0 min-w-0 flex-col bg-night ${land ? 'flex-1' : `shrink-0 grow-0 ${row ? 'border-l' : 'border-t'}`} border-line`}
     >
-      {!min && (
+      {!min && !land && (
         <div
           role="separator"
           aria-orientation={row ? 'vertical' : 'horizontal'}

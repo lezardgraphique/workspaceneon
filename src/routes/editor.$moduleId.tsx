@@ -586,7 +586,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
   // Phones held sideways (land): the preview stays on screen and the chosen
   // panel opens beside it, on the right.
   const vis = (k: Pane, desktop: boolean) =>
-    `${pane === k ? 'flex' : 'hidden'} ${desktop ? 'lg:flex' : 'lg:hidden'} ${k === 'preview' ? 'land:flex' : 'land:order-last land:w-[min(50%,27rem)] land:shrink-0 land:border-l land:border-line'}`
+    `${pane === k ? 'flex' : 'hidden'} ${desktop ? 'lg:flex' : 'lg:hidden'} ${k === 'preview' ? 'land:flex' : `land:order-last land:flex-none land:border-l land:border-line ${k === 'code' ? 'land:w-[60%]' : 'land:w-[min(50%,27rem)]'}`}`
   const tabBtn = (active: boolean) =>
     `flex flex-1 items-center justify-center gap-1.5 border-b-2 py-2.5 text-xs font-semibold ${
       active ? 'border-pink text-white' : 'border-transparent text-mute hover:text-white'
@@ -741,7 +741,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
       </header>
 
       <div className={`flex min-h-0 flex-1 flex-col [@media(max-height:500px)]:flex-row land:row-start-2 ${typing ? 'land:col-span-2 land:col-start-1' : 'land:col-start-2'}`}>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${vmlOpen ? 'land:hidden' : ''}`}>
           <div className="flex min-h-0 flex-1">
             <aside aria-label="Structure, champs et Maily" className="flex min-h-0 w-full flex-col border-line max-lg:contents lg:w-72 lg:shrink-0 lg:border-r xl:w-80 tablet:!w-60">
               <div className="hidden border-b border-line lg:flex">
@@ -921,7 +921,11 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
         ).map((t) => (
           <button
             key={t.k}
-            onClick={() => setPane(t.k)}
+            onClick={() => {
+              setPane(t.k)
+              // Sideways the VML panel covers the work area: going to a pane closes it.
+              if (vmlOpen && window.matchMedia('(orientation: landscape) and (max-height: 31.25rem) and (max-width: 63.99rem)').matches) setVmlOpen(false)
+            }}
             aria-current={pane === t.k ? 'page' : undefined}
             className={`relative flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors sm:text-[11px] [@media(max-height:500px)]:min-h-11 land:min-h-0 land:gap-0.5 land:text-[10px] ${
               pane === t.k ? 'text-white' : 'text-mute active:text-white'

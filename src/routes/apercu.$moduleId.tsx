@@ -56,12 +56,12 @@ function ModulePreview() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-void">
-      <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-line bg-space/95 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur sm:px-4">
+      <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-line bg-space/95 px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur sm:px-4 land:py-1 land:pt-[max(0.25rem,env(safe-area-inset-top))]">
         <Link to="/" title="Mes modules" className="rounded-md p-1 hover:bg-white/5">
           <NeonLogo size={28} />
         </Link>
         <div className="min-w-0 flex-1">
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan">Aperçu du module</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan land:hidden">Aperçu du module</p>
           <h1 className="truncate font-display text-base font-semibold">{mod.name}</h1>
         </div>
         {/* Phones: the controls take a full row of their own under the title. */}
