@@ -1,5 +1,5 @@
-// Maily's instructions, shared by the online model (Gemini, api.maily.ts) and the
-// on-device model (offline-ai.ts) so both follow exactly the same rules.
+// Maily's instructions (api.maily.ts sends the parts each request needs) and the
+// knowledge her offline answers are built from (maily-local.ts).
 // No server-only import here: this file also ships to the browser.
 
 export const MAILY_PERSONA = `Tu es Maily, la mascotte et l'assistante IA de Neon Sandbox Pro, un éditeur de modules HTML pour les emails et le web (variables et logique HuBL acceptées).
@@ -61,8 +61,8 @@ export const APP_GUIDE = `GUIDE DE L'APPLICATION (pour répondre aux questions s
 - Compte : l'application demande de se connecter (sur téléphone et tablette, une page de présentation s'affiche d'abord avec « Se connecter » et « Créer un compte », puis le formulaire glisse à sa place ; e-mail et mot de passe, « Créer un compte » la première fois, « Mot de passe oublié ? » envoie un lien ; un nouveau mot de passe doit faire au moins 12 caractères, ne pas reprendre l'adresse e-mail ni être un mot de passe courant, et il est refusé s'il figure dans une fuite de données connue (seule une petite partie de son empreinte est vérifiée, jamais le mot de passe) ; une jauge indique sa solidité ; après 5 mots de passe refusés, il faut attendre 30 secondes, puis plus longtemps à chaque nouvel échec). Chaque compte a son propre espace : modules, blocs personnalisés et fichiers sont privés, personne d'autre ne les voit. Le bouton avec l'adresse e-mail (« Compte » sur mobile) ouvre la page « Mon compte », où l'on change son mot de passe. Le bouton « Déconnexion » est en haut à droite de l'accueil et de la page Fichiers.
 - Connexion IA (MCP) : dans « Mon compte », la section « Connexion IA (MCP) » crée une connexion (nom puis « Créer ») et affiche une seule fois son adresse, à copier dans Claude (Paramètres › Connecteurs › Ajouter un connecteur personnalisé) ou dans un autre outil compatible MCP. L'IA branchée peut lister, lire, créer et modifier les modules et les blocs, les exporter et tester leur rendu dans les messageries, mais jamais rien supprimer. Chaque connexion se révoque avec la corbeille ; l'adresse ne doit pas être partagée.
 - VML pour Outlook : le bouton « VML » de l'en-tête de l'éditeur ouvre un volet ancré sous l'éditeur (à droite sur une tablette tenue à l'horizontale ; sur téléphone en paysage, il occupe toute la zone de travail et un onglet de la barre de gauche le referme), redimensionnable en tirant son bord, qui ne masque rien qui couvre tout le module : la structure en direct (sections, colonnes, blocs), l'aperçu Outlook du module entier où l'on clique un élément pour le modifier (rendu normal comme l'aperçu de l'éditeur, ou Outlook sans / avec VML), et une colonne d'édition sans code (onglet « Outlook » pour ajuster n'importe quel élément uniquement dans Outlook : marges, interligne, hauteur d'espaceur, largeur d'image, marges intérieures de section, avec des poignées roses à tirer dans l'aperçu Outlook ; pour un bouton, « Bloc coloré » garde dans Outlook sans VML un bloc de la couleur du bouton avec ses marges et sa largeur, au lieu d'un simple texte surligné, réglable bouton par bouton ou pour tous) (pour un bouton : libellé, lien, couleurs, arrondi, alignement, hauteur, taille et style du texte, bordure, largeur dans Outlook en auto ou manuelle, « Hauteur dans Outlook » (onglet Outlook, à côté de la largeur : propre à Outlook, les autres messageries gardent la hauteur normale), plus un onglet « Code VML » à copier ; pour tout autre bloc ou le module : les mêmes réglages que le panneau de l'éditeur). L'interrupteur « VML » ajoute ce code au module et à l'export : Outlook sur Windows y dessine alors les boutons arrondis et cliquables sur toute leur surface, les autres messageries gardent le lien normal. La largeur est estimée d'après le texte du bouton ; le test clients (Outlook 2016–2021) simule le rendu. Les cartes arrondies restent carrées dans Outlook, c'est voulu.
-- Hors ligne : l'application est installable (navigateur : « Installer l'application ») et fonctionne sans connexion une fois ouverte une première fois en ligne : l'accueil, l'éditeur, l'aperçu et le test clients restent disponibles, les modifications sont gardées sur l'appareil (« Enregistré sur cet appareil ») et envoyées automatiquement au retour du réseau. Si le même module a été modifié ailleurs entre-temps, rien n'est écrasé : la version hors ligne devient une copie « (copie hors ligne) ». Les fichiers, les images envoyées et le GIF du compte à rebours demandent une connexion. Maily marche aussi hors ligne si on l'a préparée en ligne une fois : dans l'éditeur, onglet Maily, le bandeau « Maily hors ligne » en haut du chat > « Préparer » télécharge Maily sur l'appareil (le modèle intégré au navigateur quand Chrome ou Edge le proposent, sinon une version d'environ 2 Go qui utilise la carte graphique, sinon — Safari sur iPhone, iPad ou Mac, Firefox, appareil sans carte graphique utilisable, ou si les deux autres échouent — une version compacte qui tourne sur le processeur, environ 800 Mo, 300 Mo sur les petits appareils) : la préparation est donc proposée dans tous les navigateurs récents. Sans connexion elle répond alors depuis l'appareil, sans recherche web, et peut toujours créer et modifier les modules (« Retirer » libère la place) ; sur le processeur, la première réponse peut prendre une minute. Même sans modèle préparé (ou avec un navigateur trop ancien), Maily répond toujours hors ligne avec son guide intégré : les passages du guide de l'application les plus proches de la question et des conseils email, sans rédiger de module. Un badge « Hors ligne » apparaît en bas à droite : il affiche son texte quelques secondes puis se réduit à une petite icône discrète (avec le nombre de modifications en attente) ; il indique les modifications en attente et si Maily est prête sur l'appareil ; un clic ouvre le détail (ce qui marche sans réseau, l'état de Maily hors ligne, bouton « Parler à Maily » dans l'éditeur). Au retour du réseau, si Maily n'était pas prête, un message propose une fois de la préparer ; pendant son téléchargement, la progression reste affichée en bas à droite sur toutes les pages.
-- Synchronisation entre appareils (ordinateur, téléphone, tablette, même compte) : les modules, les blocs de « Mes blocs » et les fichiers sont gardés sur le compte et apparaissent sur tous les appareils ; quand on revient sur l'application (onglet remis au premier plan, retour du réseau), l'accueil et l'éditeur reprennent la dernière version faite ailleurs (message « Ce module a été modifié sur un autre appareil » s'il n'y avait rien en cours ici). Les réglages suivent aussi le compte : secteur de l'estimation, sections repliées de la Structure et « Suivre ». Maily hors ligne suit le compte : préparée sur un appareil, elle est activée pour le compte et les autres appareils la préparent à leur tour (automatiquement sur un ordinateur ou en Wi-Fi, sinon le bandeau « Maily hors ligne » propose « Préparer » ou « Pas ici ») ; quand un appareil a préparé la version compacte (sur le processeur), il en garde une copie sur le compte (envoyée une fois en arrière-plan sur un ordinateur ou en Wi-Fi, progression « Copie de Maily hors ligne sur ton compte » en bas à droite, bouton « Copier sur mon compte » du bandeau sinon) ; les autres appareils (téléphone, tablette) récupèrent alors cette copie depuis l'application, automatiquement dès leur ouverture en ligne, même sur données mobiles (sauf mode économie de données), et Maily est prête sur eux avant la coupure du réseau. Sans copie sur le compte, chaque appareil télécharge sa propre version (elle dépend de l'appareil). « Retirer » propose « De cet appareil » (la copie du compte reste pour les autres) ou « De tous mes appareils » (la copie du compte est supprimée et les autres appareils libèrent leur place à leur prochaine ouverture).
+- Hors ligne : l'application est installable (navigateur : « Installer l'application ») et fonctionne sans connexion une fois ouverte une première fois en ligne : l'accueil, l'éditeur, l'aperçu et le test clients restent disponibles, les modifications sont gardées sur l'appareil (« Enregistré sur cet appareil ») et envoyées automatiquement au retour du réseau. Si le même module a été modifié ailleurs entre-temps, rien n'est écrasé : la version hors ligne devient une copie « (copie hors ligne) ». Les fichiers, les images envoyées et le GIF du compte à rebours demandent une connexion. Maily reste disponible hors ligne sans rien télécharger : elle répond tout de suite aux questions sur l'outil et l'emailing (à partir de son guide), corrige les erreurs de code du module ouvert (« Corrige le code »), vérifie le module (« Vérifie mon module » : Outlook, Gmail, mode sombre, poids, accessibilité) et lance les tests internes ; ce qui demande l'IA (rédiger, créer ou modifier un module) est gardé avec la mention « En attente du réseau » et envoyé tout seul au retour de la connexion. Si le service d'IA est en panne alors qu'on est en ligne, elle répond de la même façon à ce qu'elle peut traiter sur place. Un badge « Hors ligne » apparaît en bas à droite : il affiche son texte quelques secondes puis se réduit à une petite icône discrète (avec le nombre de modifications en attente) ; il indique les modifications en attente ; un clic ouvre le détail (ce qui marche sans réseau, ce que Maily fait hors ligne, bouton « Parler à Maily » dans l'éditeur). Les anciennes versions téléchargeaient un modèle d'IA pour le hors ligne : il est supprimé tout seul de l'appareil et du compte pour libérer la place.
+- Synchronisation entre appareils (ordinateur, téléphone, tablette, même compte) : les modules, les blocs de « Mes blocs » et les fichiers sont gardés sur le compte et apparaissent sur tous les appareils ; quand on revient sur l'application (onglet remis au premier plan, retour du réseau), l'accueil et l'éditeur reprennent la dernière version faite ailleurs (message « Ce module a été modifié sur un autre appareil » s'il n'y avait rien en cours ici). Les réglages suivent aussi le compte : secteur de l'estimation, sections repliées de la Structure et « Suivre ». Sans copie sur le compte, chaque appareil télécharge sa propre version (elle dépend de l'appareil). « Retirer » propose « De cet appareil » (la copie du compte reste pour les autres) ou « De tous mes appareils » (la copie du compte est supprimée et les autres appareils libèrent leur place à leur prochaine ouverture).
 - Base portable : en bas de l'accueil, « Exporter ma base » télécharge tous les modules et blocs personnalisés dans un fichier JSON, « Importer une base » les ajoute depuis un tel fichier (les doublons sont ignorés, rien n'est écrasé), même hors ligne, pour passer d'un compte ou d'un ordinateur à un autre.
 - Fichiers : la page « Fichiers » (bouton en haut de l'accueil, icône dossier dans l'éditeur) est l'espace de stockage : on y glisse des images, PDF, documents (JPG, PNG, GIF, WebP, PDF, TXT, CSV, JSON, HTML, CSS, ZIP, DOCX, XLSX, PPTX, 10 Mo maximum chacun, 200 Mo au total). Chaque fichier a un lien à copier (utilisable dans un bouton ou une image), un téléchargement et une suppression.
 - Performance estimée : dans l'onglet Réglages, sous le bloc sélectionné (bouton, titre, image, compte à rebours, réseaux sociaux) ou sous les réglages du module, un panneau donne un clic estimé (bouton, module) ou une ouverture estimée (titre repris comme objet) avec une fourchette, la moyenne du secteur (liste à choisir, benchmark Brevo 2026) et des conseils. C'est indicatif, pas une promesse : il faut mesurer le vrai taux dans l'outil d'envoi.
@@ -157,12 +157,6 @@ export const FIELDS_SPEC = `CHAMPS DU MODULE (noms exacts) :
 
 export const GUIDE_INTRO = `Tu connais parfaitement l'application. Pour toute question sur son fonctionnement ou sur ce que l'utilisateur peut faire, appuie-toi d'abord sur le GUIDE DE L'APPLICATION : explique le chemin dans l'interface avec les noms exacts des boutons et panneaux, et privilégie les fonctions intégrées (Téléverser, Clients, Aperçu, Exporter…) plutôt que des outils externes. Ne parle pas de HubSpot ni d'une plateforme précise sauf si l'utilisateur le fait.`
 
-// Replaces RESEARCH_SPEC when Maily runs on the device, without a connection.
-export const OFFLINE_SPEC = `MODE HORS LIGNE :
-- Tu fonctionnes en ce moment sur l'appareil de l'utilisateur, sans connexion : tu n'as ni recherche web ni lecture de pages. Ne cite aucune source, ne fabrique ni lien ni chiffre, et pour les nouveautés, tendances ou règles récentes, donne les bonnes pratiques générales en précisant que tu vérifieras sur le web une fois la connexion revenue.
-- Tout le reste fonctionne comme d'habitude : conseils, copywriting, création, recréation et modification du module avec le bloc neon, nouveaux modules et blocs personnalisés (enregistrés sur l'appareil puis envoyés au retour du réseau).
-- Sois brève dans le texte autour du bloc neon et ne garde que l'essentiel.`
-
 export interface MailyRequest {
   mode: 'chat' | 'build'
   code?: string
@@ -199,7 +193,7 @@ export const fieldsNote = (fields?: string, fieldSpecs?: string) =>
 export const libraryNote = (modules: string[], blocks: { name: string; description?: string | null }[]) =>
   `\n\nBIBLIOTHÈQUE ACTUELLE (ne crée jamais un doublon de ces éléments) :\nModules : ${modules.join(' ; ') || 'aucun'}\nBlocs personnalisés : ${blocks.map((x) => (x.description ? `${x.name} (${x.description})` : x.name)).join(' ; ') || 'aucun'}`
 
-// ---- on-device prompt -----------------------------------------------------------
+// ---- guide passages for a question -------------------------------------------------
 
 const fold = (s: string) =>
   s
@@ -208,7 +202,7 @@ const fold = (s: string) =>
     .replace(/[̀-ͯ]/g, '')
 const words = (s: string) => new Set(fold(s).match(/[a-z0-9]{4,}/g) ?? [])
 
-// The guide is too long for a small on-device model: only the entries closest
+// The guide is long: only the entries closest
 // to the question are kept (in their original order), within `max` characters.
 export function guideExcerpt(query: string, max: number): string {
   if (max < 400) return ''
@@ -232,38 +226,7 @@ export function guideExcerpt(query: string, max: number): string {
   return picked.length ? `${head}\n${picked.sort((a, b) => a.i - b.i).map((s) => s.line).join('\n')}` : ''
 }
 
-const STOP = new Set(['comment', 'faire', 'quoi', 'pour', 'avec', 'dans', 'est-ce', 'cette', 'quel', 'quelle', 'peux', 'veux', 'faut', 'mais', 'donc', 'alors', 'tout', 'tous', 'bonjour', 'merci', 'maily'])
-
-/**
- * Maily's built-in answer when no on-device model is ready (not prepared, or a
- * browser too old): the guide entries closest to the question, ranked by rare
- * shared words, in Maily's voice. Never invents anything.
- */
-export function guideAnswer(query: string): string {
-  const lines = APP_GUIDE.split('\n').slice(1).filter((l) => l.startsWith('- '))
-  const sets = lines.map(words)
-  const q = [...words(query)].filter((w) => !STOP.has(w))
-  const df = (w: string) => sets.filter((s) => s.has(w)).length
-  const weight = new Map(q.map((w) => [w, df(w) ? Math.log((lines.length + 1) / df(w)) : 0]))
-  const ranked = lines
-    .map((line, i) => ({ line, score: q.reduce((n, w) => n + (sets[i].has(w) ? weight.get(w)! : 0), 0) }))
-    .filter((r) => r.score > 0.5)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
-  const intro = "Je suis hors ligne et sans modèle sur cet appareil : je réponds avec mon guide intégré (je ne peux pas rédiger ni créer de module dans ce mode)."
-  const prepare = "Pour que je puisse aussi écrire et créer des modules sans réseau, prépare « Maily hors ligne » (bandeau en haut de ce panneau) la prochaine fois que tu es en ligne."
-  if (!ranked.length) {
-    const topics = lines.slice(0, 40).map((l) => l.slice(2, l.indexOf(' :') > 0 ? l.indexOf(' :') : 30)).filter((t) => t.length < 40 && !/hubspot/i.test(t))
-    return `${intro}\n\nJe n'ai rien trouvé de précis sur ta question dans mon guide. Demande-moi par exemple : ${topics.slice(0, 8).map((t) => `« ${t} »`).join(', ')}.\n\n${prepare}`
-  }
-  const entry = (l: string) => {
-    const cut = l.indexOf(' : ')
-    return cut > 0 && cut < 60 ? `- **${l.slice(2, cut)}** : ${l.slice(cut + 3)}` : l
-  }
-  return `${intro}\n\n${ranked.map((r) => entry(r.line)).join('\n')}\n\n${prepare}`
-}
-
-// Outline of a module too big to be sent whole to the on-device model.
+// Outline of a module, for a question that doesn't need its whole code.
 const outline = (code: string) => {
   const sections = (code.match(/data-neon="section"/g) ?? []).length
   const blocks = [...code.matchAll(/data-neon="(heading|text|button|image|divider|spacer|raw)"/g)].map((m) => m[1])
@@ -271,33 +234,55 @@ const outline = (code: string) => {
   return `${sections} section(s) ; ${count('heading')} titre(s), ${count('text')} texte(s), ${count('button')} bouton(s), ${count('image')} image(s), ${count('raw')} Bloc(s) HTML`
 }
 
-/**
- * Maily's system prompt for the on-device model: the same persona, scope, reply
- * protocol (```neon blocks) and code format as online, the web research rules
- * replaced by OFFLINE_SPEC, then the request context fitted into `budget`
- * characters (the small model's context window).
- */
-export function localSystemPrompt(req: MailyRequest & { library: string; query: string }, budget: number): string {
-  const base = `${MAILY_PERSONA}\nNous sommes le ${todayFr()}.\n${GUIDE_INTRO}\n\n${OFFLINE_SPEC}\n\n${SCOPE_SPEC}\n\n${MODULE_REPLY_SPEC}${requestNote(req)}`
-  let rest = budget - base.length
-  const parts: string[] = []
-  const add = (s: string) => {
-    if (!s || s.length > rest) return false
-    parts.push(s)
-    rest -= s.length
-    return true
+// ---- online prompt, sized to the request ----------------------------------------
+// Sending the whole guide, every spec and the whole module with each message
+// made Maily slow (~17 000 tokens before the question). Like the assistants of
+// other tools (help widgets answer from the few relevant articles, editors send
+// the document only to edit it), only what the request needs is sent.
+
+// The user wants the module (or the library) changed or built.
+export const EDIT_ASK =
+  /\b(ajoute|ajouter|change|changer|modifie|modifier|remplace|remplacer|mets|mettre|cr[ée]e|cr[ée]er|g[ée]n[èe]re|construis|fais|refais|supprime|supprimer|enl[èe]ve|retire|corrige|corriger|r[ée]pare|traduis|traduire|r[ée][ée]cris|r[ée][ée]crire|am[ée]liore|am[ée]liorer|d[ée]place|centre|aligne|agrandis|r[ée]duis|raccourcis|allonge|transforme|convertis|recr[ée]e|reproduis|int[èe]gre|applique|duplique|teste|tester|tests?|diagnostic|v[ée]rifie|nettoie|optimise|adapte|colore|harmonise|personnalise|insère|insere)\b/i
+// The answer depends on the web (news, trends, figures, a page to read).
+export const WEB_ASK =
+  /https?:\/\/|www\.|\b(actualit[ée]s?|tendances?|nouveaut[ée]s?|r[ée]cent(e|es|s)?|derni[èe]re?s? (version|mise|nouveaut)|20[2-3]\d|cherche|recherche|sources?|[ée]tudes?|statistiques?|chiffres?|benchmark|concurrents?|exemples? de (sites?|marques?|campagnes?)|inspire|inspiration|en ce moment|aujourd['’]hui|cette ann[ée]e)\b/i
+
+// What the visitor reads in a module, for a question that doesn't change it.
+const visibleText = (code: string, max: number) =>
+  code
+    .replace(/<style[\s\S]*?<\/style>|<!--[\s\S]*?-->/gi, ' ')
+    .replace(/<img[^>]*alt="([^"]*)"[^>]*>/gi, ' [image : $1] ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max)
+
+export interface OnlinePrompt {
+  system: string
+  /** Web search and page reading for this request. */
+  web: boolean
+  /** A question that changes nothing: answered with the least thinking. */
+  light: boolean
+}
+
+export function onlineSystemPrompt(req: MailyRequest & { library: string; ask: string; recent: string; aboutCode: boolean }): OnlinePrompt {
+  const edit = req.mode === 'build' || req.aboutCode || !!req.issue || !!req.imported || !!req.fieldSpecs || EDIT_ASK.test(req.ask)
+  const web = WEB_ASK.test(req.ask)
+  const parts = [`${MAILY_PERSONA}\nNous sommes le ${todayFr()}.\n${GUIDE_INTRO}`]
+  const guide = guideExcerpt(req.recent, edit ? 6_000 : 10_000)
+  if (guide) parts.push(guide)
+  parts.push(web ? RESEARCH_SPEC : "Pour les questions sur l'application, appuie-toi sur le guide ci-dessus ; s'il ne dit rien, dis-le simplement au lieu d'inventer.")
+  parts.push(EXPERT_SPEC, SCOPE_SPEC)
+  if (edit) {
+    parts.push(MODULE_REPLY_SPEC)
+    if (req.mode === 'build' || req.fieldSpecs || req.fields || /module\.|data-field|\bchamps?\b|fields/i.test(req.ask)) parts.push(FIELDS_SPEC)
+  } else {
+    parts.push("Cette demande ne modifie rien : réponds en texte, sans bloc neon. Si l'utilisateur veut finalement un changement, il te le demandera.")
   }
-  add(req.library.slice(0, 1500))
-  // The whole module or nothing: a cut module sent back would lose content.
-  if (req.code && !add(codeNote(req.code, req.moduleName))) {
-    add(
-      `\n\nModule actuellement dans l'éditeur « ${req.moduleName ?? 'Sans titre'} » : ${outline(req.code)}. Il est trop long pour ta mémoire hors ligne : ne renvoie PAS de bloc neon pour le module ouvert. Tu peux conseiller, ou créer un nouveau module (\`\`\`neon new) ou un bloc personnalisé ; propose de faire la modification une fois en ligne.`,
-    )
-  }
-  add(fieldsNote(req.fields, req.fieldSpecs?.slice(0, 4000)))
-  add(`\n\n${EXPERT_SPEC}`)
-  if (/module\.|data-field|\bchamps?\b|fields/i.test(`${req.query} ${req.fieldSpecs ?? ''}`)) add(`\n\n${FIELDS_SPEC}`)
-  const guide = guideExcerpt(req.query, rest - 2)
-  if (guide) add(`\n\n${guide}`)
-  return base + parts.join('')
+  let tail = requestNote(req)
+  if (edit) tail += req.library + codeNote(req.code, req.moduleName) + fieldsNote(req.fields, req.fieldSpecs)
+  else if (req.code)
+    tail += `\n\nModule ouvert « ${req.moduleName ?? 'Sans titre'} » : ${outline(req.code)}. Textes visibles : ${visibleText(req.code, 4_000)}${req.fields ? `\n\nChamps : ${req.fields.slice(0, 2_000)}` : ''}`
+  return { system: parts.join('\n\n') + tail, web, light: !edit && !web }
 }

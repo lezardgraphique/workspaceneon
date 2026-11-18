@@ -13,7 +13,6 @@
     "@fontsource/instrument-sans": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@google/genai": "^2.32.0",
-    "@mlc-ai/web-llm": "0.2.87",
     "@netlify/blobs": "11.1.7",
     "@netlify/database": "^2.0.1",
     "@netlify/identity": "^2.0.0",
@@ -24,8 +23,6 @@
     "@tanstack/react-start": "1.169.4",
     "@tanstack/react-store": "0.11.2",
     "@tanstack/store": "0.11.2",
-    "@wllama/wllama": "3.8.1",
-    "@wllama/wllama-compat": "3.8.1",
     "drizzle-orm": "1.0.0-beta.22",
     "gifenc": "^1.0.3",
     "happy-dom": "^21.0.4",
@@ -34,7 +31,6 @@
     "lucide-react": "1.70.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "streamdown": "2.7.1",
     "tailwindcss": "4.3.3",
     "zod": "4.6.7"
   },
@@ -56,7 +52,6 @@
   "pnpm": {
     "overrides": {
       "seroval": ">=1.6.11",
-      "katex": ">=0.18.2",
       "node-forge": ">=1.4.3",
       "sharp": ">=0.35.5",
       "toml": ">=5.0.1",

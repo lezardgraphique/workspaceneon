@@ -45,8 +45,10 @@ export function attemptsFor(withTools: boolean): Attempt[] {
   return [MODEL, MODEL, ...MODELS.slice(1)].map((model) => ({ model, tools: withTools, thinking: true }))
 }
 
-export const thinkingFor = (model: string, level: 'low' | 'medium') =>
-  /^gemini-3/.test(model) ? { thinkingConfig: { thinkingLevel: level === 'low' ? ThinkingLevel.LOW : ThinkingLevel.MEDIUM } } : {}
+export const thinkingFor = (model: string, level: 'minimal' | 'low' | 'medium') =>
+  /^gemini-3/.test(model)
+    ? { thinkingConfig: { thinkingLevel: level === 'minimal' ? ThinkingLevel.MINIMAL : level === 'low' ? ThinkingLevel.LOW : ThinkingLevel.MEDIUM } }
+    : {}
 
 /**
  * One-shot generation that survives an overloaded or missing model: tries the

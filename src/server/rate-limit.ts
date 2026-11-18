@@ -46,8 +46,8 @@ export const RULES: Array<{ test: (path: string, method: string) => boolean; rul
   { test: (p) => p === '/api/import-images', rule: { name: 'import-images', max: 10, windowMs: MIN } },
   // Public image loaded by mail clients: generous, only meant to stop a flood of distinct dates (each one is drawn, ~25 ms).
   { test: (p) => p === '/countdown.gif', rule: { name: 'countdown', max: 300, windowMs: MIN } },
-  // Account copy of the offline Maily model: ~270 parts of 3 MB per transfer, sent or fetched in a few minutes.
-  { test: (p) => p.startsWith('/modele-local/'), rule: { name: 'model', max: 400, windowMs: MIN } },
+  // Freeing the old offline model copy of the account (one call per device).
+  { test: (p) => p.startsWith('/modele-local/'), rule: { name: 'model', max: 10, windowMs: MIN } },
   // MCP server: many users' AI clients can share an IP; each token also has its own limit (120/min, mcp.$.ts).
   { test: (p) => p.startsWith('/mcp/'), rule: { name: 'mcp', max: 600, windowMs: MIN } },
   { test: (p, m) => p.startsWith('/api/files/') && m === 'DELETE', rule: { name: 'delete', max: 60, windowMs: MIN } },

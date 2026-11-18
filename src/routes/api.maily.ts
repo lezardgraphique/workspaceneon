@@ -10,21 +10,7 @@ import { ai, attemptsFor, configRefused, retryable, sleep, statusOf, thinkingFor
 import type { Attempt } from '@/lib/gemini.server'
 import { CONTINUE_MARK, CONTINUE_PROMPT, trimOverlap } from '@/lib/continuation'
 import { CLAUDE_MODELS, CLAUDE_NOTE, claudeEnabled, claudeStream, takeClaudeTurn, type ClaudeTurn } from '@/server/claude.server'
-import {
-  APP_GUIDE,
-  FIELDS_SPEC,
-  GUIDE_INTRO,
-  EXPERT_SPEC,
-  MAILY_PERSONA,
-  MODULE_REPLY_SPEC,
-  RESEARCH_SPEC,
-  SCOPE_SPEC,
-  codeNote,
-  fieldsNote,
-  libraryNote,
-  requestNote,
-  todayFr,
-} from '@/lib/maily-prompts'
+import { libraryNote, onlineSystemPrompt } from '@/lib/maily-prompts'
 
 // Screenshots or mockups the user wants Maily to recreate (base64, no data: prefix).
 const Image = z.object({
@@ -76,7 +62,9 @@ type Chunk = { text?: string; candidates?: { groundingMetadata?: { groundingChun
 const BUDGET_MS = 48_000
 // Longest wait for the first words of an attempt before trying the next model
 // (the first one may think a little longer).
-const firstWordsMs = (i: number) => (i === 0 ? 32_000 : 18_000)
+// With a request-sized prompt the first words come in a few seconds: a model
+// that stays silent longer is overloaded, the next one is tried sooner.
+const firstWordsMs = (i: number) => (i === 0 ? 22_000 : 14_000)
 
 const withTimeout = <T,>(p: Promise<T>, ms: number, abort: () => void): Promise<T> =>
   new Promise<T>((resolve, reject) => {
@@ -108,9 +96,6 @@ export const Route = createFileRoute('/api/maily')({
         }
         const { messages, mode, code, moduleName, imported, issue, fields, fieldSpecs, partial } = parsed.data
 
-        const context = codeNote(code, moduleName)
-        const fieldsContext = fieldsNote(fields, fieldSpecs)
-        const notes = requestNote({ mode, imported, issue })
         // What already exists, so Maily reuses it instead of creating a twin.
         const library = await Promise.all([
           db.select({ name: modules.name }).from(modules).where(eq(modules.userId, user.id)).limit(60),
@@ -118,10 +103,6 @@ export const Route = createFileRoute('/api/maily')({
         ])
           .then(([m, b]) => libraryNote(m.map((x) => x.name), b))
           .catch(() => '')
-        const today = todayFr()
-        const systemInstruction = `${MAILY_PERSONA}\nNous sommes le ${today}.\n${GUIDE_INTRO}\n\n${APP_GUIDE}\n\n${RESEARCH_SPEC}\n\n${EXPERT_SPEC}\n\n${SCOPE_SPEC}\n\n${MODULE_REPLY_SPEC}\n\n${FIELDS_SPEC}${notes}${library}${context}${fieldsContext}`
-        // Building a module deserves a little more thought; a chat answer must come fast.
-        const level = mode === 'build' || issue ? 'medium' : 'low'
 
         const base: Content[] = messages.map((m) => ({
           role: m.role === 'assistant' ? 'model' : 'user',
@@ -136,6 +117,17 @@ export const Route = createFileRoute('/api/maily')({
         // fixes a module (within the account's daily allowance); Gemini after it.
         const lastAsk = messages[messages.length - 1]?.content ?? ''
         const aboutCode = mode === 'build' || !!issue || !!fieldSpecs || (lastAsk.length > 80 && /<[a-z!][\s\S]*>|\{%|\{\{|\*\|[A-Z_]+\|\*|%%\[/i.test(lastAsk))
+        // Only what this request needs (guide passages, specs, module, web tools):
+        // the whole guide and module with every message made Maily slow.
+        const recent = messages
+          .filter((m) => m.role === 'user')
+          .slice(-2)
+          .map((m) => m.content.slice(0, 2_000))
+          .join('\n')
+        const prompt = onlineSystemPrompt({ mode, code, moduleName, imported, issue, fields, fieldSpecs, library, ask: lastAsk.slice(0, 4_000), recent, aboutCode })
+        const systemInstruction = prompt.system
+        // Building a module deserves a little more thought; a chat answer must come fast.
+        const level = mode === 'build' || issue ? 'medium' : prompt.light ? 'minimal' : 'low'
         const useClaude = claudeEnabled() && aboutCode && (await takeClaudeTurn(user.id, !!partial))
         const turns: ClaudeTurn[] = messages.map((m) => ({ role: m.role, text: m.content || 'Recrée ce module.', images: m.images }))
         const claudeTurnsFor = (before?: string): ClaudeTurn[] =>
@@ -154,7 +146,7 @@ export const Route = createFileRoute('/api/maily')({
             try {
               const it = claudeStream(model, claudeSystem, claudeTurnsFor(before), ctrl.signal)[Symbol.asyncIterator]()
               for (;;) {
-                const r = await withTimeout(it.next(), Math.min(i === 0 ? 30_000 : 18_000, left), onAbort)
+                const r = await withTimeout(it.next(), Math.min(i === 0 ? 24_000 : 14_000, left), onAbort)
                 if (r.done) throw new Error('empty answer')
                 if (r.value) {
                   const rest: AsyncIterator<Chunk> = {
@@ -238,7 +230,7 @@ export const Route = createFileRoute('/api/maily')({
         const contents = partial ? resume(partial) : base
         let opened: Awaited<ReturnType<typeof open>>
         try {
-          opened = await open(contents, true, partial)
+          opened = await open(contents, prompt.web, partial)
         } catch (err) {
           console.error('Maily error', err)
           const s = statusOf(err)

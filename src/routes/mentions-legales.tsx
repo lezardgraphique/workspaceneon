@@ -8,7 +8,7 @@ import { KOFI_URL } from '@/lib/links'
 // privacy policy (RGPD art. 13). Keep it in step with what the code really
 // sends where: Netlify (hosting, accounts, data), Google Gemini and Anthropic Claude through the
 // Netlify AI Gateway (Maily), Have I Been Pwned (5 hash characters),
-// Hugging Face (offline model, on request), the security journal (30 days).
+// the security journal (30 days).
 export const Route = createFileRoute('/mentions-legales')({
   head: () => ({
     meta: [
@@ -20,7 +20,7 @@ export const Route = createFileRoute('/mentions-legales')({
   component: MentionsLegales,
 })
 
-const UPDATED = '16 novembre 2026'
+const UPDATED = '18 novembre 2026'
 
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
@@ -90,7 +90,7 @@ function MentionsLegales() {
             <li>
               <strong className="text-white">Maily, l'assistante IA</strong> : quand tu lui écris (ou demandes une génération), ton message et le code utile du module sont envoyés par l'AI Gateway de
               Netlify à Google Gemini (conversation, recherche web) ou à Anthropic Claude (reconnaissance, création et correction du code), pour produire la réponse. L'AI Gateway de
-              Netlify ne conserve ni tes messages ni les réponses. Rien n'est envoyé si tu ne la sollicites pas. Le mode hors ligne, lui, fonctionne entièrement sur ton appareil.
+              Netlify ne conserve ni tes messages ni les réponses. Rien n'est envoyé si tu ne la sollicites pas. Hors ligne, ses réponses sont préparées sur ton appareil et rien n'est envoyé.
             </li>
             <li>
               <strong className="text-white">Vérification des mots de passe</strong> : à la création d'un mot de passe, seuls les 5 premiers caractères de son empreinte SHA-1 sont envoyés à
@@ -106,8 +106,8 @@ function MentionsLegales() {
             </li>
           </ul>
           <p>
-            Aucun cookie publicitaire, aucune mesure d'audience, aucun traceur tiers. Les polices sont servies par le site lui-même. Le modèle d'IA hors ligne n'est téléchargé depuis Hugging
-            Face que si tu le demandes.
+            Aucun cookie publicitaire, aucune mesure d'audience, aucun traceur tiers. Les polices sont servies par le site lui-même. Hors ligne, Maily répond depuis
+            ton appareil sans rien télécharger ni envoyer.
           </p>
         </Section>
 

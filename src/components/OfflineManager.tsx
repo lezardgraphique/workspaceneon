@@ -1,71 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, useRouterState } from '@tanstack/react-router'
-import { Check, ChevronUp, CloudOff, Cpu, Loader2, RefreshCw, Sparkles, X } from 'lucide-react'
+import { Check, ChevronUp, CloudOff, Loader2, RefreshCw, Sparkles, X } from 'lucide-react'
 
-import { dismissNotice, isOffline, markOnline, refreshPending, showNotice, syncAll, useDataStatus } from '@/lib/data'
-import {
-  canShareOfflineAi,
-  checkOfflineAi,
-  getOfflineAiState,
-  offlineAiPreparedHere,
-  offlineAiWanted,
-  offlineAiWantedHere,
-  prepareOfflineAi,
-  removeOfflineAi,
-  saveData,
-  shareOfflineAi,
-  subscribeOfflineAi,
-  unmetered,
-} from '@/lib/offline-ai'
-import { AI_SHARED_KEY, AI_WANTED_KEY } from '@/lib/settings-keys'
-import { knowsPref, pullSettings, setPref, SETTINGS_EVENT } from '@/lib/settings-sync'
-import type { OfflineAiState } from '@/lib/offline-ai'
+import { dismissNotice, isOffline, markOnline, refreshPending, syncAll, useDataStatus } from '@/lib/data'
+import { forgetOfflineModel } from '@/lib/offline-cleanup'
+import { pullSettings } from '@/lib/settings-sync'
 
 /** Window event asking the editor to show Maily's panel. */
 export const OPEN_MAILY_EVENT = 'nsp:open-maily'
-const TIP_KEY = 'nsp-offline-ai-tip'
-const AI_NOTICE_KEY = 'nsp-ai-follow-notice'
-
-let following: Promise<void> | null = null
-// Maily hors ligne follows the account: switched on on one device, the others
-// prepare their own model (each device needs its own copy: browser storage is
-// never shared between devices), switched off everywhere, they remove it.
-function followAccountAi(): Promise<void> {
-  following ??= (async () => {
-    // Prepared on this device before preferences were synced: tell the account.
-    if (offlineAiPreparedHere() && !knowsPref(AI_WANTED_KEY)) setPref(AI_WANTED_KEY, '1')
-    // Gemma 3 prepared here (e.g. on the computer): keep a copy on the account for the other devices.
-    if (canShareOfflineAi() && unmetered()) void shareOfflineAi()
-    if (!offlineAiWantedHere() || offlineAiPreparedHere()) return
-    const s = await checkOfflineAi()
-    if (s.status !== 'available' && s.status !== 'error') return
-    // A copy is waiting on the account: fetched at once, on any connection (except
-    // data saver), so Maily is ready here before the network drops.
-    if (s.status === 'available' && s.fromAccount && !saveData()) {
-      await prepareOfflineAi()
-      return
-    }
-    // Gemini Nano is downloaded by the browser itself and needs a click.
-    if (s.status === 'available' && s.engine !== 'nano' && unmetered()) {
-      await prepareOfflineAi()
-      return
-    }
-    if (sessionStorage.getItem(AI_NOTICE_KEY)) return
-    sessionStorage.setItem(AI_NOTICE_KEY, '1')
-    showNotice(
-      `Maily hors ligne est activée sur ton compte. Pour l’avoir aussi sur cet appareil : ouvre un module, onglet Maily, puis « Préparer »${s.size ? ` (${s.size}, de préférence en Wi-Fi)` : ''}.`,
-    )
-  })()
-    .catch(() => {})
-    .finally(() => {
-      following = null
-    })
-  return following
-}
-
 // Registers the service worker, keeps the local copy in sync with the server
 // when the connection is there, and shows a small status pill when it isn't:
-// a button opening what works offline, Maily's on-device state included.
+// a button opening what works offline.
 export function OfflineManager() {
   const router = useRouter()
   const st = useDataStatus()
@@ -90,19 +35,13 @@ export function OfflineManager() {
     if (go && /^\/(?![/\\])/.test(go)) void router.navigate({ to: go, replace: true })
     else if (isOffline()) void router.invalidate()
 
-    // Preferences of the account (and Maily hors ligne) from the other devices.
+    // Preferences of the account from the other devices.
     const pull = () => {
-      if (!isOffline() && document.visibilityState === 'visible') void pullSettings().then(followAccountAi)
+      if (!isOffline() && document.visibilityState === 'visible') void pullSettings()
     }
-    const onSettings = (e: Event) => {
-      const keys = (e as CustomEvent<string[]>).detail ?? []
-      // Switched off on another device ("De tous mes appareils"): free this one too.
-      if (keys.includes(AI_WANTED_KEY) && !offlineAiWanted() && offlineAiPreparedHere()) void removeOfflineAi('remote')
-      // The copy sent from another device is on the account: take it now.
-      else if (keys.includes(AI_SHARED_KEY)) void followAccountAi()
-    }
-    window.addEventListener(SETTINGS_EVENT, onSettings)
     pull()
+    // The model older versions downloaded for offline Maily: freed once.
+    void forgetOfflineModel()
 
     const sync = () => {
       if (document.visibilityState !== 'visible') return
@@ -138,7 +77,6 @@ export function OfflineManager() {
       window.removeEventListener('online', onOnline)
       window.removeEventListener('offline', onOffline)
       document.removeEventListener('visibilitychange', onVisible)
-      window.removeEventListener(SETTINGS_EVENT, onSettings)
       clearInterval(timer)
     }
   }, [router])
@@ -148,33 +86,6 @@ export function OfflineManager() {
     const t = setTimeout(dismissNotice, 12000)
     return () => clearTimeout(t)
   }, [st.notice])
-
-  // Maily on the device: only looked at once the connection is gone (or a model
-  // is being downloaded), so normal pages never wake WebGPU or the model files.
-  const ai = useOfflineAiState()
-  useEffect(() => {
-    if (!st.online) void checkOfflineAi().catch(() => {})
-  }, [st.online])
-
-  // Back online after a cut while Maily couldn't follow: suggest preparing her, once.
-  const wasOffline = useRef(false)
-  useEffect(() => {
-    if (!st.online) {
-      wasOffline.current = true
-      return
-    }
-    if (!wasOffline.current) return
-    wasOffline.current = false
-    const a = getOfflineAiState()
-    if ((a.status === 'available' || a.status === 'error') && !localStorage.getItem(TIP_KEY)) {
-      try {
-        localStorage.setItem(TIP_KEY, '1')
-      } catch {
-        /* private mode */
-      }
-      showNotice('De retour en ligne. Pour la prochaine coupure, ouvre un module, onglet Maily, puis « Préparer » dans le bandeau « Maily hors ligne ».')
-    }
-  }, [st.online])
 
   const [open, setOpen] = useState(false)
   // The badge shows its text for a few seconds when the connection drops,
@@ -207,10 +118,7 @@ export function OfflineManager() {
   }, [open])
 
   const inEditor = useRouterState({ select: (r) => r.location.pathname.startsWith('/editor/') })
-  const mailyReady = ai.status === 'ready'
   const pendingText = st.pending ? `${st.pending} modification${st.pending > 1 ? 's' : ''} en attente` : null
-  const pct = ai.status === 'downloading' && ai.progress !== null ? Math.round(ai.progress * 100) : null
-  const sharePct = typeof ai.sharing === 'number' ? Math.round(ai.sharing * 100) : null
 
   const pill = 'fixed right-3 bottom-20 z-40 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full border px-3 py-1.5 text-xs shadow-lg lg:bottom-3'
   return (
@@ -237,14 +145,13 @@ export function OfflineManager() {
           >
             <CloudOff className="size-3.5 shrink-0 text-cyan" aria-hidden />
             <span className={peek || open ? 'truncate' : 'sr-only'}>
-              Hors ligne · {[pendingText, mailyReady ? 'Maily sur l’appareil' : null].filter(Boolean).join(' · ') || 'tes modules restent disponibles'}
+              Hors ligne · {pendingText ?? 'tes modules restent disponibles'}
             </span>
             {!peek && !open && st.pending > 0 && (
               <span aria-hidden className="absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full bg-pink-fill px-1 text-[10px] font-semibold leading-4 text-white">
                 {st.pending}
               </span>
             )}
-            {(peek || open) && mailyReady && <Cpu className="size-3.5 shrink-0 text-cyan" aria-hidden />}
             {(peek || open) && <ChevronUp className={`size-3.5 shrink-0 text-mute transition-transform ${open ? '' : 'rotate-180'}`} aria-hidden />}
           </button>
           <div
@@ -264,28 +171,10 @@ export function OfflineManager() {
                 </span>
               </li>
               <li className="flex gap-2">
-                {mailyReady ? (
-                  <Sparkles className="mt-0.5 size-3.5 shrink-0 text-cyan" aria-hidden />
-                ) : ai.status === 'checking' || ai.status === 'downloading' ? (
-                  <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin text-mute" aria-hidden />
-                ) : (
-                  <Sparkles className="mt-0.5 size-3.5 shrink-0 text-pink" aria-hidden />
-                )}
+                <Sparkles className="mt-0.5 size-3.5 shrink-0 text-cyan" aria-hidden />
                 <span className="min-w-0 flex-1">
-                  {mailyReady ? (
-                    <>
-                      Maily répond directement depuis ton appareil : elle crée et modifie tes modules, sans recherche web.
-                    </>
-                  ) : ai.status === 'checking' ? (
-                    'Vérification de Maily hors ligne…'
-                  ) : ai.status === 'downloading' ? (
-                    'Maily hors ligne est en cours de préparation.'
-                  ) : ai.status === 'unsupported' ? (
-                    'Ce navigateur est trop ancien pour un modèle sur l’appareil : Maily répond quand même avec son guide intégré (mets ton navigateur à jour pour la version complète).'
-                  ) : (
-                    'Maily répond avec son guide intégré. Pour qu’elle rédige et crée des modules sans réseau : à ta prochaine connexion, ouvre un module, onglet Maily, puis « Préparer » dans le bandeau « Maily hors ligne » (une seule fois, tous les navigateurs récents).'
-                  )}
-                  {mailyReady && inEditor && (
+                  Maily répond tout de suite, sans rien télécharger : questions sur l’outil et l’emailing, correction du code, vérification du module, tests. Ce qui demande l’IA (rédiger, créer un module) part au retour du réseau.
+                  {inEditor && (
                     <button
                       type="button"
                       onClick={() => {
@@ -314,22 +203,7 @@ export function OfflineManager() {
         <button type="button" onClick={() => void syncAll()} className={`${pill} border-pink/60 bg-night/95 text-white hover:border-pink`}>
           <RefreshCw className="size-3.5 text-pink" /> Synchroniser ({st.pending})
         </button>
-      ) : pct !== null ? (
-        <div role="status" className={`${pill} border-cyan/50 bg-night/95 text-white`}>
-          <Loader2 className="size-3.5 animate-spin text-cyan" aria-hidden /> Préparation de Maily hors ligne{ai.fromAccount ? ' (copie de ton compte)' : ''} : {pct} %
-        </div>
-      ) : sharePct !== null ? (
-        <div role="status" className={`${pill} border-cyan/50 bg-night/95 text-white`}>
-          <Loader2 className="size-3.5 animate-spin text-cyan" aria-hidden /> Copie de Maily hors ligne sur ton compte : {sharePct} %
-        </div>
       ) : null}
     </div>
   )
-}
-
-// Subscribes without checking: the check happens only when it's useful.
-function useOfflineAiState(): OfflineAiState {
-  const [s, setS] = useState<OfflineAiState>(getOfflineAiState)
-  useEffect(() => subscribeOfflineAi(setS), [])
-  return s
 }

@@ -2,7 +2,6 @@ import { bringImages, imagesNote, swapUrls, textsOf } from '@/lib/import-images'
 import { useEffect, useRef, useState } from 'react'
 import { guardedFetch } from '@/lib/session-guard'
 import { CheckCircle2, ChevronDown, ExternalLink, FileCode2, Heart, Lightbulb, Loader2, MessageCircle, Paperclip, Plus, RotateCcw, Send, Square, Wand2, X } from 'lucide-react'
-import { Streamdown } from 'streamdown'
 
 import { Maily } from '@/components/Maily'
 import type { MailyMood } from '@/components/Maily'
@@ -19,14 +18,12 @@ import type { ModuleTree, Section } from '@/lib/types'
 import { slugify } from '@/lib/custom-blocks'
 import type { CustomBlock } from '@/lib/custom-blocks'
 import { createLocalFirst, isNetworkError, isOffline, loadBlocks, loadModules, saveBlock, useDataStatus } from '@/lib/data'
-import { guideAnswer, libraryNote, localSystemPrompt } from '@/lib/maily-prompts'
+import { localReply } from '@/lib/maily-local'
 import { formatReport, runSelfTests } from '@/lib/self-test'
 import { codeFromFields } from '@/lib/import-repair'
 import { CONTINUE_MARK, stripMark, wantsContinue } from '@/lib/continuation'
-import { localAiEnabled, localContextTokens, streamOfflineMaily } from '@/lib/offline-ai'
-import type { LocalMessage } from '@/lib/offline-ai'
 import { refreshCustomBlocks } from './useCustomBlocks'
-import { MailyOffline, useOfflineAi } from './MailyOffline'
+import { MiniMarkdown } from './MiniMarkdown'
 
 // A screenshot/mockup or an HTML file sent to Maily, usually to recreate it.
 interface Attachment {
@@ -59,6 +56,8 @@ interface Msg {
   waiting?: boolean
   /** The request failed: « Réessayer » sends the user's last message again. */
   retry?: boolean
+  /** Kept while offline: sent to Maily as soon as the connection is back. */
+  queued?: boolean
 }
 
 type Mode = 'chat' | 'build'
@@ -308,24 +307,6 @@ async function* askMaily(body: object, signal: AbortSignal, onWait: (note: strin
   }
 }
 
-// Fits the conversation into the on-device model's window (~3 characters per
-// token): the last message first, then the most recent ones; turns alternate.
-function localTurns(payload: ReturnType<typeof toPayload>[], budget: number): LocalMessage[] {
-  const out: LocalMessage[] = []
-  let left = budget
-  for (let i = payload.length - 1; i >= 0 && left > 200; i--) {
-    const m = payload[i]
-    const max = i === payload.length - 1 ? left : Math.min(left, 2500)
-    const content = m.content.length > max ? `${m.content.slice(0, max - 40)}\n[… coupé pour le mode hors ligne]` : m.content
-    const prev = out[0]
-    if (prev && prev.role === m.role) prev.content = `${content}\n\n${prev.content}`
-    else out.unshift({ role: m.role, content, ...(i === payload.length - 1 && m.images ? { images: m.images } : {}) })
-    left -= content.length
-  }
-  while (out.length && out[0].role !== 'user') out.shift()
-  return out
-}
-
 const TIPS = [
   'Un objet de moins de 45 caractères s\'affiche en entier sur la plupart des mobiles.',
   'Un seul appel à l\'action principal par email : il est cliqué jusqu\'à 2× plus.',
@@ -334,9 +315,6 @@ const TIPS = [
   'Garde ton email sous 600 px de large pour un rendu fiable dans Outlook.',
   'Sur mobile, empile les colonnes : la lecture se fait au pouce, de haut en bas.',
 ]
-
-// A request for the internal tests (also answered without any model).
-const TEST_ASK = /\b(teste|tester|test|tests|diagnostic|v[ée]rifie (que )?(tout|l['’]outil|l['’]appli))/i
 
 const SUGGESTIONS: Record<Mode, string[]> = {
   chat: [
@@ -391,8 +369,6 @@ export function MailyPanel({
     const [mods, blks] = await Promise.all([loadModules().catch(() => []), loadBlocks().catch(() => [])])
     return runSelfTests({ tree, name: moduleName, modules: mods.map((m) => m.name), blocks: blks.map((b) => b.name), pending })
   }
-  const localAi = useOfflineAi()
-  const onDevice = !online && localAi.status === 'ready'
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
@@ -424,9 +400,8 @@ export function MailyPanel({
   // (twice at most) instead of reaching the editor.
   const converse = async (
     history: Msg[],
-    // `local`: answered by the on-device model (no connection)
     // `tested`: the internal tests already ran for this request (never twice in a row)
-    ctx: { requestCode: string; imported: boolean; issue?: string; specs: FieldSpec[]; local?: boolean; tested?: boolean },
+    ctx: { requestCode: string; imported: boolean; issue?: string; specs: FieldSpec[]; tested?: boolean },
     attempt: number,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -442,34 +417,7 @@ export function MailyPanel({
       .join('\n')
 
     let source: AsyncIterable<string>
-    if (ctx.local) {
-      // Same instructions and protocol as online, sized for the small model.
-      const tokens = localContextTokens()
-      const reserve = Math.round(mode === 'build' || ctx.issue || ctx.imported ? Math.min(3000, tokens * 0.4) : Math.min(1000, tokens * 0.2))
-      const chars = (tokens - reserve) * 3
-      const payload = history.map((m, i) => toPayload(m, i === history.length - 1))
-      const turns = localTurns(payload, Math.round(chars * 0.35))
-      const used = turns.reduce((n, t) => n + t.content.length, 0)
-      const library = await Promise.all([loadModules(), loadBlocks()])
-        .then(([m, b]) => libraryNote(m.slice(0, 60).map((x) => x.name), b.slice(0, 60)))
-        .catch(() => '')
-      const system = localSystemPrompt(
-        {
-          mode,
-          code: ctx.requestCode,
-          moduleName,
-          imported: ctx.imported,
-          issue: ctx.issue,
-          fields: fields || undefined,
-          fieldSpecs: ctx.specs.length ? JSON.stringify(ctx.specs) : undefined,
-          library,
-          query: turns[turns.length - 1]?.content ?? '',
-        },
-        chars - used,
-      )
-      source = streamOfflineMaily(system, turns, reserve, signal)
-      push({ role: 'assistant', content: '' })
-    } else {
+    {
       // Shown at once, with what is happening while Maily is reached.
       push({ role: 'assistant', content: '', waiting: true })
       const onWait = (note: string) => {
@@ -497,13 +445,24 @@ export function MailyPanel({
       )
     }
     let acc = ''
+    // At most one repaint per frame while the reply streams in (each word used
+    // to re-render the conversation: the main cause of the panel lagging).
+    let shown: Msg | null = null
+    let frame = 0
+    const paint = () => {
+      frame = 0
+      if (shown) setLast(shown)
+    }
     for await (const chunk of source) {
       acc += chunk
       const part = splitReply(acc, mode === 'build')
       // Hide a ```neon fence that is still arriving.
       const visible = part.building || part.blocks.length ? part.text : part.text.replace(/`{1,3}(n(e(on?)?)?)?$/, '')
-      setLast({ role: 'assistant', content: visible, building: part.building || part.blocks.length > 0 })
+      shown = { role: 'assistant', content: visible, building: part.building || part.blocks.length > 0 }
+      if (!frame) frame = requestAnimationFrame(paint)
     }
+    if (frame) cancelAnimationFrame(frame)
+    paint()
 
     const reply = splitReply(acc, mode === 'build')
     // Internal tests asked by Maily (```neon test): run here, shown in the chat,
@@ -649,6 +608,31 @@ export function MailyPanel({
       return last?.role === 'assistant' && (last.waiting || !last.content.trim()) ? prev.slice(0, -1) : prev
     })
 
+  // Maily's instant answer without the online model (offline, or service down).
+  const answerLocally = async (userMsg: Msg, offline: boolean, note?: string) => {
+    const r = localReply(note ? `${userMsg.content}` : userMsg.content, { tree, name: moduleName, code, offline })
+    // Pasted code was already converted and applied: that is the answer.
+    if (note && !r.runTests && !r.fixedCode) {
+      push({ role: 'assistant', content: offline ? "Ton code est appliqué dans l'éditeur. Pour une relecture par l'IA, je m'en occupe dès le retour du réseau." : r.text, queued: offline || undefined, retry: !offline || undefined })
+      if (offline) markQueued(userMsg)
+      setMood('happy')
+      return
+    }
+    let text = r.text
+    let applied = false
+    if (r.runTests) text = `${r.text}\n\n${formatReport(await testTool())}`
+    if (r.fixedCode) {
+      const err = applyCode(r.fixedCode)
+      if (err) text = `Je n'ai pas pu appliquer la correction : ${err}`
+      else applied = true
+    }
+    push({ role: 'assistant', content: text, applied: applied || undefined, tests: r.runTests || undefined, queued: r.queued || undefined, retry: (!offline && !r.runTests && !r.fixedCode) || undefined })
+    if (r.queued) markQueued(userMsg)
+    setMood(applied ? 'success' : 'happy')
+  }
+  // The question waits for the network (a small "en attente" under it).
+  const markQueued = (userMsg: Msg) => setMessages((prev) => prev.map((m) => (m === userMsg ? { ...m, queued: true } : m)))
+
   const send = async (text: string, attached: Attachment[] = files, base: Msg[] = messages) => {
     const content = text.trim()
     if ((!content && !attached.length) || loading) return
@@ -715,36 +699,29 @@ export function MailyPanel({
     abortRef.current = ctrl
 
     const ctx = { requestCode, imported: !!imported, issue, specs }
-    const canLocal = () => localAiEnabled() && localAi.status === 'ready'
+    // Without a connection Maily answers at once from what the tool knows
+    // (src/lib/maily-local.ts); what needs her online is kept for later.
+    if (isOffline()) {
+      await answerLocally(userMsg, true, note)
+      setLoading(false)
+      abortRef.current = null
+      return
+    }
     try {
-      try {
-        await converse(history, { ...ctx, local: isOffline() && localAiEnabled() }, 0, ctrl.signal)
-      } catch (e) {
-        // Maily can't be reached (no connection, or the service stays down
-        // after the retries): the on-device model takes over when there is one.
-        const network = isOffline() || isNetworkError(e)
-        if (ctrl.signal.aborted || (e as Error).name === 'AbortError' || !(network ? localAiEnabled() : canLocal() && e instanceof MailyError && e.status !== 413 && e.status !== 400)) throw e
-        dropPlaceholder()
-        await converse(history, { ...ctx, local: true }, 0, ctrl.signal)
-      }
+      await converse(history, ctx, 0, ctrl.signal)
     } catch (e) {
       if ((e as Error).name === 'AbortError' || ctrl.signal.aborted) {
         setMessages((prev) =>
           prev.filter((m, i) => !(i === prev.length - 1 && m.waiting)).map((m) => (m.building ? { ...m, building: false, content: m.content || 'Génération arrêtée.' } : m)),
         )
       } else if (isOffline() || isNetworkError(e)) {
+        // The connection dropped while she was answering.
         dropPlaceholder()
-        push({
-          role: 'assistant',
-          retry: true,
-          content: localAiEnabled()
-            ? '⚠️ Mon modèle hors ligne n’a pas pu répondre. Réessaie, ou attends le retour de la connexion : l’éditeur, lui, continue de fonctionner.'
-            : // No model on the device: Maily still answers, from her built-in guide
-              // (and still runs the internal tests when they are asked for).
-              TEST_ASK.test(userMsg.content)
-              ? formatReport(await testTool())
-              : guideAnswer(userMsg.content),
-        })
+        await answerLocally(userMsg, true, note)
+      } else if (e instanceof MailyError && e.status !== 413 && e.status !== 400) {
+        // The AI service is down: what can be answered here still is.
+        dropPlaceholder()
+        await answerLocally(userMsg, false, note)
       } else {
         dropPlaceholder()
         push({
@@ -759,6 +736,21 @@ export function MailyPanel({
       abortRef.current = null
     }
   }
+
+  // Back online: the question kept while offline goes to Maily, as if just sent
+  // (the instant offline answers after it are replaced by hers).
+  const wasOnline = useRef(online)
+  useEffect(() => {
+    const back = online && !wasOnline.current
+    wasOnline.current = online
+    if (!back || loading) return
+    let idx = messages.length - 1
+    while (idx >= 0 && !(messages[idx].role === 'user' && messages[idx].queued)) idx--
+    if (idx < 0) return
+    const m = messages[idx]
+    void send(m.content, m.files ?? [], messages.slice(0, idx).map((x) => (x.queued ? { ...x, queued: false } : x)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online])
 
   // Sends the last user message again, as it was (after a failure).
   const retryLast = () => {
@@ -806,10 +798,14 @@ export function MailyPanel({
         <Maily size={48} mood={mood} className="land:hidden" />
         <div className="min-w-0">
           <p className="font-display font-semibold tracking-wide">NEON AI CHAT</p>
-          <p className="text-xs text-mute">{loading ? 'Maily réfléchit…' : onDevice ? 'Maily · hors ligne · sur l’appareil' : !online ? 'Maily · hors ligne · guide intégré' : 'Maily · en ligne · recherche web'}</p>
+          <p className="text-xs text-mute">{loading ? 'Maily réfléchit…' : !online ? 'Maily · hors ligne · réponses instantanées' : 'Maily · en ligne'}</p>
         </div>
       </div>
-      <MailyOffline offline={!online} />
+      {!online && (
+        <p className="border-b border-line bg-cyan/5 px-4 py-2 text-xs text-mute land:py-1">
+          Hors ligne : je réponds tout de suite sur l’outil, je corrige et vérifie ton module. Ce qui demande l’IA part au retour du réseau.
+        </p>
+      )}
 
       <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto p-4 max-sm:space-y-2.5 max-sm:p-3 land:p-2">
         <button
@@ -855,7 +851,7 @@ export function MailyPanel({
                 <>
                   {m.content ? (
                     <FoldedReply live={!!m.building || (loading && i === messages.length - 1)}>
-                      <Streamdown>{m.content}</Streamdown>
+                      <MiniMarkdown>{m.content}</MiniMarkdown>
                     </FoldedReply>
                   ) : (
                     !m.building && <Loader2 className="size-4 animate-spin text-cyan" />
@@ -909,6 +905,7 @@ export function MailyPanel({
                 <>
                   {m.files && <Attachments files={m.files} />}
                   {m.content}
+                  {m.queued && <span className="mt-1 block text-[11px] text-white/80">En attente du réseau · envoyé dès la reconnexion</span>}
                 </>
               )}
             </div>

@@ -12,19 +12,15 @@ import { RULES, hit } from '@/server/rate-limit'
 // img/style/font sources: emails load remote images and web fonts).
 const CSP = [
   "default-src 'self'",
-  // 'wasm-unsafe-eval': WebAssembly of the on-device Maily model (WebLLM), no JS eval.
-  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+  "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "img-src 'self' data: blob: https:",
   "media-src 'self'",
-  // Offline Maily (Gemma through WebLLM): model files downloaded once from
-  // Hugging Face and the GPU kernels from the MLC repository, on the user's request.
-  // + Have I Been Pwned (new passwords: only 5 characters of a hash are sent).
-  "connect-src 'self' https://huggingface.co https://*.hf.co https://*.huggingface.co https://raw.githubusercontent.com https://api.pwnedpasswords.com",
+  // Have I Been Pwned (new passwords: only 5 characters of a hash are sent).
+  "connect-src 'self' https://api.pwnedpasswords.com",
   "frame-src 'self' about: data: blob:",
-  // Offline Maily on the processor (llama.cpp in WebAssembly) runs in workers built from blob: URLs.
-  "worker-src 'self' blob:",
+  "worker-src 'self'",
   // Only Netlify's dashboard may show the app in a frame (deploy previews);
   // any other site still can't frame it (clickjacking).
   "frame-ancestors 'self' https://app.netlify.com",
