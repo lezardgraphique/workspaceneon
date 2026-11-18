@@ -6,9 +6,9 @@ import { eq } from 'drizzle-orm'
 import { sessionUser, unauthorized } from '@/server/auth.server'
 import { db } from '../../db/index.js'
 import { customBlocks, modules } from '../../db/schema.js'
-import { ai, attemptsFor, configRefused, retryable, sleep, statusOf, thinkingFor } from '@/lib/gemini.server'
+import { ai, attemptsFor, configRefused, renewAi, retryable, sleep, statusOf, thinkingFor } from '@/lib/gemini.server'
 import type { Attempt } from '@/lib/gemini.server'
-import { CONTINUE_MARK, CONTINUE_PROMPT, trimOverlap } from '@/lib/continuation'
+import { CONTINUE_MARK, CONTINUE_PROMPT, KEEPALIVE, failMark, trimOverlap } from '@/lib/continuation'
 import { CLAUDE_MODELS, CLAUDE_NOTE, claudeEnabled, claudeStream, takeClaudeTurn, type ClaudeTurn } from '@/server/claude.server'
 import { libraryNote, onlineSystemPrompt } from '@/lib/maily-prompts'
 
@@ -64,7 +64,7 @@ const BUDGET_MS = 48_000
 // (the first one may think a little longer).
 // With a request-sized prompt the first words come in a few seconds: a model
 // that stays silent longer is overloaded, the next one is tried sooner.
-const firstWordsMs = (i: number) => (i === 0 ? 22_000 : 14_000)
+const firstWordsMs = (i: number) => (i === 0 ? 28_000 : 16_000)
 
 const withTimeout = <T,>(p: Promise<T>, ms: number, abort: () => void): Promise<T> =>
   new Promise<T>((resolve, reject) => {
@@ -211,6 +211,8 @@ export const Route = createFileRoute('/api/maily')({
                 last = err
                 if (request.signal.aborted) throw err
                 console.error(`Maily ${a.model}${a.tools ? ' +outils' : ''}${a.thinking ? ' +réflexion' : ''} :`, statusOf(err) || '', String((err as Error)?.message ?? err).slice(0, 300))
+                // Refused credentials: a new client reads them again before the next try.
+                if (statusOf(err) === 401) renewAi()
                 // An option refused: same model without it.
                 if (configRefused(err) && (a.tools || a.thinking)) {
                   a = a.tools ? { ...a, tools: false } : { ...a, thinking: false }
@@ -228,28 +230,63 @@ export const Route = createFileRoute('/api/maily')({
         }
 
         const contents = partial ? resume(partial) : base
-        let opened: Awaited<ReturnType<typeof open>>
-        try {
-          opened = await open(contents, prompt.web, partial)
-        } catch (err) {
+        const failure = (err: unknown) => {
           console.error('Maily error', err)
-          const s = statusOf(err)
-          const busy = s === 429 || /exhausted|quota/i.test(String((err as Error)?.message ?? ''))
-          return Response.json(
-            {
-              error: busy
-                ? 'Maily reçoit beaucoup de demandes en ce moment. Réessaie dans quelques secondes.'
-                : 'Maily ne répond pas pour le moment (service d’IA surchargé ou injoignable). Réessaie dans un instant.',
-              retry: true,
-            },
-            { status: 503, headers: { 'Retry-After': busy ? '8' : '3' } },
-          )
+          const busy = statusOf(err) === 429 || /exhausted|quota/i.test(String((err as Error)?.message ?? ''))
+          return {
+            busy,
+            message: busy
+              ? 'Maily reçoit beaucoup de demandes en ce moment. Réessaie dans quelques secondes.'
+              : 'Maily ne répond pas pour le moment (service d’IA surchargé ou injoignable). Réessaie dans un instant.',
+          }
+        }
+        // A model that thinks long (a module to build, an image to read) may stay
+        // silent beyond the platform's ~30 s limit for a first byte: after 18 s the
+        // answer starts anyway (invisible KEEPALIVE marks) and the models keep trying.
+        const opening = open(contents, prompt.web, partial)
+        const early = await Promise.race([
+          opening.then(
+            (o) => ({ o }),
+            (err: unknown) => ({ err }),
+          ),
+          sleep(18_000).then(() => null),
+        ])
+        if (early && 'err' in early) {
+          const f = failure(early.err)
+          return Response.json({ error: f.message, retry: true }, { status: 503, headers: { 'Retry-After': f.busy ? '8' : '3' } })
         }
 
         const encoder = new TextEncoder()
         return new Response(
           new ReadableStream({
             async start(controller) {
+              let opened: Awaited<ReturnType<typeof open>>
+              if (early) opened = early.o
+              else {
+                const alive = () => {
+                  try {
+                    controller.enqueue(encoder.encode(KEEPALIVE))
+                  } catch {
+                    /* closed */
+                  }
+                }
+                alive()
+                const beat = setInterval(alive, 8_000)
+                try {
+                  opened = await opening
+                } catch (err) {
+                  const f = failure(err)
+                  try {
+                    controller.enqueue(encoder.encode(failMark(f.busy ? 429 : 503, f.message)))
+                    controller.close()
+                  } catch {
+                    /* closed */
+                  }
+                  return
+                } finally {
+                  clearInterval(beat)
+                }
+              }
               const sources = new Map<string, Source>()
               let written = partial ?? ''
               let out = ''

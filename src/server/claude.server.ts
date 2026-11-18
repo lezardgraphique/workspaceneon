@@ -77,7 +77,7 @@ export function claudeStream(model: string, system: string, turns: ClaudeTurn[],
     {
       model,
       max_tokens: 16_000,
-      temperature: 0.3,
+      // No temperature: the current Claude models refuse it (400 « temperature is deprecated »).
       // The long instructions are the same from one message to the next: cached 5 minutes.
       system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       messages,

@@ -2,7 +2,9 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 import type { GenerateContentConfig, GenerateContentParameters } from '@google/genai'
 
 // Credentials come from Netlify AI Gateway at runtime — no key to configure.
-export const ai = new GoogleGenAI({})
+export let ai = new GoogleGenAI({})
+/** A new client (after a 401: the gateway credentials it holds may have changed). */
+export const renewAi = () => (ai = new GoogleGenAI({}))
 export const MODEL = 'gemini-3-flash-preview'
 // Tried in this order when the main model is overloaded, rate limited or
 // missing: Maily stays available when one model isn't.
@@ -25,7 +27,7 @@ export function statusOf(err: unknown): number {
 /** Worth trying again (later or with another model). */
 export function retryable(err: unknown): boolean {
   const s = statusOf(err)
-  if (s === 408 || s === 409 || s === 429 || s === 404 || s >= 500) return true
+  if (s === 401 || s === 408 || s === 409 || s === 429 || s === 404 || s >= 500) return true
   return /overload|unavailable|exhausted|timeout|timed out|deadline|fetch failed|econnreset|socket|network|terminated|aborted|empty answer/i.test(String((err as Error)?.message ?? err))
 }
 

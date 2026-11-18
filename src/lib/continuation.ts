@@ -6,6 +6,17 @@
 /** Written alone at the very end of a stream that must be resumed. */
 export const CONTINUE_MARK = '⁣[[nsp:suite]]'
 
+/** Written while a slow model is still thinking, so the platform sees the answer
+ * has started (it cuts a response with no first byte after ~30 s). Removed by the editor. */
+export const KEEPALIVE = '\u2060'
+
+/** Ends a stream that could not start: `⁣[[nsp:erreur:503]]message`. */
+export const failMark = (status: number, message: string) => `⁣[[nsp:erreur:${status}]]${message}`
+export const readFail = (text: string): { status: number; message: string } | null => {
+  const m = /⁣\[\[nsp:erreur:(\d{3})\]\]([\s\S]*)$/.exec(text)
+  return m ? { status: Number(m[1]), message: m[2].trim() } : null
+}
+
 /** Ends with the mark (the mark itself is removed by `stripMark`). */
 export const wantsContinue = (text: string) => text.trimEnd().endsWith(CONTINUE_MARK)
 export const stripMark = (text: string) => text.replace(/\s*⁣\[\[nsp:suite\]\]\s*$/, '')

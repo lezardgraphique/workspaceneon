@@ -21,7 +21,7 @@ import { createLocalFirst, isNetworkError, isOffline, loadBlocks, loadModules, s
 import { localReply } from '@/lib/maily-local'
 import { formatReport, runSelfTests } from '@/lib/self-test'
 import { codeFromFields } from '@/lib/import-repair'
-import { CONTINUE_MARK, stripMark, wantsContinue } from '@/lib/continuation'
+import { CONTINUE_MARK, KEEPALIVE, readFail, stripMark, wantsContinue } from '@/lib/continuation'
 import { refreshCustomBlocks } from './useCustomBlocks'
 import { MiniMarkdown } from './MiniMarkdown'
 
@@ -279,8 +279,11 @@ async function* askMaily(body: object, signal: AbortSignal, onWait: (note: strin
     let held = ''
     let broken = false
     try {
-      for await (const chunk of readText(stream)) {
-        // The resume mark is held back until the end (never shown).
+      for await (const raw of readText(stream)) {
+        // Marks sent while a slow model thinks: never shown.
+        const chunk = raw.split(KEEPALIVE).join('')
+        if (!chunk) continue
+        // The resume mark (and a failure mark) is held back until the end (never shown).
         if (held || chunk.includes(CONTINUE_MARK[0])) {
           held += chunk
           continue
@@ -291,6 +294,12 @@ async function* askMaily(body: object, signal: AbortSignal, onWait: (note: strin
     } catch (e) {
       if (signal.aborted) throw e
       broken = true
+    }
+    // The answer started but no model could reply: same as a refused request.
+    const fail = readFail(held)
+    if (fail) {
+      held = held.slice(0, held.indexOf('⁣[[nsp:erreur:'))
+      if (!held && !written) throw new MailyError(fail.message, fail.status)
     }
     const resume = wantsContinue(held)
     if (held) {

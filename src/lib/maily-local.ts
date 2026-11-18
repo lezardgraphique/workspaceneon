@@ -108,7 +108,7 @@ export function searchKnowledge(query: string, max = 2): Entry[] {
         q.reduce((n, w) => n + (e.set.has(w) ? weight.get(w)! : 0) + (e.titleSet.has(w) ? 2.5 * weight.get(w)! : 0), 0) +
         pairs.reduce((n, p) => n + (e.folded.includes(p) ? 2 : 0), 0),
     }))
-    .filter((r) => r.score > 1)
+    .filter((r) => r.score > 1.8)
     .sort((a, b) => b.score - a.score)
   const top = scored[0]?.score ?? 0
   return scored
@@ -173,7 +173,7 @@ export function localReply(ask: string, ctx: { tree: ModuleTree; name: string; c
   // Writing, creating, changing: the online Maily's job.
   if (EDIT_ASK.test(q) && !/\b(comment|o[uù]|pourquoi|c['’]est quoi|qu['’]est-ce|est-ce que)\b/i.test(q)) return { text: queuedText(ctx.offline), queued: ctx.offline }
   if (!found.length) return { text: ctx.offline ? `Je n'ai pas la réponse sans Internet. ${queuedText(true)}` : queuedText(false), queued: ctx.offline }
-  return {
-    text: found.map((e) => (e.title ? `**${e.title}** : ${brief(e.text)}` : brief(e.text))).join('\n\n'),
-  }
+  const answer = found.map((e) => (e.title ? `**${e.title}** : ${brief(e.text)}` : brief(e.text))).join('\n\n')
+  // Online but the AI service is down: say where this answer comes from.
+  return { text: ctx.offline ? answer : `Le service d'IA ne répond pas pour l'instant (« Réessayer » ci-dessous). Voici ce que dit mon guide :\n\n${answer}` }
 }
