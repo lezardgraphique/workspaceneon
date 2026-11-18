@@ -1,3 +1,4 @@
+import { bringImages, imagesNote, swapUrls, textsOf } from '@/lib/import-images'
 import { useEffect, useRef, useState } from 'react'
 import { guardedFetch } from '@/lib/session-guard'
 import { CheckCircle2, ChevronDown, ExternalLink, FileCode2, Heart, Lightbulb, Loader2, MessageCircle, Paperclip, Plus, RotateCcw, Send, Square, Wand2, X } from 'lucide-react'
@@ -591,7 +592,11 @@ export function MailyPanel({
             notes.push(`Le module « ${twin.name} » existe déjà : je ne l'ai pas dupliqué (choisis un autre nom pour en créer une variante)`)
             continue
           }
-          const rec = await createLocalFirst(block.name!.slice(0, 120), check.tree)
+          // A new module in the library: its outside images are copied into the tool first.
+          const got = await bringImages(textsOf(check.tree).join('\n'))
+          const imagesSaid = imagesNote(got)
+          if (imagesSaid) notes.push(imagesSaid)
+          const rec = await createLocalFirst(block.name!.slice(0, 120), swapUrls(check.tree, got.map))
           library.push({ id: rec.id, name: rec.name })
           created.push({ id: rec.id, name: rec.name })
         } catch {

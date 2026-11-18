@@ -13,8 +13,8 @@ import { stripTags } from '@/lib/sanitize'
 import { section as cleanSection } from '@/lib/sanitize-tree'
 import { countBlocks } from '@/lib/tree'
 import type { ModuleTree, Section } from '@/lib/types'
-import { fetchable, findImageUrls, swapUrls } from '@/lib/import-images'
-import { importImages, textsOf } from '@/server/import-images.server'
+import { fetchable, findImageUrls, swapUrls, textsOf } from '@/lib/import-images'
+import { importImages } from '@/server/import-images.server'
 
 export interface ToolContext {
   userId: string

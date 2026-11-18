@@ -61,7 +61,7 @@ import { findNode, findPath, insertInCell, moveNode, moveNodeTo, removeNode, rep
 import { BLOCK_LABELS, createBlock } from '@/lib/types'
 import type { Block, ImageBlock, ModuleRecord, ModuleTree, Section } from '@/lib/types'
 import { adoptServerModule, freshModule, loadModule, persistModule, showNotice } from '@/lib/data'
-import { bringImages, findImageUrls, imagesNote, swapUrls } from '@/lib/import-images'
+import { bringImages, findImageUrls, imagesNote, swapUrls, textsOf } from '@/lib/import-images'
 
 // Maily's panel (chat + Markdown renderer) is the heaviest part: loaded on demand.
 const MailyPanel = lazy(() => import('@/components/editor/MailyPanel').then((m) => ({ default: m.MailyPanel })))
@@ -241,6 +241,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     if (select !== undefined) setSelectedId(select)
   }
 
+
   // Changes that were still being saved when the page went away (closed, reloaded,
   // killed in the background): put back, then saved like any change.
   useEffect(() => {
@@ -370,6 +371,35 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
       const note = imagesNote(got)
       if (note) showNotice(note)
     })
+  }
+
+  // Code applied by Maily (a module recreated from another tool's code, a page,
+  // a capture…): once applied, its outside images are copied into the tool and
+  // swapped in the module as it is then (one more undoable step).
+  const treeNow = useRef(tree)
+  treeNow.current = tree
+  const commitNow = useRef<(t: ModuleTree) => void>(() => {})
+  commitNow.current = (t: ModuleTree) => commit(t)
+  const bringTreeImages = (t: ModuleTree) => {
+    const fresh = findImageUrls(textsOf(t).join('\n')).filter((u) => !brought.current.has(u))
+    if (!fresh.length) return
+    fresh.forEach((u) => brought.current.add(u))
+    void bringImages(fresh.join('\n')).then((got) => {
+      if (Object.keys(got.map).length) {
+        if (codeTyped.current) {
+          // The user is typing in Code: swapped in the code, read again from there.
+          setCode((c) => swapUrls(c, got.map))
+          codeTyped.current = true
+        } else commitNow.current(swapUrls(treeNow.current, got.map))
+      }
+      const note = imagesNote(got)
+      if (note) showNotice(note)
+    })
+  }
+  const applyFromMaily = (generated: string, specs?: FieldSpec[], values?: Record<string, unknown> | null) => {
+    const err = applyCode(generated, specs, values)
+    if (!err) setTimeout(() => bringTreeImages(treeNow.current), 0)
+    return err
   }
 
   const applyCode = (generated: string, specs?: FieldSpec[], values?: Record<string, unknown> | null, extraNote?: string | null) => {
@@ -797,7 +827,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
               </div>
               <div className={`${vis('maily', leftTab === 'maily')} min-h-0 w-full flex-1 flex-col bg-space`}>
                 <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="size-5 animate-spin text-cyan" /></div>}>
-                  <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyCode} addSection={addSection} request={mailyRequest} />
+                  <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyFromMaily} addSection={addSection} request={mailyRequest} />
                 </Suspense>
               </div>
             </aside>

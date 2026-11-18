@@ -33,6 +33,14 @@ export function findImageUrls(text: string, origin = typeof location !== 'undefi
   return [...out]
 }
 
+// Strings of a value (tree, fields), one per line: where addresses are looked for.
+export function textsOf(v: unknown, out: string[] = []): string[] {
+  if (typeof v === 'string') out.push(v)
+  else if (Array.isArray(v)) v.forEach((x) => textsOf(x, out))
+  else if (v && typeof v === 'object') Object.values(v).forEach((x) => textsOf(x, out))
+  return out
+}
+
 // Every string inside `value` (code, tree, field definitions, values) with the
 // old addresses replaced by the new ones.
 export function swapUrls<T>(value: T, map: Record<string, string>): T {

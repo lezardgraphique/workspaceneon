@@ -177,10 +177,3 @@ export async function importImages(urls: string[], userId: string, origin: strin
   return out
 }
 
-// Strings of a value (tree, fields), one per line: where addresses are looked for.
-export function textsOf(v: unknown, out: string[] = []): string[] {
-  if (typeof v === 'string') out.push(v)
-  else if (Array.isArray(v)) v.forEach((x) => textsOf(x, out))
-  else if (v && typeof v === 'object') Object.values(v).forEach((x) => textsOf(x, out))
-  return out
-}
