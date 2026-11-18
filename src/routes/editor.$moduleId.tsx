@@ -61,6 +61,7 @@ import { findNode, findPath, insertInCell, moveNode, moveNodeTo, removeNode, rep
 import { BLOCK_LABELS, createBlock } from '@/lib/types'
 import type { Block, ImageBlock, ModuleRecord, ModuleTree, Section } from '@/lib/types'
 import { adoptServerModule, freshModule, loadModule, persistModule, showNotice } from '@/lib/data'
+import { bringImages, findImageUrls, imagesNote, swapUrls } from '@/lib/import-images'
 
 // Maily's panel (chat + Markdown renderer) is the heaviest part: loaded on demand.
 const MailyPanel = lazy(() => import('@/components/editor/MailyPanel').then((m) => ({ default: m.MailyPanel })))
@@ -282,6 +283,8 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     }
     setCodeError(null)
     setCodeImported(!!res.imported)
+    // Code from another tool pasted here: its images are copied into the tool.
+    if (res.imported) bringPastedImages(code)
     pushHistory(tree)
     const synced = syncExtraFields({ ...reconcileIds(res.tree, tree), fields: res.imported ? undefined : tree.fields }, undefined, res.imported ? code : undefined)
     // Pasted template whose layout the blocks would lose: kept whole.
@@ -343,7 +346,33 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     setCodeImported(false)
   }
 
-  const applyCode = (generated: string, specs?: FieldSpec[], values?: Record<string, unknown> | null) => {
+  // Module copied from another tool (« Importer »): its images are copied into
+  // the tool first and their addresses swapped (src/lib/import-images.ts).
+  const importWithImages = async ({ source, specs, values }: { source: string; specs?: FieldSpec[]; values?: Record<string, unknown> | null }) => {
+    const text = [source, ...(specs ?? []).map((f) => JSON.stringify(f)), values ? JSON.stringify(values) : ''].join('\n')
+    const got = await bringImages(text)
+    for (const t of Object.keys(got.map)) brought.current.add(t)
+    const p = swapUrls({ source, specs, values }, got.map)
+    return applyCode(p.source, p.specs, p.values, imagesNote(got))
+  }
+  // Addresses already handled for code pasted in the Code tab (asked once each).
+  const brought = useRef(new Set<string>())
+  const bringPastedImages = (pasted: string) => {
+    const fresh = findImageUrls(pasted).filter((t) => !brought.current.has(t))
+    if (!fresh.length) return
+    fresh.forEach((t) => brought.current.add(t))
+    void bringImages(fresh.join('\n')).then((got) => {
+      if (Object.keys(got.map).length) {
+        // Swapped in the code as it is now (the user may have typed since), then read again.
+        setCode((c) => swapUrls(c, got.map))
+        codeTyped.current = true
+      }
+      const note = imagesNote(got)
+      if (note) showNotice(note)
+    })
+  }
+
+  const applyCode = (generated: string, specs?: FieldSpec[], values?: Record<string, unknown> | null, extraNote?: string | null) => {
     const res = codeToTree(generated, tree, specs)
     if (!res.ok) return res.error
     const synced = syncExtraFields({ ...res.tree, fields: undefined }, specs, generated)
@@ -351,7 +380,12 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     setNewFields((next.fields ?? []).map((f) => f.name))
     commit(next, null)
     const logic = countLogic(next)
-    if (res.imported && logic && getPref(SHOW_LOGIC_KEY) !== '1') showNotice(`Import appliqué. ${logic} ligne${logic > 1 ? 's' : ''} de logique (conditions, boucles, variables) ${logic > 1 ? 'sont masquées' : 'est masquée'} dans la Structure : elle${logic > 1 ? 's' : ''} ne s’affiche${logic > 1 ? 'nt' : ''} pas dans l’e-mail. « Annuler » revient au module d’avant.`)
+    const logicNote =
+      res.imported && logic && getPref(SHOW_LOGIC_KEY) !== '1'
+        ? `Import appliqué. ${logic} ligne${logic > 1 ? 's' : ''} de logique (conditions, boucles, variables) ${logic > 1 ? 'sont masquées' : 'est masquée'} dans la Structure : elle${logic > 1 ? 's' : ''} ne s’affiche${logic > 1 ? 'nt' : ''} pas dans l’e-mail. « Annuler » revient au module d’avant.`
+        : null
+    const note = [extraNote, logicNote].filter(Boolean).join(' ')
+    if (note) showNotice(note)
     return null
   }
 
@@ -956,7 +990,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
         <HubSpotImport
           tree={tree}
           onClose={() => setHsImport(false)}
-          onImport={({ source, specs, values }) => applyCode(source, specs, values)}
+          onImport={importWithImages}
         />
       )}
       {exporting && <ExportDialog tree={tree} name={name.trim() || 'Sans titre'} onClose={() => setExporting(false)} />}

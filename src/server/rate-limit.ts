@@ -42,6 +42,8 @@ const MIN = 60_000
 export const RULES: Array<{ test: (path: string, method: string) => boolean; rule: Rule }> = [
   { test: (p) => p === '/api/maily' || p === '/api/generate', rule: { name: 'ai', max: 40, windowMs: MIN } },
   { test: (p, m) => (p === '/api/images' || p === '/api/files') && m === 'POST', rule: { name: 'upload', max: 30, windowMs: MIN } },
+  // Each call may download up to 40 images from other sites.
+  { test: (p) => p === '/api/import-images', rule: { name: 'import-images', max: 10, windowMs: MIN } },
   // Public image loaded by mail clients: generous, only meant to stop a flood of distinct dates (each one is drawn, ~25 ms).
   { test: (p) => p === '/countdown.gif', rule: { name: 'countdown', max: 300, windowMs: MIN } },
   // Account copy of the offline Maily model: ~270 parts of 3 MB per transfer, sent or fetched in a few minutes.

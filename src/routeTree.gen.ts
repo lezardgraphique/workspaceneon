@@ -19,6 +19,7 @@ import { Route as ApercuModuleIdRouteImport } from './routes/apercu.$moduleId'
 import { Route as ApiFilesRouteImport } from './routes/api.files'
 import { Route as ApiGenerateRouteImport } from './routes/api.generate'
 import { Route as ApiImagesRouteImport } from './routes/api.images'
+import { Route as ApiImportImagesRouteImport } from './routes/api.import-images'
 import { Route as ApiMailyRouteImport } from './routes/api.maily'
 import { Route as ApiWidgetRouteImport } from './routes/api.widget'
 import { Route as EditorModuleIdRouteImport } from './routes/editor.$moduleId'
@@ -77,6 +78,11 @@ const ApiImagesRoute = ApiImagesRouteImport.update({
   path: '/api/images',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiImportImagesRoute = ApiImportImagesRouteImport.update({
+  id: '/api/import-images',
+  path: '/api/import-images',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiMailyRoute = ApiMailyRouteImport.update({
   id: '/api/maily',
   path: '/api/maily',
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/api/files': typeof ApiFilesRoute
   '/api/generate': typeof ApiGenerateRoute
   '/api/images': typeof ApiImagesRoute
+  '/api/import-images': typeof ApiImportImagesRoute
   '/api/maily': typeof ApiMailyRoute
   '/api/widget': typeof ApiWidgetRoute
   '/editor/$moduleId': typeof EditorModuleIdRoute
@@ -143,6 +150,7 @@ export interface FileRoutesByTo {
   '/api/files': typeof ApiFilesRoute
   '/api/generate': typeof ApiGenerateRoute
   '/api/images': typeof ApiImagesRoute
+  '/api/import-images': typeof ApiImportImagesRoute
   '/api/maily': typeof ApiMailyRoute
   '/api/widget': typeof ApiWidgetRoute
   '/editor/$moduleId': typeof EditorModuleIdRoute
@@ -163,6 +171,7 @@ export interface FileRoutesById {
   '/api/files': typeof ApiFilesRoute
   '/api/generate': typeof ApiGenerateRoute
   '/api/images': typeof ApiImagesRoute
+  '/api/import-images': typeof ApiImportImagesRoute
   '/api/maily': typeof ApiMailyRoute
   '/api/widget': typeof ApiWidgetRoute
   '/editor/$moduleId': typeof EditorModuleIdRoute
@@ -184,6 +193,7 @@ export interface FileRouteTypes {
     | '/api/files'
     | '/api/generate'
     | '/api/images'
+    | '/api/import-images'
     | '/api/maily'
     | '/api/widget'
     | '/editor/$moduleId'
@@ -203,6 +213,7 @@ export interface FileRouteTypes {
     | '/api/files'
     | '/api/generate'
     | '/api/images'
+    | '/api/import-images'
     | '/api/maily'
     | '/api/widget'
     | '/editor/$moduleId'
@@ -222,6 +233,7 @@ export interface FileRouteTypes {
     | '/api/files'
     | '/api/generate'
     | '/api/images'
+    | '/api/import-images'
     | '/api/maily'
     | '/api/widget'
     | '/editor/$moduleId'
@@ -242,6 +254,7 @@ export interface RootRouteChildren {
   ApiFilesRoute: typeof ApiFilesRoute
   ApiGenerateRoute: typeof ApiGenerateRoute
   ApiImagesRoute: typeof ApiImagesRoute
+  ApiImportImagesRoute: typeof ApiImportImagesRoute
   ApiMailyRoute: typeof ApiMailyRoute
   ApiWidgetRoute: typeof ApiWidgetRoute
   EditorModuleIdRoute: typeof EditorModuleIdRoute
@@ -323,6 +336,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/import-images': {
+      id: '/api/import-images'
+      path: '/api/import-images'
+      fullPath: '/api/import-images'
+      preLoaderRoute: typeof ApiImportImagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/maily': {
       id: '/api/maily'
       path: '/api/maily'
@@ -386,6 +406,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiFilesRoute: ApiFilesRoute,
   ApiGenerateRoute: ApiGenerateRoute,
   ApiImagesRoute: ApiImagesRoute,
+  ApiImportImagesRoute: ApiImportImagesRoute,
   ApiMailyRoute: ApiMailyRoute,
   ApiWidgetRoute: ApiWidgetRoute,
   EditorModuleIdRoute: EditorModuleIdRoute,

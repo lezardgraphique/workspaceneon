@@ -13,6 +13,8 @@ import { stripTags } from '@/lib/sanitize'
 import { section as cleanSection } from '@/lib/sanitize-tree'
 import { countBlocks } from '@/lib/tree'
 import type { ModuleTree, Section } from '@/lib/types'
+import { fetchable, findImageUrls, swapUrls } from '@/lib/import-images'
+import { importImages, textsOf } from '@/server/import-images.server'
 
 export interface ToolContext {
   userId: string
@@ -27,6 +29,22 @@ export interface ToolResult {
 }
 
 type Args = Record<string, unknown>
+
+// Code from another tool: its images are copied into Neon Sandbox Pro and the
+// module points to the copies (see src/server/import-images.server.ts).
+async function homeImages(tree: ModuleTree, ctx: ToolContext): Promise<{ tree: ModuleTree; note: string }> {
+  const tokens = findImageUrls(textsOf(tree).join('\n'), ctx.origin).slice(0, 40)
+  if (!tokens.length) return { tree, note: '' }
+  const got = await importImages(tokens.map(fetchable), ctx.userId, ctx.origin).catch(() => ({}) as Record<string, { url?: string; error?: string }>)
+  const map: Record<string, string> = {}
+  for (const t of tokens) if (got[fetchable(t)]?.url) map[t] = got[fetchable(t)].url!
+  const saved = Object.keys(map).length
+  const failed = tokens.length - saved
+  return {
+    tree: saved ? swapUrls(tree, map) : tree,
+    note: ` Images : ${saved} copiée${saved > 1 ? 's' : ''} dans Neon Sandbox Pro${failed ? `, ${failed} laissée${failed > 1 ? 's' : ''} à leur adresse d'origine (inaccessible${failed > 1 ? 's' : ''} ou format refusé)` : ''}.`,
+  }
+}
 
 interface Tool {
   name: string
@@ -151,8 +169,9 @@ export const TOOLS: Tool[] = [
       const parsed = parseCode(str(args, 'code', 400_000, !fieldsJson && !otherJson), { fieldsJson, otherJson })
       if (!parsed.ok || !parsed.tree) return fail(`Module refusé : ${parsed.summary}${parsed.issues.length ? `\n- ${parsed.issues.join('\n- ')}` : ''}`)
       if (JSON.stringify(parsed.tree).length > TOO_BIG) return fail('Module trop volumineux.')
-      const [row] = await db.insert(modules).values({ userId: ctx.userId, name: moduleName, tree: parsed.tree }).returning()
-      return ok(`Module « ${row.name} » créé. ${parsed.summary}`, {
+      const homed = await homeImages(parsed.tree, ctx)
+      const [row] = await db.insert(modules).values({ userId: ctx.userId, name: moduleName, tree: homed.tree }).returning()
+      return ok(`Module « ${row.name} » créé. ${parsed.summary}${homed.note}`, {
         id: row.id,
         nom: row.name,
         lien: editorUrl(ctx, row.id),
@@ -188,8 +207,9 @@ export const TOOLS: Tool[] = [
         const parsed = parseCode(code, { current: tree, fieldsJson: str(args, 'fields_json', 200_000, false) })
         if (!parsed.ok || !parsed.tree) return fail(`Modification refusée, le module reste inchangé : ${parsed.summary}${parsed.issues.length ? `\n- ${parsed.issues.join('\n- ')}` : ''}`)
         if (JSON.stringify(parsed.tree).length > TOO_BIG) return fail('Module trop volumineux.')
-        tree = parsed.tree
-        summary = parsed.summary
+        const homed = await homeImages(parsed.tree, ctx)
+        tree = homed.tree
+        summary = parsed.summary + homed.note
         warnings = parsed.warnings
       }
       // An AI rewriting a module from outside: the version before is always kept.

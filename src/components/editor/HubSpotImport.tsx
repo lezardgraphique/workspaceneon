@@ -52,12 +52,13 @@ export interface ImportPayload {
   values: Record<string, unknown> | null
 }
 
-export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; onImport: (p: ImportPayload) => string | null; onClose: () => void }) {
+export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; onImport: (p: ImportPayload) => string | null | Promise<string | null>; onClose: () => void }) {
   const [html, setHtml] = useState('')
   const [css, setCss] = useState('')
   const [json, setJson] = useState('')
   const [other, setOther] = useState('')
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
   useEscape(onClose)
 
   const fieldsJson = useMemo(() => (json.trim() ? parseFieldsJson(json) : null), [json])
@@ -296,16 +297,19 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
             Annuler
           </button>
           <button
-            disabled={!prep || !prep.ok}
-            onClick={() => {
-              if (!prep?.ok) return
-              const err = onImport({ source: prep.source, specs: prep.specs, values: prep.values })
+            disabled={!prep || !prep.ok || busy}
+            onClick={async () => {
+              if (!prep?.ok || busy) return
+              // The images are copied into the tool first (can take a few seconds).
+              setBusy(true)
+              const err = await onImport({ source: prep.source, specs: prep.specs, values: prep.values })
+              setBusy(false)
               if (err) setError(err)
               else onClose()
             }}
             className="rounded-md bg-cyan px-3 py-2 text-sm font-semibold text-void disabled:opacity-50"
           >
-            Remplacer le module par cet import
+            {busy ? 'Copie des images…' : 'Remplacer le module par cet import'}
           </button>
         </footer>
       </div>

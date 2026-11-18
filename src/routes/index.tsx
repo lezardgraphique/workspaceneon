@@ -408,14 +408,18 @@ function Library() {
       </main>
 
       <footer className="mx-auto max-w-6xl px-6 pb-10 text-center text-sm text-mute">
-        Un avis, une idée, un coup de pouce ?{' '}
-        <a href={KOFI_URL} target="_blank" rel="noreferrer" className="text-pink hover:underline">
+        {/* Each phrase stays whole: lines break between them, never inside « Ko-fi ». */}
+        <span className="inline-block">Un avis, une idée, un coup de pouce ?</span>{' '}
+        <a href={KOFI_URL} target="_blank" rel="noreferrer" className="inline-block whitespace-nowrap text-pink hover:underline">
           Écris-moi sur Ko-fi
         </a>
-        <span className="mx-2" aria-hidden>
+        {/* Phones and tablets: the legal link on its own line, without a dangling dot. */}
+        <span className="mx-2 max-md:hidden" aria-hidden>
           ·
         </span>
-        <LegalLink />
+        <span className="inline-block max-md:mt-1 max-md:block">
+          <LegalLink />
+        </span>
       </footer>
     </div>
   )
