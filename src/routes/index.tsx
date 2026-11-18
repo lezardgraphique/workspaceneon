@@ -12,12 +12,18 @@ import { Maily } from '@/components/Maily'
 import { NeonCube } from '@/components/NeonCube'
 import { previewEmail } from '@/lib/hubl'
 import { KOFI_URL } from '@/lib/links'
+import { SEASONS, useSeason } from '@/lib/seasons'
 import { STARTERS } from '@/lib/templates'
 import { countBlocks } from '@/lib/tree'
 import { adoptServerList, createLocalFirst, loadModules, removeBlock, removeModule } from '@/lib/data'
 import { refreshCustomBlocks, useCustomBlocks } from '@/components/editor/useCustomBlocks'
 import { GUIDE_HIDDEN_KEY } from '@/lib/settings-keys'
 import { SETTINGS_EVENT, getPref, setPref } from '@/lib/settings-sync'
+
+// The four buttons under the title share one shape: same height, font and padding
+// (equal tiles of a 2-column grid).
+const CTA =
+  'inline-flex min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border px-5 py-3 font-display font-semibold transition disabled:opacity-60 max-sm:px-2.5 max-sm:text-sm md:px-3.5 md:py-2.5 md:text-sm'
 
 export const Route = createFileRoute('/')({
   loader: () => loadModules(),
@@ -98,6 +104,7 @@ function Library() {
   // « Premiers pas »: shown until hidden (choice kept on the account). Undecided
   // until the page runs in the browser, so a hidden guide never flashes.
   const [guide, setGuide] = useState<boolean | null>(null)
+  const season = useSeason()
   useEffect(() => {
     const read = () => setGuide(getPref(GUIDE_HIDDEN_KEY) !== '1')
     read()
@@ -182,11 +189,11 @@ function Library() {
                 {error}
               </p>
             )}
-            <div className="mt-8 flex flex-wrap gap-3 max-md:order-3 max-sm:mt-5 md:mt-6 md:gap-2">
+            <div className="mt-8 grid max-w-md grid-cols-2 gap-3 max-md:order-3 max-sm:mt-5 max-sm:max-w-none md:mt-6 md:gap-2">
               <button
                 onClick={() => start('newsletter')}
                 disabled={!!busy}
-                className="glow-pink inline-flex items-center gap-2 rounded-lg bg-pink-fill px-5 py-3 font-display font-semibold text-white transition hover:brightness-110 disabled:opacity-60 max-sm:px-4 max-sm:text-[15px] md:px-3.5 md:py-2.5 md:text-sm"
+                className={`glow-pink ${CTA} border-pink-fill bg-pink-fill text-white hover:brightness-110`}
               >
                 {busy === 'newsletter' ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
                 Créer un module
@@ -194,27 +201,27 @@ function Library() {
               <button
                 onClick={() => start('blank', true)}
                 disabled={!!busy}
-                className="inline-flex items-center gap-2 rounded-lg border border-cyan/60 px-5 py-3 font-display font-semibold text-cyan transition hover:bg-cyan/10 max-sm:px-4 max-sm:text-[15px] md:px-3.5 md:py-2.5 md:text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan disabled:opacity-60"
+                className={`${CTA} border-cyan/60 text-cyan hover:bg-cyan/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan`}
               >
                 {busy === 'blank' ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                 Parler à Maily
               </button>
-              {/* On a phone the guide and « Mes modules » share one row. */}
+              {/* The four buttons form a grid of equal tiles. */}
               {(guide === false || modules.length > 0) && (
-                <div className="flex gap-3 max-sm:w-full sm:contents">
+                <div className="contents">
                   {guide === false && (
                     <button
                       type="button"
                       onClick={() => showGuide(true)}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold hover:border-cyan max-sm:min-w-0 max-sm:flex-1 max-sm:px-3 max-sm:text-sm md:px-3.5 md:py-2.5 md:text-sm"
+                      className={`${CTA} border-line hover:border-cyan`}
                     >
-                      <BookOpen className="size-4 shrink-0 text-cyan" /> <span className="truncate">Guide<span className="md:hidden"> de démarrage</span></span>
+                      <BookOpen className="size-4 shrink-0 text-cyan" /> <span className="truncate">Guide<span className="max-[379px]:hidden"> de démarrage</span></span>
                     </button>
                   )}
                   {modules.length > 0 && (
                     <a
                       href="#mes-modules"
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-line px-5 py-3 font-display font-semibold whitespace-nowrap hover:border-cyan max-sm:shrink-0 max-sm:px-3 max-sm:text-sm md:px-3.5 md:py-2.5 md:text-sm"
+                      className={`${CTA} border-line hover:border-cyan`}
                     >
                       Mes modules ({modules.length})
                     </a>
@@ -241,7 +248,7 @@ function Library() {
                 <Maily size={260} mood="happy" decorative className="touch:size-[min(260px,calc(100svh-11rem))] max-md:size-full" />
               </button>
               <p className="absolute -bottom-2 left-1/2 w-max max-w-full -translate-x-1/2 rounded-full border border-line bg-night/90 px-4 py-1.5 text-sm max-md:static max-md:w-auto max-md:translate-x-0 max-md:rounded-2xl max-md:rounded-bl-sm max-md:px-3.5 max-md:py-2 max-md:text-sm">
-                Salut, moi c'est <span className="font-semibold text-cyan">Maily</span> 👋 <span className="text-mute max-md:block">Touche-moi pour discuter</span>
+                Salut, moi c'est <span className="font-semibold text-cyan">Maily</span> {season ? SEASONS[season].emoji : '👋'} <span className="text-mute max-md:block">Touche-moi pour discuter</span>
               </p>
             </div>
           </div>
