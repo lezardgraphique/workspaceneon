@@ -827,7 +827,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
               </div>
               <div className={`${vis('maily', leftTab === 'maily')} min-h-0 w-full flex-1 flex-col bg-space`}>
                 <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Loader2 className="size-5 animate-spin text-cyan" /></div>}>
-                  <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyFromMaily} addSection={addSection} request={mailyRequest} />
+                  <MailyPanel tree={tree} code={code} moduleName={name} applyCode={applyFromMaily} applyTree={(t) => commit(t)} selectedId={selectedId} addSection={addSection} request={mailyRequest} />
                 </Suspense>
               </div>
             </aside>

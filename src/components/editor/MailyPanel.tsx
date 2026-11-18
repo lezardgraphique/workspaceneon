@@ -19,6 +19,7 @@ import { slugify } from '@/lib/custom-blocks'
 import type { CustomBlock } from '@/lib/custom-blocks'
 import { createLocalFirst, isNetworkError, isOffline, loadBlocks, loadModules, saveBlock, useDataStatus } from '@/lib/data'
 import { localReply } from '@/lib/maily-local'
+import { isQuestion, runCommands } from '@/lib/maily-commands'
 import { formatReport, runSelfTests } from '@/lib/self-test'
 import { codeFromFields } from '@/lib/import-repair'
 import { CONTINUE_MARK, KEEPALIVE, readFail, stripMark, wantsContinue } from '@/lib/continuation'
@@ -58,6 +59,8 @@ interface Msg {
   retry?: boolean
   /** Kept while offline: sent to Maily as soon as the connection is back. */
   queued?: boolean
+  /** What to send then, when the built-in engine already did part of it. */
+  resendText?: string
 }
 
 type Mode = 'chat' | 'build'
@@ -349,6 +352,8 @@ export function MailyPanel({
   code,
   moduleName,
   applyCode,
+  applyTree,
+  selectedId,
   addSection,
   request,
 }: {
@@ -358,6 +363,10 @@ export function MailyPanel({
   /** A message sent for the user (the validator's "Maily" button); `n` changes each time. */
   request?: { text: string; n: number } | null
   applyCode: (code: string, specs?: FieldSpec[], values?: Record<string, unknown> | null) => string | null
+  /** Applies a module changed by the built-in engine (one undoable step). */
+  applyTree?: (tree: ModuleTree) => void
+  /** The element selected in the editor (« change le texte en … » acts on it). */
+  selectedId?: string | null
   // Appends a custom block to the open module; returns a message when it is refused (duplicate)
   addSection: (section: Section) => string | null
 }) {
@@ -699,9 +708,34 @@ export function MailyPanel({
       files: sent.length ? sent : undefined,
       imported,
     }
-    const history: Msg[] = [...base, userMsg]
+    let history: Msg[] = [...base, userMsg]
     const note = imported ?? partialImport
-    setMessages(note ? [...history, { role: 'assistant', content: note, applied: true }] : history)
+
+    // Built-in engine (src/lib/maily-commands.ts): the adjustments it understands
+    // are made at once by the tool, with or without a connection. Only what is
+    // left (writing, creating, a nuance) goes to the online Maily.
+    if (!source && applyTree && instruction && !isQuestion(instruction)) {
+      const cmd = runCommands(instruction, tree, selectedId)
+      if (cmd.done.length) {
+        applyTree(cmd.tree)
+        const doneMsg: Msg = { role: 'assistant', content: `Fait tout de suite ✨\n${cmd.done.map((d) => `- ${d}`).join('\n')}`, applied: true }
+        if (!cmd.left.length) {
+          setMessages([...history, doneMsg])
+          setMood('success')
+          return
+        }
+        setMessages([...history, doneMsg])
+        // The rest goes on with the module as it is now.
+        requestCode = treeToCode(cmd.tree, moduleName)
+        const restMsg: Msg = { ...userMsg, content: `${cmd.left.join('. ')}\n\n(Déjà appliqué par l'outil, ne le refais pas : ${cmd.done.join(' ; ')})`, hidden: true }
+        if (isOffline()) {
+          push({ role: 'assistant', content: `Pour la suite (« ${cmd.left.join(' » , « ')} »), j'ai besoin d'Internet : je la garde et je m'y mets dès le retour du réseau.`, queued: true })
+          setMessages((prev) => prev.map((m) => (m === userMsg ? { ...m, queued: true, resendText: cmd.left.join('. ') } : m)))
+          return
+        }
+        history = [...base, userMsg, doneMsg, restMsg]
+      } else setMessages(note ? [...history, { role: 'assistant', content: note, applied: true }] : history)
+    } else setMessages(note ? [...history, { role: 'assistant', content: note, applied: true }] : history)
     setLoading(true)
     setMood('thinking')
     const ctrl = new AbortController()
@@ -757,7 +791,7 @@ export function MailyPanel({
     while (idx >= 0 && !(messages[idx].role === 'user' && messages[idx].queued)) idx--
     if (idx < 0) return
     const m = messages[idx]
-    void send(m.content, m.files ?? [], messages.slice(0, idx).map((x) => (x.queued ? { ...x, queued: false } : x)))
+    void send(m.resendText ?? m.content, m.files ?? [], messages.slice(0, idx).map((x) => (x.queued ? { ...x, queued: false } : x)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online])
 

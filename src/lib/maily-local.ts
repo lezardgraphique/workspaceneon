@@ -118,7 +118,7 @@ export function searchKnowledge(query: string, max = 2): Entry[] {
 }
 
 const CAN =
-  "Sans connexion, je réponds tout de suite :\n- tes questions sur l'outil et l'emailing (« Comment exporter vers HubSpot ? », « Pourquoi Gmail coupe mon email ? ») ;\n- « Corrige le code » : je répare les erreurs de balises et de HuBL du module ouvert ;\n- « Vérifie mon module » : rendu Outlook, Gmail, mode sombre, poids, accessibilité ;\n- « Lance les tests internes ».\nPour écrire ou créer un module, je garde ta demande et je l'envoie dès le retour du réseau."
+  "Sans connexion, je réponds tout de suite :\n- tes questions sur l'outil et l'emailing (« Comment exporter vers HubSpot ? », « Pourquoi Gmail coupe mon email ? ») ;\n- les retouches du module : « change le titre en … », « mets le bouton en rouge », « centre le texte », « mets les pictos côte à côte », « ajoute un bouton », « supprime la section 2 » ;\n- les champs : « ajoute un champ couleur couleur_fond », « renomme le champ cta en cta_principal », « liste les champs » ;\n- « Corrige le code » : je répare les erreurs de balises et de HuBL du module ouvert ;\n- « Vérifie mon module » : rendu Outlook, Gmail, mode sombre, poids, accessibilité ;\n- « Lance les tests internes ».\nPour écrire ou créer un module, je garde ta demande et je l'envoie dès le retour du réseau."
 
 const queuedText = (offline: boolean) =>
   offline
@@ -171,7 +171,7 @@ export function localReply(ask: string, ctx: { tree: ModuleTree; name: string; c
   if (AUDIT_ASK.test(q) && ctx.tree.sections.length && !/\b(comment|pourquoi|c['’]est quoi|qu['’]est-ce)\b/i.test(q)) return auditReply(ctx.tree, ctx.name)
   const found = searchKnowledge(q)
   // Writing, creating, changing: the online Maily's job.
-  if (EDIT_ASK.test(q) && !/\b(comment|o[uù]|pourquoi|c['’]est quoi|qu['’]est-ce|est-ce que)\b/i.test(q)) return { text: queuedText(ctx.offline), queued: ctx.offline }
+  if ((EDIT_ASK.test(q) || EDIT_ASK.test(fold(q))) && !/\b(comment|o[uù]|pourquoi|c['’]est quoi|qu['’]est-ce|est-ce que)\b/i.test(q)) return { text: queuedText(ctx.offline), queued: ctx.offline }
   if (!found.length) return { text: ctx.offline ? `Je n'ai pas la réponse sans Internet. ${queuedText(true)}` : queuedText(false), queued: ctx.offline }
   const answer = found.map((e) => (e.title ? `**${e.title}** : ${brief(e.text)}` : brief(e.text))).join('\n\n')
   // Online but the AI service is down: say where this answer comes from.
