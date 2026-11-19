@@ -16,6 +16,9 @@
 // twice by the same account is stored once.
 
 import { lookup } from 'node:dns/promises'
+import { lookup as lookupCb, type LookupAddress, type LookupAllOptions, type LookupOneOptions } from 'node:dns'
+import { request as httpRequest, type IncomingMessage } from 'node:http'
+import { request as httpsRequest } from 'node:https'
 import { isIP } from 'node:net'
 import { getStore } from '@netlify/blobs'
 
@@ -32,7 +35,7 @@ export interface ImportedImage {
 }
 
 function privateV4(ip: string): boolean {
-  const [a, b] = ip.split('.').map(Number)
+  const [a, b, c] = ip.split('.').map(Number)
   return (
     a === 0 ||
     a === 10 ||
@@ -43,19 +46,51 @@ function privateV4(ip: string): boolean {
     (a === 192 && b === 168) ||
     (a === 192 && b === 0) ||
     (a === 198 && (b === 18 || b === 19)) ||
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113) ||
     a >= 224
   )
+}
+
+// The 16 bytes of an IPv6 address (any spelling: ::, embedded IPv4, zone), or null.
+function v6Bytes(ip: string): number[] | null {
+  let s = ip.toLowerCase().replace(/%.*$/, '')
+  const tail = s.match(/(\d+\.\d+\.\d+\.\d+)$/)
+  if (tail) {
+    if (isIP(tail[1]) !== 4) return null
+    const [a, b, c, d] = tail[1].split('.').map(Number)
+    s = s.slice(0, -tail[1].length) + ((a << 8) | b).toString(16) + ':' + ((c << 8) | d).toString(16)
+  }
+  const halves = s.split('::')
+  if (halves.length > 2) return null
+  const head = halves[0] ? halves[0].split(':') : []
+  const rest = halves.length === 2 && halves[1] ? halves[1].split(':') : []
+  const fill = halves.length === 2 ? 8 - head.length - rest.length : 0
+  const groups = [...head, ...Array(Math.max(fill, 0)).fill('0'), ...rest]
+  if (groups.length !== 8 || groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return null
+  return groups.flatMap((g) => {
+    const n = parseInt(g, 16)
+    return [n >> 8, n & 255]
+  })
 }
 
 export function privateAddress(ip: string): boolean {
   const v = isIP(ip)
   if (v === 4) return privateV4(ip)
   if (v !== 6) return true
-  const low = ip.toLowerCase()
-  // IPv4 written as IPv6 (::ffff:10.0.0.1)
-  const mapped = low.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)
-  if (mapped) return privateV4(mapped[1])
-  return low === '::' || low === '::1' || /^f[cd]/.test(low) || /^fe[89ab]/.test(low) || low.startsWith('ff') || low.startsWith('64:ff9b') || low.startsWith('2001:db8')
+  const b = v6Bytes(ip)
+  if (!b) return true
+  const v4 = (at: number) => b.slice(at, at + 4).join('.')
+  const zero = (from: number, to: number) => b.slice(from, to).every((x) => x === 0)
+  // IPv4 inside IPv6, whatever the spelling (::ffff:7f00:1 = 127.0.0.1): judged as IPv4.
+  if (zero(0, 10) && b[10] === 0xff && b[11] === 0xff) return privateV4(v4(12)) // mapped ::ffff:0:0/96
+  if (zero(0, 12)) return true // ::, ::1 and the old IPv4-compatible ::a.b.c.d
+  if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b) return true // NAT64 64:ff9b::/96 and /48
+  if (b[0] === 0x20 && b[1] === 0x02) return privateV4(v4(2)) // 6to4 2002::/16
+  if (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x00 && b[3] === 0x00) return true // Teredo 2001::/32
+  if (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x0d && b[3] === 0xb8) return true // documentation
+  // Only global unicast (2000::/3) is public: excludes fc00::/7, fe80::/10, ff00::/8…
+  return (b[0] & 0xe0) !== 0x20
 }
 
 // The address as a URL the server may fetch, or a French reason why not.
@@ -89,21 +124,17 @@ function kindOf(b: Uint8Array): 'jpg' | 'png' | 'gif' | 'webp' | null {
   return null
 }
 
-async function readCapped(res: Response): Promise<Uint8Array | null> {
-  if (Number(res.headers.get('content-length') ?? 0) > MAX_BYTES) return null
-  const reader = res.body?.getReader()
-  if (!reader) return new Uint8Array(0)
+async function readCapped(res: IncomingMessage): Promise<Uint8Array | null> {
+  if (Number(res.headers['content-length'] ?? 0) > MAX_BYTES) return null
   const parts: Uint8Array[] = []
   let size = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    size += value.byteLength
+  for await (const chunk of res as AsyncIterable<Buffer>) {
+    size += chunk.byteLength
     if (size > MAX_BYTES) {
-      await reader.cancel().catch(() => {})
+      res.destroy()
       return null
     }
-    parts.push(value)
+    parts.push(chunk)
   }
   const out = new Uint8Array(size)
   let at = 0
@@ -114,28 +145,64 @@ async function readCapped(res: Response): Promise<Uint8Array | null> {
   return out
 }
 
+// Name resolution used for the connection itself: the addresses checked are the
+// ones connected to, so a name that answers a public address to checkAddress and
+// a private one a moment later (DNS rebinding) is refused.
+type LookupCb = (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void
+function safeLookup(host: string, options: LookupOneOptions | LookupAllOptions, cb: LookupCb): void {
+  lookupCb(host, { ...options, all: true }, (err, list: LookupAddress[]) => {
+    if (err) return cb(err, '')
+    const localTest = process.env.NODE_ENV === 'development' && process.env.NEON_IMPORT_LOCAL === '1'
+    if (!list.length || (!localTest && list.some((x) => privateAddress(x.address)))) {
+      const e: NodeJS.ErrnoException = new Error('réseau privé')
+      e.code = 'EPRIVATE'
+      return cb(e, '')
+    }
+    if ((options as LookupAllOptions).all) return cb(null, list)
+    cb(null, list[0].address, list[0].family)
+  })
+}
+
+function get(u: URL): Promise<IncomingMessage | null> {
+  return new Promise((resolve) => {
+    const send = u.protocol === 'https:' ? httpsRequest : httpRequest
+    const req = send(
+      u,
+      {
+        method: 'GET',
+        lookup: safeLookup as never,
+        timeout: TIMEOUT_MS,
+        // Formats every e-mail client shows; some CDNs send WebP otherwise.
+        headers: { Accept: 'image/png,image/jpeg,image/gif;q=0.9,*/*;q=0.1', 'User-Agent': 'NeonSandboxPro-ImageImport/1.0' },
+      },
+      (res) => resolve(res),
+    )
+    // Whole download limited too, not only the silences between packets.
+    const timer = setTimeout(() => req.destroy(new Error('timeout')), TIMEOUT_MS)
+    req.on('close', () => clearTimeout(timer))
+    req.on('timeout', () => req.destroy(new Error('timeout')))
+    req.on('error', () => resolve(null))
+    req.end()
+  })
+}
+
 async function download(raw: string): Promise<Uint8Array | string> {
   let address = raw
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const ok = await checkAddress(address)
     if (typeof ok === 'string') return ok
-    const res = await fetch(ok, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      // Formats every e-mail client shows; some CDNs send WebP otherwise.
-      headers: { Accept: 'image/png,image/jpeg,image/gif;q=0.9,*/*;q=0.1', 'User-Agent': 'NeonSandboxPro-ImageImport/1.0' },
-    }).catch(() => null)
+    const res = await get(ok)
     if (!res) return 'serveur injoignable'
-    if (res.status >= 300 && res.status < 400) {
-      const next = res.headers.get('location')
-      await res.body?.cancel().catch(() => {})
+    if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400) {
+      const next = res.headers.location
+      res.resume()
       if (!next) return 'redirection invalide'
       address = new URL(next, ok).href
       continue
     }
-    if (!res.ok) {
-      await res.body?.cancel().catch(() => {})
-      return `introuvable (${res.status})`
+    if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+      res.resume()
+      return `introuvable (${res.statusCode})`
     }
     const bytes = await readCapped(res).catch(() => null)
     return bytes ?? 'image trop lourde (5 Mo maximum)'
