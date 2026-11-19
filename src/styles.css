@@ -242,6 +242,15 @@ body {
 .maily-wing-r { transform-origin: 88px 50px; animation: maily-flap 0.9s ease-in-out infinite reverse; }
 .maily-thinking .maily-led { animation: maily-pulse 0.7s ease-in-out infinite; }
 .maily-trail { animation: maily-pulse 2.6s ease-in-out infinite; }
+/* Battery: an endless animation makes the page redraw ~60 times a second (the
+   SVG wings are not composited). Maily moves about 8 s when she appears, then
+   rests; she moves again while she thinks and under the finger / pointer. */
+.maily-bob, .maily-trail { animation-iteration-count: 3; }
+.maily-wing-l, .maily-wing-r { animation-iteration-count: 9; }
+.maily-thinking.maily-bob, .maily-thinking .maily-wing-l, .maily-thinking .maily-wing-r, .maily-thinking .maily-trail,
+:where(a, button, .maily-bob):hover :is(.maily-wing-l, .maily-wing-r, .maily-trail),
+:where(a, button):hover .maily-bob, .maily-bob:hover,
+:where(a, button):active :is(.maily-bob, .maily-wing-l, .maily-wing-r) { animation-iteration-count: infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   .maily-bob, .maily-wing-l, .maily-wing-r, .maily-led, .maily-trail { animation: none; }
@@ -269,9 +278,9 @@ body {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-7px); }
 }
-.auth-float { animation: auth-float 5s ease-in-out infinite; }
-.auth-float-2 { animation: auth-float 6.5s ease-in-out infinite 0.8s; }
-.auth-float-3 { animation: auth-float 5.6s ease-in-out infinite 1.6s; }
+.auth-float { animation: auth-float 5s ease-in-out 2; }
+.auth-float-2 { animation: auth-float 6.5s ease-in-out 2 0.8s; }
+.auth-float-3 { animation: auth-float 5.6s ease-in-out 2 1.6s; }
 @media (prefers-reduced-motion: reduce) {
   .auth-float, .auth-float-2, .auth-float-3, .maily-bob, .maily-wing-l, .maily-wing-r, .maily-trail { animation: none; }
 }
@@ -291,7 +300,8 @@ body {
   border: 1px solid color-mix(in srgb, var(--tile, #ff007f) 55%, transparent);
   background: linear-gradient(135deg, color-mix(in srgb, var(--tile, #ff007f) 22%, transparent), transparent 70%);
   box-shadow: 0 0 22px color-mix(in srgb, var(--tile, #ff007f) 28%, transparent), inset 0 0 12px color-mix(in srgb, var(--tile, #ff007f) 12%, transparent);
-  animation: auth-drift 9s ease-in-out infinite;
+  /* Two slow drifts, then still (an endless one kept the page redrawing). */
+  animation: auth-drift 9s ease-in-out 2;
   pointer-events: none;
 }
 .auth-card {
@@ -361,7 +371,8 @@ body {
 }
 @media (width < 48rem) {
   .neon-home { --neon-o: 0.24; inset: -6%; width: 112%; height: 112%; }
-  .neon-home[data-lit] { opacity: var(--neon-o); animation: neon-fade 0.6s ease-out both, neon-spin 80s linear infinite; }
+  /* One slow turn on arrival, then still. */
+  .neon-home[data-lit] { opacity: var(--neon-o); animation: neon-fade 0.6s ease-out both, neon-spin 80s linear 1; }
 }
 /* Sign-in: a sign behind the illustration (desktop), on the floor under the form (phone). */
 /* The centring lives in `transform`, not `translate`: the CSS minifier drops a

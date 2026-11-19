@@ -520,7 +520,7 @@ export function VmlWindow({
         <Shapes className="size-4 text-violet" />
         <h2 className="min-w-0 truncate font-display text-sm font-semibold">VML · Outlook<span className="max-sm:hidden"> · module entier</span></h2>
         <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-cyan/40 px-2 py-0.5 text-[10px] text-cyan" title="Se met à jour à chaque modification">
-          <span className="size-1.5 animate-pulse rounded-full bg-cyan motion-reduce:animate-none" /> En direct
+          <span className="size-1.5 animate-pulse rounded-full bg-cyan [animation-iteration-count:3] motion-reduce:animate-none" /> En direct
         </span>
         <span className="flex-1" />
         {!row && (
