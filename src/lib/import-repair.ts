@@ -297,6 +297,138 @@ export function codeFromFields(specs: FieldSpec[]): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="background:#ffffff;padding:24px">\n${lines.join('\n')}\n</td></tr></table>`
 }
 
+// ---- fields the code doesn't use ------------------------------------------
+// A field of the fields.json that the code never reads does nothing in the
+// e-mail. At import, such fields are made to work: displayable ones get their
+// element at the end of the module (text, title, image, button and its link,
+// repeated list…), settings are wired when their name is clear (a background
+// colour, a show / hide switch, an alignment, a padding); the others stay
+// settings and are named in the report.
+
+export interface Wiring {
+  /** « name : what was done », shown in the import report. */
+  wired: string[]
+  /** Settings left as they are (nothing in the code uses them). */
+  settings: string[]
+}
+
+const VOID = new Set(['img', 'br', 'hr', 'input', 'meta', 'link', 'col', 'source', 'area', 'wbr'])
+const WRAPPABLE = new Set(['img', 'a', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div', 'table', 'span', 'ul', 'ol', 'blockquote', 'section'])
+
+// Ranges of the HTML elements of a template (HuBL left as text), for wrapping
+// the element that shows a field.
+function elementRanges(code: string): { tag: string; start: number; end: number }[] {
+  const out: { tag: string; start: number; end: number }[] = []
+  const stack: { tag: string; start: number }[] = []
+  const re = /<!--[\s\S]*?-->|<\/?([a-zA-Z][\w-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>/g
+  for (let m = re.exec(code); m; m = re.exec(code)) {
+    if (!m[1]) continue
+    const tag = m[1].toLowerCase()
+    if (m[0][1] === '/') {
+      const i = stack.map((x) => x.tag).lastIndexOf(tag)
+      if (i >= 0) {
+        out.push({ tag, start: stack[i].start, end: m.index + m[0].length })
+        stack.length = i
+      }
+    } else if (VOID.has(tag) || m[0].endsWith('/>')) out.push({ tag, start: m.index, end: m.index + m[0].length })
+    else stack.push({ tag, start: m.index })
+  }
+  return out
+}
+
+// Whether the code reads a field (module.x, item.x in a loop, or an old tag {% text "x" %}).
+const reads = (code: string, name: string) =>
+  new RegExp(`\\bmodule\\.${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b|\\{%-?\\s*\\w+\\s+["']${name}["']|\\bmodule\\[["']${name}["']\\]`).test(code)
+
+const DISPLAY = new Set(['text', 'textarea', 'richtext', 'image', 'backgroundimage', 'link', 'url', 'cta', 'group', 'number', 'email', 'video', 'blog', 'form', 'page', 'menu', 'simplemenu', 'logo'])
+
+export function wireUnusedFields(source: string, specs: FieldSpec[]): { source: string } & Wiring {
+  const top = specs.filter((s) => !s.name.includes('.') && !reads(source, s.name))
+  if (!top.length) return { source, wired: [], settings: [] }
+  const wired: string[] = []
+  const settings: string[] = []
+  let code = source
+
+  // 1. Displayable fields: their element at the end of the module (inside what
+  // the settings below wrap: background, padding, alignment, show / hide).
+  const shown = top.filter((s) => DISPLAY.has(s.type) && s.type !== 'number')
+  const added = shown.length ? fieldMarkup(shown, 'module.', new Set()) : []
+  if (added.length) {
+    code = `${code}\n<!-- Champs du fields.json ajoutés à l'import -->\n<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:16px 24px">\n${added.join('\n')}\n</td></tr></table>`
+    const what = (s: FieldSpec) =>
+      s.type === 'image' || s.type === 'backgroundimage'
+        ? 'image ajoutée'
+        : /^(link|url)$/.test(s.type)
+          ? 'lien du bouton ajouté'
+          : s.type === 'group'
+            ? `liste${s.raw?.occurrence ? ' répétée' : ''} ajoutée`
+            : s.type === 'richtext'
+              ? 'texte riche ajouté'
+              : isButtonText(s.name) && shown.some(isLink)
+                ? 'texte du bouton ajouté'
+                : isTitle(s.name)
+                  ? 'titre ajouté'
+                  : 'texte ajouté'
+    for (const s of shown) if (reads(code, s.name)) wired.push(`${s.name} : ${what(s)} à la fin du module`)
+  }
+  // 2. Settings with a clear name.
+  for (const s of top) {
+    if (DISPLAY.has(s.type) && s.type !== 'number') continue
+    const n = s.name.toLowerCase()
+    const ref = `module.${s.name}`
+    if (s.type === 'color' && /(fond|bg|background|arriere|backdrop)/.test(n)) {
+      code = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="background-color:{{ ${ref}.color }}">\n${code}\n</td></tr></table>`
+      wired.push(`${s.name} : couleur de fond du module`)
+      continue
+    }
+    if (s.type === 'color' && /(texte|text|police|font|ecriture|écriture)/.test(n)) {
+      code = `<div style="color:{{ ${ref}.color }}">\n${code}\n</div>`
+      wired.push(`${s.name} : couleur du texte (là où le code n'impose pas la sienne)`)
+      continue
+    }
+    if (s.type === 'choice' && /(align|alignement|position)/.test(n)) {
+      code = `<div style="text-align:{{ ${ref} }}">\n${code}\n</div>`
+      wired.push(`${s.name} : alignement du contenu`)
+      continue
+    }
+    if (s.type === 'number' && /(padding|marge|espacement|spacing|interieur|intérieur)/.test(n)) {
+      code = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:{{ ${ref} }}px">\n${code}\n</td></tr></table>`
+      wired.push(`${s.name} : marge intérieure du module (px)`)
+      continue
+    }
+    if (s.type === 'boolean') {
+      const show = /^(afficher|affiche|show|display|montrer|voir|avec|with|has|activer|active|enable)[_-]?(.*)$/.exec(n)
+      const hide = /^(masquer|masque|cacher|cache|hide|sans|without|disable|desactiver)[_-]?(.*)$/.exec(n)
+      const rest = (show ?? hide)?.[2]?.replace(/^(le|la|les|l)_/, '') ?? ''
+      // The field it switches: same name, or the one its name contains.
+      const target = rest
+        ? specs.find((x) => x.name !== s.name && !x.name.includes('.') && reads(code, x.name) && (x.name.toLowerCase() === rest || x.name.toLowerCase().includes(rest) || rest.includes(x.name.toLowerCase())))
+        : undefined
+      const cond = hide ? `not ${ref}` : ref
+      if (target) {
+        const at = code.search(new RegExp(`\\bmodule\\.${target.name}\\b`))
+        const el = elementRanges(code)
+          .filter((r) => r.start <= at && r.end > at && WRAPPABLE.has(r.tag))
+          .sort((a, b) => a.end - a.start - (b.end - b.start))[0]
+        if (el) {
+          code = `${code.slice(0, el.start)}{% if ${cond} %}${code.slice(el.start, el.end)}{% endif %}${code.slice(el.end)}`
+          wired.push(`${s.name} : ${hide ? 'masque' : 'affiche ou masque'} « ${target.label || target.name} »`)
+          continue
+        }
+      }
+      if (show && (!rest || /^(module|bloc|contenu|section|tout)$/.test(rest))) {
+        code = `{% if ${cond} %}\n${code}\n{% endif %}`
+        wired.push(`${s.name} : ${hide ? 'masque' : 'affiche'} tout le module`)
+        continue
+      }
+    }
+    settings.push(s.name)
+  }
+
+  for (const s of shown) if (!reads(code, s.name)) settings.push(s.name)
+  return { source: code, wired, settings }
+}
+
 // ---------------------------------------------------------------------------
 
 export interface ImportInput {
@@ -323,6 +455,8 @@ export type Prepared =
       fieldsJson: FieldSpec[] | null
       /** Names whose value came from the JSON. */
       applied: string[]
+      /** Fields of the JSON the code didn't use, made to work at import. */
+      wiring: Wiring
     }
   | { ok: false; error: string; repairs: string[] }
 
@@ -356,9 +490,17 @@ export function prepareImport(input: ImportInput, current: ModuleTree): Prepared
 
   const clean = cleanSource(html)
   repairs.push(...clean.repairs)
-  const source = css.trim() ? `<style>\n${css}\n</style>\n${clean.code}` : clean.code
+  let source = css.trim() ? `<style>\n${css}\n</style>\n${clean.code}` : clean.code
   const given = [...(fj ?? []), ...clean.specs.filter((s) => !(fj ?? []).some((f) => f.name === s.name))]
   const specs = importSpecs(source, given.length ? given : null, foreign)
+  // Fields of a fields.json (or of the other JSON) the code never reads: made to work.
+  let wiring: Wiring = { wired: [], settings: [] }
+  const declared = [...(fj ?? []), ...(foreign?.specs ?? []).filter((s) => !(fj ?? []).some((f) => f.name === s.name))]
+  if (!fromFields && declared.length) {
+    const w = wireUnusedFields(source, declared)
+    source = w.source
+    wiring = { wired: w.wired, settings: w.settings }
+  }
   const res = codeToTree(source, current, specs)
   if (!res.ok) return { ok: false, error: res.error, repairs }
   let { tree, applied } = applyValues(syncExtraFields({ ...res.tree, fields: undefined }, specs, source), foreign?.values ?? null)
@@ -367,7 +509,7 @@ export function prepareImport(input: ImportInput, current: ModuleTree): Prepared
     ;({ tree, applied } = applyValues(whole, foreign?.values ?? null))
     repairs.push(KEPT_WHOLE)
   }
-  return { ok: true, tree, source, specs, values: foreign?.values ?? null, repairs, fromFields, foreign, fieldsJson: fj, applied }
+  return { ok: true, tree, source, specs, values: foreign?.values ?? null, repairs, fromFields, foreign, fieldsJson: fj, applied, wiring }
 }
 
 export const KEPT_WHOLE = 'modèle gardé tel quel (macros, largeurs calculées, cellules écrites par des boucles) : son contenu se règle dans l’onglet Champs'

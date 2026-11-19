@@ -53,10 +53,12 @@ export interface ImportPayload {
 }
 
 export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; onImport: (p: ImportPayload) => string | null | Promise<string | null>; onClose: () => void }) {
-  const [html, setHtml] = useState('')
-  const [css, setCss] = useState('')
-  const [json, setJson] = useState('')
-  const [other, setOther] = useState('')
+  // Two zones: the code of the module (HTML + CSS), and its fields (fields.json
+  // and / or any other tool's JSON). What each holds is sorted here.
+  const [codeText, setCodeText] = useState('')
+  const [fieldsText, setFieldsText] = useState('')
+  const { html, css } = useMemo(() => splitCode(codeText), [codeText])
+  const { json, other, parts } = useMemo(() => splitFields(fieldsText), [fieldsText])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   useEscape(onClose)
@@ -132,24 +134,21 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
     }
   }, [shownTree])
 
+  // Dropped / chosen files go to the right zone (several JSON files follow each other).
   const load = async (files: FileList | null) => {
+    let code = codeText
+    let fields = fieldsText
     for (const f of Array.from(files ?? [])) {
       const text = await f.text()
-      if (/\.json$/i.test(f.name)) {
-        let data: unknown = null
-        try {
-          data = JSON.parse(text || 'null')
-        } catch {
-          /* shown as unreadable below */
-        }
-        // A HubSpot fields.json (a list of fields) goes to its own box; meta.json
-        // and any other tool's JSON go to the second one.
-        if ((/fields/i.test(f.name) || Array.isArray(data)) && parseFieldsJson(text)) setJson(text)
-        else if (!/^meta\.json$/i.test(f.name)) setOther(text)
-      } else if (/\.css$/i.test(f.name)) setCss(text)
-      else if (/\.(html?|hubl|hbs|handlebars|mustache|liquid|mjml|j2|jinja|twig)$/i.test(f.name)) setHtml(text)
+      if (/^meta\.json$/i.test(f.name)) continue
+      if (/\.json$/i.test(f.name)) fields = fields.trim() ? `${fields.trim()}\n\n${text}` : text
+      else if (/\.css$/i.test(f.name)) code = `${code.trim() ? `${code.trim()}\n` : ''}<style>\n${text}\n</style>`
+      else if (/\.(html?|hubl|hbs|handlebars|mustache|liquid|mjml|j2|jinja|twig)$/i.test(f.name)) code = code.includes('<style') && !/<(table|div|tr|td|p|h\d)\b/i.test(code) ? `${text}\n${code}` : text
     }
+    setCodeText(code)
+    setFieldsText(fields)
   }
+
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Importer un module" className="fixed inset-0 z-50 flex items-end justify-center bg-void/80 backdrop-blur-sm sm:items-center sm:p-4">
@@ -159,9 +158,8 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
           <div className="min-w-0 flex-1">
             <h2 className="font-display text-lg font-semibold">Importer un module</h2>
             <p className="text-sm text-mute">
-              Colle ou dépose <code className="font-mono text-cyan">module.html</code> et son <code className="font-mono text-cyan">fields.json</code> (et{' '}
-              <code className="font-mono text-cyan">module.css</code> si tu l'as), plus, si tu en as, le JSON d'un autre outil. Les champs gardent leurs noms, types et réglages
-              exacts ; l'export les redonne à l'identique.
+              Deux zones : le <strong className="text-white">code</strong> (module.html, et module.css à la suite) et les <strong className="text-white">champs</strong>{' '}
+              (fields.json, ou le JSON d’un autre outil). Les champs gardent leurs noms, types et réglages exacts ; ceux que le code n’utilisait pas sont rendus opérationnels.
             </p>
             <p className="mt-1 text-xs text-mute">
               Le code d’autres plateformes est converti : Liquid (Shopify, Klaviyo, Braze, Brevo), Handlebars et Mustache, balises Mailchimp, AMPscript, Mailjet, Marketo et MJML. Les variables de personnalisation sont reliées au contact, les autres données deviennent des champs, et la logique sans effet visible est masquée.
@@ -175,45 +173,48 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
         <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-2">
           <div className="space-y-3">
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-line p-3 text-sm text-mute hover:border-cyan hover:text-white">
-              <FileUp className="size-4" /> Choisir les fichiers (.html, fields.json, .css, autre .json)
+              <FileUp className="size-4" /> Choisir les fichiers (module.html, module.css, fields.json…) : chacun va dans la bonne zone
               <input type="file" multiple accept=".html,.htm,.hbs,.handlebars,.liquid,.mjml,.json,.css,text/html,application/json,text/css" className="sr-only" onChange={(e) => void load(e.target.files)} />
             </label>
             <label className="block">
-              <span className={caption}>module.html (ou le code d’une autre plateforme)</span>
-              <textarea className={`${input} min-h-36`} value={html} onChange={(e) => setHtml(e.target.value)} placeholder={foreign?.html ? 'Repris du JSON importé (colle ici pour le remplacer)' : '<table>… {{ module.titre }} … (ou Liquid, Handlebars, Mailchimp, MJML…)'} />
-            </label>
-            <label className="block">
-              <span className={caption}>fields.json (facultatif, recommandé)</span>
-              <textarea className={`${input} min-h-28`} value={json} onChange={(e) => setJson(e.target.value)} placeholder='[{ "name": "titre", "label": "Titre", "type": "text", … }]' />
-              {json.trim() && !fieldsJson && <span className="mt-1 block text-xs text-pink">Ce fields.json n'est pas lisible, même après réparation (pas de liste de champs).</span>}
-            </label>
-            <label className="block">
-              <span className={caption}>JSON d'un autre outil (facultatif)</span>
+              <span className={caption}>1 · Code du module (HTML et CSS)</span>
               <textarea
-                className={`${input} min-h-28`}
-                value={other}
-                onChange={(e) => setOther(e.target.value)}
-                placeholder='Valeurs du module ({ "titre": "…", "cartes": [ … ] }), widget_data, JSON Schema, modèle ou entrée Contentful, Storyblok, Sanity, Strapi, Prismic, Webflow, Directus, Builder.io, Airtable, liste de champs d’un autre outil, JSON du module via l’API HubSpot…'
+                className={`${input} min-h-40`}
+                value={codeText}
+                onChange={(e) => setCodeText(e.target.value)}
+                placeholder={foreign?.html ? 'Repris du JSON importé (colle ici pour le remplacer)' : 'Colle ici module.html, et module.css à la suite si tu l’as.\n<table>… {{ module.titre }} …\n(HuBL, Liquid, Handlebars, Mailchimp, MJML…)'}
               />
-              {other.trim() &&
-                (foreign ? (
-                  <span className="mt-1 flex items-start gap-1.5 text-xs text-cyan">
-                    <Check className="mt-0.5 size-3.5 shrink-0" />
-                    <span>
-                      Reconnu : {foreign.format}
-                      {foreign.specs.length > 0 && ` · ${foreign.specs.filter((s) => !s.name.includes('.')).length} définition${foreign.specs.length > 1 ? 's' : ''} de champ`}
-                      {foreign.values && ` · ${Object.keys(foreign.values).length} valeur${Object.keys(foreign.values).length > 1 ? 's' : ''}`}
-                      {foreign.html && ' · code du module'}
-                      {foreign.css && ' · CSS'}
-                    </span>
+              {codeText.trim() && (
+                <span className="mt-1 flex items-start gap-1.5 text-xs text-cyan">
+                  <Check className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    {html.trim() ? 'Code reconnu' : 'Pas de HTML : seul le CSS est repris'}
+                    {css.trim() && ' · CSS'}
                   </span>
-                ) : (
-                  <span className="mt-1 block text-xs text-pink">Rien de reconnu dans ce JSON (invalide, ou sans champs ni valeurs).</span>
-                ))}
+                </span>
+              )}
             </label>
             <label className="block">
-              <span className={caption}>module.css (facultatif)</span>
-              <textarea className={`${input} min-h-14`} value={css} onChange={(e) => setCss(e.target.value)} placeholder={foreign?.css ? 'Repris du JSON importé' : undefined} />
+              <span className={caption}>2 · Champs (fields.json ou JSON d’un autre outil) · facultatif</span>
+              <textarea
+                className={`${input} min-h-32`}
+                value={fieldsText}
+                onChange={(e) => setFieldsText(e.target.value)}
+                placeholder={'Colle ici le fields.json (recommandé), ou le JSON d’un autre outil : valeurs du module, widget_data, JSON Schema, Contentful, Storyblok, Sanity, Strapi, Webflow, Airtable, API HubSpot… Plusieurs JSON peuvent se suivre.'}
+              />
+              {fieldsText.trim() && (
+                <span className={`mt-1 flex items-start gap-1.5 text-xs ${fieldsJson || foreign ? 'text-cyan' : 'text-pink'}`}>
+                  {fieldsJson || foreign ? <Check className="mt-0.5 size-3.5 shrink-0" /> : <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />}
+                  <span>
+                    {fieldsJson && `fields.json : ${fieldsJson.filter((f) => !f.name.includes('.')).length} champ${fieldsJson.length > 1 ? 's' : ''}`}
+                    {fieldsJson && foreign && ' · '}
+                    {foreign &&
+                      `${foreign.format}${foreign.specs.length ? ` · ${foreign.specs.filter((x) => !x.name.includes('.')).length} définition${foreign.specs.length > 1 ? 's' : ''}` : ''}${foreign.values ? ` · ${Object.keys(foreign.values).length} valeur${Object.keys(foreign.values).length > 1 ? 's' : ''}` : ''}${foreign.html ? ' · code du module' : ''}`}
+                    {!fieldsJson && !foreign && 'Rien de reconnu : ce n’est ni un fields.json ni un JSON lisible, même après réparation.'}
+                    {parts > 2 && ` · ${parts - 2} JSON en plus ignoré${parts > 3 ? 's' : ''}`}
+                  </span>
+                </span>
+              )}
             </label>
           </div>
 
@@ -276,9 +277,23 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
                     </li>
                   ))}
                 </ul>
-                {report.missing.length > 0 && (
+                {prep?.ok && prep.wiring.wired.length > 0 && (
+                  <div className="mt-2 rounded-md border border-cyan/30 bg-cyan/5 p-2 text-xs">
+                    <p className="flex gap-1.5 font-semibold text-cyan">
+                      <Wrench className="mt-0.5 size-3.5 shrink-0" /> Rendus opérationnels (le code ne les utilisait pas)
+                    </p>
+                    <ul className="mt-1 space-y-0.5 pl-5 text-[#d9d9ec]">
+                      {prep.wiring.wired.map((w) => (
+                        <li key={w} className="list-disc">
+                          {w}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {prep?.ok && prep.wiring.settings.length > 0 && (
                   <p className="mt-2 flex gap-1.5 text-xs text-mute">
-                    <Check className="mt-0.5 size-3.5 shrink-0 text-cyan" /> Gardés même s'ils ne sont pas utilisés dans le code : {report.missing.join(', ')}
+                    <Check className="mt-0.5 size-3.5 shrink-0 text-cyan" /> Gardés comme réglages (onglet Champs, exportés), sans effet tant que le code ne les utilise pas : {prep.wiring.settings.join(', ')}
                   </p>
                 )}
                 {report.unknown.length > 0 && (
@@ -315,4 +330,64 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
       </div>
     </div>
   )
+}
+
+// The code zone: HTML (with its <style>), or CSS alone, or HTML followed by the
+// module.css pasted below it (rules after the last tag).
+export function splitCode(text: string): { html: string; css: string } {
+  const t = text.trim()
+  if (!t) return { html: '', css: '' }
+  const looksCss = (x: string) => /^[^<{}]*\{[^{}]*:[^{}]*\}/.test(x.trim()) && !/<[a-z!]/i.test(x)
+  if (looksCss(t)) return { html: '', css: t }
+  // module.css pasted after the HTML: everything after the last closing tag that reads as CSS.
+  // (a CSS selector may hold « > », so the end of the HTML is its last closing tag)
+  let end = -1
+  for (const m of t.matchAll(/<\/[a-z][\w-]*\s*>|\/>|%\}|-->|<img\b[^>]*>|<br\s*>/gi)) end = m.index! + m[0].length
+  const tail = end >= 0 ? t.slice(end) : ''
+  if (tail.trim() && looksCss(tail)) return { html: t.slice(0, t.length - tail.length), css: tail.trim() }
+  return { html: t, css: '' }
+}
+
+// The fields zone: one or several JSON documents one after the other. The first
+// fields.json (a list of fields) is « json », the first other JSON is « other ».
+export function splitFields(text: string): { json: string; other: string; parts: number } {
+  const docs: string[] = []
+  let depth = 0
+  let start = -1
+  let str: string | null = null
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (str) {
+      if (c === '\\') i++
+      else if (c === str) str = null
+      continue
+    }
+    if (c === '"' || (c === "'" && depth > 0)) str = c
+    else if (c === '{' || c === '[') {
+      if (depth === 0) start = i
+      depth++
+    } else if ((c === '}' || c === ']') && depth > 0) {
+      depth--
+      if (depth === 0 && start >= 0) {
+        docs.push(text.slice(start, i + 1))
+        start = -1
+      }
+    }
+  }
+  // Unbalanced (a broken JSON): kept whole, the lenient reader repairs it.
+  if (depth > 0 || !docs.length) return isFieldsJson(text) ? { json: text, other: '', parts: 1 } : { json: '', other: text, parts: text.trim() ? 1 : 0 }
+  let json = ''
+  let other = ''
+  for (const d of docs) {
+    if (!json && isFieldsJson(d)) json = d
+    else if (!other) other = d
+  }
+  return { json, other, parts: docs.length }
+}
+
+// A list of field definitions, even written loosely (the import repairs it).
+const isFieldsJson = (t: string) => {
+  if (!/^\s*\[/.test(t)) return false
+  const f = parseFieldsJson(t)
+  return (!!f && f.length > 0) || (/\bname\b/.test(t) && /\btype\b/.test(t))
 }
