@@ -337,8 +337,8 @@ function OutlookPreview({
       docRef.current = doc
       const st = doc.createElement('style')
       st.textContent =
-        '[data-neon]{cursor:pointer}[data-nsp-sel]{outline:2px solid #ff007f !important;outline-offset:2px}' +
-        '.nsp-h{background:#ff007f;border:2px solid #fff;border-radius:6px;box-shadow:0 1px 4px #0006}.nsp-b,.nsp-t{width:40px;height:10px;cursor:ns-resize}.nsp-r{width:10px;height:40px;cursor:ew-resize}'
+        '[data-neon]{cursor:pointer}[data-nsp-sel]{outline:2px solid #ff2d95 !important;outline-offset:2px}' +
+        '.nsp-h{background:#ff2d95;border:2px solid #fff;border-radius:6px;box-shadow:0 1px 4px #0006}.nsp-b,.nsp-t{width:40px;height:10px;cursor:ns-resize}.nsp-r{width:10px;height:40px;cursor:ew-resize}'
       doc.head.appendChild(st)
       doc.addEventListener('click', (e) => {
         e.preventDefault()

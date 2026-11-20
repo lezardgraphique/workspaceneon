@@ -215,7 +215,7 @@ function ClientChrome({ client, name }: { client: EmailClient; name: string }) {
     <div
       className={`flex items-center gap-2.5 border-b px-4 py-2.5 font-sans ${dark ? 'border-[#333] bg-[#1f1f1f] text-[#e8e8e8]' : 'border-[#e6e6ee] bg-[#f7f7fa] text-[#202030]'}`}
     >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#ff007f] text-xs font-bold text-white">N</span>
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#ff2d95] text-xs font-bold text-white">N</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold">{name}</span>
         <span className={`block truncate text-xs ${dark ? 'text-[#a0a0a0]' : 'text-[#6a6a80]'}`}>

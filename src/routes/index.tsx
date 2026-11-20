@@ -6,7 +6,7 @@ import { AccountMenu } from '@/components/AccountMenu'
 import { BackupPanel } from '@/components/BackupPanel'
 import { DeletedModules } from '@/components/DeletedModules'
 import { AppHeader, headerButton } from '@/components/AppHeader'
-import { LegalLink } from '@/components/LegalLink'
+import { ByLzg, LegalLink } from '@/components/LegalLink'
 import { EmailFrame } from '@/components/EmailFrame'
 import { Maily } from '@/components/Maily'
 import { NeonCube } from '@/components/NeonCube'
@@ -419,6 +419,10 @@ function Library() {
         </span>
         <span className="inline-block max-md:mt-1 max-md:block">
           <LegalLink />
+          <span className="mx-2" aria-hidden>
+            ·
+          </span>
+          <ByLzg />
         </span>
       </footer>
     </div>

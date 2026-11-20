@@ -995,7 +995,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
               pane === t.k ? 'text-white' : 'text-mute active:text-white'
             }`}
           >
-            {pane === t.k && <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-pink-fill shadow-[0_0_10px_#ff007f] land:inset-x-auto land:inset-y-2 land:left-0 land:h-auto land:w-0.5" />}
+            {pane === t.k && <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-pink-fill shadow-[0_0_10px_#ff2d95] land:inset-x-auto land:inset-y-2 land:left-0 land:h-auto land:w-0.5" />}
             <span className={`relative rounded-full px-2.5 py-0.5 ${pane === t.k ? 'bg-pink/15 text-pink' : ''}`}>
               <t.icon className="size-5" />
               {t.dot && <span className={`absolute top-0 right-2 size-1.5 rounded-full ${t.k === 'code' ? 'bg-pink-fill' : 'bg-cyan'}`} />}

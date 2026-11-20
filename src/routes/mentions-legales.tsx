@@ -2,6 +2,7 @@ import { Link, createFileRoute, useRouteContext } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 
 import { AppHeader } from '@/components/AppHeader'
+import { ByLzg } from '@/components/LegalLink'
 import { KOFI_URL } from '@/lib/links'
 
 // Public page (no account needed): legal notice (LCEN art. 6 III) and the
@@ -146,6 +147,10 @@ function MentionsLegales() {
             propriétaires.
           </p>
         </Section>
+
+        <p className="mt-12 border-t border-line pt-4 text-center text-xs text-mute">
+          Neon Sandbox Pro, un projet <ByLzg />
+        </p>
       </main>
     </div>
   )

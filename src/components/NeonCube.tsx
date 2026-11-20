@@ -23,7 +23,7 @@ const CHEVRONS = 'M200 230L170 260L200 290M312 230L342 260L312 290'
 const LINES: [string, string, number, { opacity?: number }][] = [
   [CUBE, '#00e5ff', 8, {}],
   [EDGES, '#00e5ff', 4, { opacity: 0.65 }],
-  [CHEVRONS, '#ff007f', 11, {}],
+  [CHEVRONS, '#ff2d95', 11, {}],
 ]
 
 // Decided once per visit. Signs mounted together (two on one screen, React's

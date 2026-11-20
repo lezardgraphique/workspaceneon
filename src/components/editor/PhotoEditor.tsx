@@ -173,7 +173,7 @@ export default function PhotoEditor({ src, onSave, onClose }: { src: string; onS
       <span className="mb-1 flex justify-between font-mono text-[10px] tracking-wider text-mute uppercase">
         {label} <span className="text-white">{edit[key] > 0 ? `+${edit[key]}` : edit[key]}</span>
       </span>
-      <input type="range" min={-100} max={100} value={edit[key]} onChange={(e) => set({ [key]: Number(e.target.value) })} className="w-full accent-[#ff007f]" />
+      <input type="range" min={-100} max={100} value={edit[key]} onChange={(e) => set({ [key]: Number(e.target.value) })} className="w-full accent-[#ff2d95]" />
     </label>
   )
 

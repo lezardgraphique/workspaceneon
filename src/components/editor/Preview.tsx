@@ -528,8 +528,8 @@ export function Preview({ tree, ...p }: Props) {
       )}
       {view && (
         <>
-          {view.line && <div className="pointer-events-none fixed z-50 h-[3px] rounded-full bg-[#ff007f] shadow-[0_0_10px_#ff007f]" style={{ top: view.line.top - 1.5, left: view.line.left, width: view.line.width }} />}
-          <div className="pointer-events-none fixed z-50 -translate-x-1/2 rounded-full bg-[#ff007f] px-3 py-1 text-xs font-semibold text-white shadow-lg" style={{ left: Math.min(Math.max(view.x, 70), (typeof window === 'undefined' ? 400 : window.innerWidth) - 70), top: Math.max(8, view.y - 64) }}>
+          {view.line && <div className="pointer-events-none fixed z-50 h-[3px] rounded-full bg-[#ff2d95] shadow-[0_0_10px_#ff2d95]" style={{ top: view.line.top - 1.5, left: view.line.left, width: view.line.width }} />}
+          <div className="pointer-events-none fixed z-50 -translate-x-1/2 rounded-full bg-[#ff2d95] px-3 py-1 text-xs font-semibold text-white shadow-lg" style={{ left: Math.min(Math.max(view.x, 70), (typeof window === 'undefined' ? 400 : window.innerWidth) - 70), top: Math.max(8, view.y - 64) }}>
             {view.label}
           </div>
         </>

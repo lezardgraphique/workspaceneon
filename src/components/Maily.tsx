@@ -72,31 +72,31 @@ export function Maily({
         </linearGradient>
       </defs>
       {/* thrust trail */}
-      <ellipse cx="60" cy="88" rx="22" ry="3" fill="#FF007F" opacity="0.35" className="maily-trail" />
+      <ellipse cx="60" cy="88" rx="22" ry="3" fill="#ff2d95" opacity="0.35" className="maily-trail" />
       {/* wings */}
       <g filter={`url(#${glow})`}>
         <path
           className="maily-wing-l"
           d="M32 46 C18 30 6 30 4 40 C10 46 20 50 32 56 Z"
-          fill="#FF007F"
+          fill="#ff2d95"
           fillOpacity="0.28"
-          stroke="#FF007F"
+          stroke="#ff2d95"
           strokeWidth="2"
           strokeLinejoin="round"
         />
         <path
           className="maily-wing-r"
           d="M88 46 C102 30 114 30 116 40 C110 46 100 50 88 56 Z"
-          fill="#FF007F"
+          fill="#ff2d95"
           fillOpacity="0.28"
-          stroke="#FF007F"
+          stroke="#ff2d95"
           strokeWidth="2"
           strokeLinejoin="round"
         />
       </g>
       {/* antenna */}
       <line x1="60" y1="30" x2="60" y2="20" stroke="#00E5FF" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="60" cy="17" r="3.5" fill="#FF007F" filter={`url(#${glow})`} className="maily-led" />
+      <circle cx="60" cy="17" r="3.5" fill="#ff2d95" filter={`url(#${glow})`} className="maily-led" />
       {/* envelope body */}
       <rect x="30" y="30" width="60" height="44" rx="10" fill={`url(#${body})`} filter={`url(#${glow})`} />
       <path d="M33 71 L52 57 M87 71 L68 57" stroke="#0A0A12" strokeOpacity="0.35" strokeWidth="2" strokeLinecap="round" />
@@ -138,7 +138,7 @@ function Accessory({ season }: { season: Season }) {
           </g>
           <rect x="94" y="14" width="4" height="2" rx="1" fill="#FACC15" transform="rotate(30 96 15)" />
           <rect x="100" y="26" width="4" height="2" rx="1" fill="#00E5FF" transform="rotate(-25 102 27)" />
-          <rect x="74" y="8" width="4" height="2" rx="1" fill="#FF007F" transform="rotate(50 76 9)" />
+          <rect x="74" y="8" width="4" height="2" rx="1" fill="#ff2d95" transform="rotate(50 76 9)" />
           <circle cx="86" cy="20" r="1.4" fill="#FACC15" />
           <circle cx="20" cy="22" r="1.4" fill="#00E5FF" />
         </g>
@@ -147,15 +147,15 @@ function Accessory({ season }: { season: Season }) {
       return (
         <g>
           <path d="M40 32 L40 18 L48 25 L54 15 L58 24 L62 24 L66 15 L72 25 L80 18 L80 32 Z" fill="#FACC15" stroke="#B45309" strokeWidth="1.2" strokeLinejoin="round" />
-          <circle cx="47" cy="28.5" r="1.8" fill="#FF007F" />
+          <circle cx="47" cy="28.5" r="1.8" fill="#ff2d95" />
           <circle cx="60" cy="28.5" r="1.8" fill="#00E5FF" />
-          <circle cx="73" cy="28.5" r="1.8" fill="#FF007F" />
+          <circle cx="73" cy="28.5" r="1.8" fill="#ff2d95" />
         </g>
       )
     case 'valentin':
       return (
         <g>
-          <path d="M60 22.5 C56 19 53.5 16.5 55 13.5 C56.5 11 59 11.5 60 13.5 C61 11.5 63.5 11 65 13.5 C66.5 16.5 64 19 60 22.5 Z" fill="#FF007F" />
+          <path d="M60 22.5 C56 19 53.5 16.5 55 13.5 C56.5 11 59 11.5 60 13.5 C61 11.5 63.5 11 65 13.5 C66.5 16.5 64 19 60 22.5 Z" fill="#ff2d95" />
           <ellipse cx="41" cy="61" rx="4" ry="2.2" fill="#FF4FA3" opacity="0.7" />
           <ellipse cx="79" cy="61" rx="4" ry="2.2" fill="#FF4FA3" opacity="0.7" />
         </g>
@@ -208,9 +208,9 @@ function Accessory({ season }: { season: Season }) {
     case 'ete':
       return (
         <g>
-          <rect x="40" y="40" width="18" height="13" rx="5" fill="#0A0A12" fillOpacity="0.9" stroke="#FF007F" strokeWidth="1.6" />
-          <rect x="62" y="40" width="18" height="13" rx="5" fill="#0A0A12" fillOpacity="0.9" stroke="#FF007F" strokeWidth="1.6" />
-          <path d="M58 44 L62 44" stroke="#FF007F" strokeWidth="1.6" />
+          <rect x="40" y="40" width="18" height="13" rx="5" fill="#0A0A12" fillOpacity="0.9" stroke="#ff2d95" strokeWidth="1.6" />
+          <rect x="62" y="40" width="18" height="13" rx="5" fill="#0A0A12" fillOpacity="0.9" stroke="#ff2d95" strokeWidth="1.6" />
+          <path d="M58 44 L62 44" stroke="#ff2d95" strokeWidth="1.6" />
           <path d="M44 44 L49 42 M66 44 L71 42" stroke="#00E5FF" strokeWidth="1.3" strokeLinecap="round" />
         </g>
       )

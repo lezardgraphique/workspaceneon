@@ -15,8 +15,8 @@
   </circle>
 
   <!-- Neon Accents -->
-  <path d="M200 230L170 260L200 290" stroke="#FF007F" stroke-width="12" stroke-linecap="round"/>
-  <path d="M312 230L342 260L312 290" stroke="#FF007F" stroke-width="12" stroke-linecap="round"/>
+  <path d="M200 230L170 260L200 290" stroke="#ff2d95" stroke-width="12" stroke-linecap="round"/>
+  <path d="M312 230L342 260L312 290" stroke="#ff2d95" stroke-width="12" stroke-linecap="round"/>
 
   <defs>
     <radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 256) rotate(90) scale(180)">

@@ -5,7 +5,7 @@ import { acceptInvite, getUser, handleAuthCallback, login, refreshSession, reque
 import { ArrowRight, Loader2, LogIn } from 'lucide-react'
 
 import { AuthIllustration } from '@/components/AuthIllustration'
-import { LegalLink } from '@/components/LegalLink'
+import { ByLzg, LegalLink } from '@/components/LegalLink'
 import { Maily, NeonLogo } from '@/components/Maily'
 import { NeonCube } from '@/components/NeonCube'
 import { MIN_PASSWORD, checkPassword, leakCount } from '@/lib/password'
@@ -92,8 +92,9 @@ async function restoreSession() {
   window.location.replace('/')
 }
 
+// Dark fields that light up in neon pink when focused (autofill kept dark in styles.css).
 const field =
-  'w-full rounded-md border border-line bg-void px-3 py-2.5 text-base text-white placeholder:text-mute focus:border-cyan focus:outline-none lg:text-sm'
+  'auth-field w-full rounded-md border border-line bg-void px-3 py-2.5 text-base text-white placeholder:text-mute transition-[border-color,box-shadow] focus:border-pink focus:outline-none lg:text-sm'
 
 function Connexion() {
   const [mode, setMode] = useState<Mode>('login')
@@ -237,10 +238,10 @@ function Connexion() {
   return (
     <main id="contenu" className="neon-grid fixed inset-0 overflow-hidden overscroll-none">
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-        <span className="auth-tile left-[6%] top-[8%] size-14" style={{ '--tile': '#ff007f', '--r': '-8deg' } as React.CSSProperties} />
+        <span className="auth-tile left-[6%] top-[8%] size-14" style={{ '--tile': '#ff2d95', '--r': '-8deg' } as React.CSSProperties} />
         <span className="auth-tile right-[8%] top-[14%] h-10 w-20" style={{ '--tile': '#00e5ff', '--r': '6deg', animationDelay: '1.2s' } as React.CSSProperties} />
         <span className="auth-tile bottom-[10%] left-[10%] h-12 w-24" style={{ '--tile': '#bc13fe', '--r': '5deg', animationDelay: '2.4s' } as React.CSSProperties} />
-        <span className="auth-tile bottom-[16%] right-[6%] size-16" style={{ '--tile': '#ff007f', '--r': '-4deg', animationDelay: '0.6s' } as React.CSSProperties} />
+        <span className="auth-tile bottom-[16%] right-[6%] size-16" style={{ '--tile': '#ff2d95', '--r': '-4deg', animationDelay: '0.6s' } as React.CSSProperties} />
         <div className="neon-auth-floor-wrap lg:hidden">
           <NeonCube className="neon-auth-floor" />
         </div>
@@ -258,7 +259,9 @@ function Connexion() {
                 </span>
               </div>
               <p className="font-display text-[1.75rem] leading-tight font-bold [@media(max-height:600px)]:text-2xl">
-                Tes modules, <span className="neon-text">à la vitesse de la lumière.</span>
+                Tes modules,
+                <br />
+                <span className="neon-text">à la vitesse de&nbsp;la&nbsp;lumière.</span>
               </p>
               <div className="mt-5 hidden gap-2 [@media(max-height:500px)]:grid">
                 <IntroButtons onEnter={enter} />
@@ -358,12 +361,20 @@ function Connexion() {
         <div className="auth-rise auth-rise-3 relative isolate hidden lg:block">
           <NeonCube className="neon-auth-side -z-10" />
           <h2 className="mb-10 max-w-md font-display text-3xl leading-tight font-bold">
-            Tes modules, <span className="neon-text">à la vitesse de la lumière.</span>
+            Tes modules,
+            <br />
+            <span className="neon-text">à la vitesse de&nbsp;la&nbsp;lumière.</span>
           </h2>
           <AuthIllustration />
         </div>
       </div>
-      <LegalLink className="absolute right-3 bottom-[calc(env(safe-area-inset-bottom)+0.25rem)] z-10 text-xs" />
+      <p className="absolute right-3 bottom-[calc(env(safe-area-inset-bottom)+0.25rem)] z-10 text-xs text-mute">
+        <LegalLink />
+        <span className="mx-1.5" aria-hidden>
+          ·
+        </span>
+        <ByLzg />
+      </p>
     </main>
   )
 }
