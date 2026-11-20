@@ -4,6 +4,7 @@ import { HeadContent, Scripts, createRootRoute, redirect } from '@tanstack/react
 import { AuthLinkRedirect } from '@/components/AuthLinkRedirect'
 import { OfflineManager } from '@/components/OfflineManager'
 import { applyAppleFixes } from '@/lib/apple'
+import { applyImageGuard } from '@/lib/image-guard'
 import { bindUser, isOffline } from '@/lib/data'
 import { cachedUser, rememberUser } from '@/lib/session-cache'
 import { bindSettingsUser } from '@/lib/settings-sync'
@@ -17,6 +18,7 @@ const siteDescription =
 
 function AppleFixes() {
   useEffect(() => applyAppleFixes(), [])
+  useEffect(() => applyImageGuard(), [])
   return null
 }
 
