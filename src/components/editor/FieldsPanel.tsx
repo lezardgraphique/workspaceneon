@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Braces, ImageIcon, RotateCcw } from 'lucide-react'
+import { Braces, ImageIcon, Plus, RotateCcw, X } from 'lucide-react'
 
 import { ImageUpload } from './ImageUpload'
 import { PhotoButton } from './PhotoButton'
 import { BLOCK_ICONS } from './Structure'
 import { defaultFor } from '@/lib/extra-fields'
+import { addField, editField, optionsToText, removeField, renameField, retypeField, setRepeated, textToOptions } from '@/lib/field-edit'
+import type { FieldPath } from '@/lib/field-edit'
 import { FIELD_KIND, collectFields } from '@/lib/fields'
 import type { FieldBlock, ModuleField } from '@/lib/fields'
 import { updateNode } from '@/lib/tree'
@@ -268,9 +270,145 @@ function ExtraValue({ f, set }: { f: ExtraField; set: (v: Json) => void }) {
   return <ValueEditor f={f} value={f.default === undefined ? defaultFor(f) : f.default} set={set} />
 }
 
-// A variable the code uses ({{ module.nom }}, {% if module.nom %}…) that no
-// block owns. The variable stays in the content; the field supplies its value.
+const TYPES = Object.keys(TYPE_LABEL) as ExtraFieldType[]
+
+// Name of a field (HuBL), renamed on leaving the box: the values and the code
+// that reads it follow (module.a.b, and the {% for %} variables over its group).
+function NameInput({ name, path, p, prefix }: { name: string; path: FieldPath; p: Props; prefix: string }) {
+  const [text, setText] = useState(name)
+  useEffect(() => setText(name), [name])
+  const apply = () => {
+    const next = renameField(p.tree, path, text)
+    if (next === p.tree) setText(name)
+    else p.commit(next)
+  }
+  return (
+    <span className="flex min-w-[9rem] flex-[1_1_9rem] items-center font-mono text-base text-[#e3a6ff] lg:text-xs">
+      <span className="shrink-0 text-mute">{prefix}</span>
+      <input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={apply}
+        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        aria-label="Nom du champ (HuBL)"
+        spellCheck={false}
+        className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-0.5 py-0.5 outline-none hover:border-line focus:border-violet"
+      />
+    </span>
+  )
+}
+
+function TypeSelect({ f, path, p }: { f: ExtraField; path: FieldPath; p: Props }) {
+  return (
+    <select
+      value={f.type}
+      onChange={(e) => p.commit(retypeField(p.tree, path, e.target.value as ExtraFieldType))}
+      aria-label={`Type du champ ${f.label}`}
+      className="shrink-0 rounded-full border border-line bg-void px-2 py-0.5 text-[11px] text-mute outline-none focus:border-cyan"
+    >
+      {TYPES.map((t) => (
+        <option key={t} value={t}>
+          {TYPE_LABEL[t]}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function Repeated({ f, path, p }: { f: ExtraField; path: FieldPath; p: Props }) {
+  return (
+    <label className="flex shrink-0 items-center gap-1 text-[11px] text-mute" title="Plusieurs éléments (boucle {% for %}, « occurrence » dans HubSpot)">
+      <input type="checkbox" checked={!!f.repeater} onChange={(e) => p.commit(setRepeated(p.tree, path, e.target.checked))} className="size-3.5 accent-pink" />
+      Répété
+    </label>
+  )
+}
+
+function Options({ f, path, p }: { f: ExtraField; path: FieldPath; p: Props }) {
+  const [text, setText] = useState(() => optionsToText(f.options))
+  useEffect(() => setText(optionsToText(f.options)), [f.options])
+  return (
+    <label className="mt-1.5 block">
+      <span className={caption}>Choix proposés · une ligne par choix : valeur | libellé</span>
+      <textarea
+        className={`${input} ${mono} min-h-16`}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          const options = textToOptions(text)
+          if (options.length) p.commit(editField(p.tree, path, { options }))
+          else setText(optionsToText(f.options))
+        }}
+      />
+    </label>
+  )
+}
+
+// « + Ajouter un champ » at the top, or inside a group (any depth).
+function AddField({ parent, p, label }: { parent: FieldPath; p: Props; label: string }) {
+  const [type, setType] = useState<ExtraFieldType>('text')
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => p.commit(addField(p.tree, parent, type, type === 'group' ? 'Nouveau groupe' : 'Nouveau champ').tree)}
+        aria-label={parent.length ? `Ajouter un champ dans le groupe ${parent.join(' › ')}` : 'Ajouter un champ au module'}
+        className="inline-flex min-w-0 items-center gap-1 rounded-md border border-dashed border-line px-2 py-1 text-left text-xs text-cyan hover:border-cyan"
+      >
+        <Plus className="size-3.5" /> {label}
+      </button>
+      <select value={type} onChange={(e) => setType(e.target.value as ExtraFieldType)} aria-label="Type du champ à ajouter" className="rounded-md border border-line bg-void px-1.5 py-1 text-[11px] text-mute outline-none focus:border-cyan">
+        {TYPES.map((t) => (
+          <option key={t} value={t}>
+            {TYPE_LABEL[t]}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+// The fields of a group, each editable (label, name, type, repeated, choices,
+// removal) and, for a group inside it, its own fields: every level.
+function GroupFields({ f, path, p, prefix }: { f: ExtraField; path: FieldPath; p: Props; prefix: string }) {
+  return (
+    <div className="mt-2 space-y-2 border-l-2 border-violet/40 pl-3">
+      {(f.children ?? []).map((c) => {
+        const cp = [...path, c.name]
+        return (
+          <div key={c.name} className="rounded-md border border-line bg-void/40 p-2">
+            <div className="flex items-center gap-1.5">
+              <input
+                value={c.label}
+                onChange={(e) => p.commit(editField(p.tree, cp, { label: e.target.value }))}
+                aria-label="Libellé du champ"
+                className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-base font-semibold outline-none hover:border-line focus:border-cyan lg:text-xs"
+              />
+              <button type="button" onClick={() => p.commit(removeField(p.tree, cp))} aria-label={`Retirer le champ ${c.label}`} className="rounded p-1 text-mute hover:text-pink">
+                <X className="size-3.5" />
+              </button>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <NameInput name={c.name} path={cp} p={p} prefix={prefix} />
+              <TypeSelect f={c} path={cp} p={p} />
+              <Repeated f={c} path={cp} p={p} />
+            </div>
+            {c.type === 'choice' && <Options f={c} path={cp} p={p} />}
+            {c.type === 'group' && <GroupFields f={c} path={cp} p={p} prefix={`${c.repeater ? 'item' : prefix + c.name}.`} />}
+          </div>
+        )
+      })}
+      <AddField parent={path} p={p} label={`Ajouter dans « ${f.label} »`} />
+    </div>
+  )
+}
+
+// A field of the module that no block owns: a variable of the code or a field
+// of an imported fields.json. Its definition is editable at every level (a
+// field the import missed or read wrongly can be added or corrected), its
+// value below.
 export function ExtraFieldCard({ f, p }: { f: ExtraField; p: Props }) {
+  const path = [f.name]
   const update = (patch: Partial<ExtraField>) =>
     p.commit({ ...p.tree, fields: (p.tree.fields ?? []).map((x) => (x.name === f.name ? { ...x, ...patch } : x)) })
   return (
@@ -283,42 +421,34 @@ export function ExtraFieldCard({ f, p }: { f: ExtraField; p: Props }) {
           aria-label="Libellé du champ"
           className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-base font-semibold outline-none hover:border-line focus:border-cyan lg:text-sm"
         />
+        <TypeSelect f={f} path={path} p={p} />
       </div>
-      <div className="mb-3 flex items-center justify-between gap-2 pl-6">
-        <p className="min-w-0 truncate font-mono text-base text-[#e3a6ff] lg:text-xs">{`{{ module.${f.name} }}`}</p>
-        <select
-            value={f.type}
-            onChange={(e) => {
-              const type = e.target.value as ExtraFieldType
-              update({ type, hsType: undefined, spec: undefined, default: defaultFor({ ...f, type, hsType: undefined }) })
-            }}
-            aria-label="Type du champ"
-            className="shrink-0 rounded-full border border-line bg-void px-2 py-0.5 text-[11px] text-mute outline-none focus:border-cyan"
-          >
-            {(Object.keys(TYPE_LABEL) as ExtraFieldType[]).filter((t) => t !== 'choice' || f.type === 'choice').map((t) => (
-              <option key={t} value={t}>
-                {TYPE_LABEL[t]}
-              </option>
-            ))}
-          </select>
+      <div className="mb-3 flex items-center gap-2 pl-6">
+        <span className="text-mute">{'{{'}</span>
+        <NameInput name={f.name} path={path} p={p} prefix="module." />
+        <span className="text-mute">{'}}'}</span>
+        <Repeated f={f} path={path} p={p} />
       </div>
-      {(f.hsType || f.spec || f.repeater) && (
+      {(f.hsType || f.spec) && (
         <p className="-mt-2 mb-3 pl-6 text-[11px] text-mute">
           {f.hsType && <>Type HubSpot exact : <code className="font-mono text-[#e3a6ff]">{f.hsType}</code>. </>}
-          {f.repeater && 'Répété (plusieurs éléments). '}
           {f.spec && 'Définition fields.json gardée à l’identique à l’export.'}
         </p>
       )}
-      <span className={caption}>Valeur</span>
-      <ExtraValue f={f} set={(v) => update({ default: v })} />
-      {f.keep && (
-        <button
-          onClick={() => p.commit({ ...p.tree, fields: (p.tree.fields ?? []).filter((x) => x.name !== f.name) })}
-          className="mt-2 text-xs text-mute underline hover:text-pink"
-        >
-          Retirer ce champ importé
-        </button>
+      {f.type === 'choice' && <Options f={f} path={path} p={p} />}
+      {f.type === 'group' && (
+        <details open className="mb-3">
+          <summary className="cursor-pointer text-xs text-mute hover:text-white">
+            Champs du groupe ({f.children?.length ?? 0}) : ajouter, renommer, changer le type, à chaque niveau
+          </summary>
+          <GroupFields f={f} path={path} p={p} prefix={f.repeater ? 'item.' : `module.${f.name}.`} />
+        </details>
       )}
+      <span className={caption}>Valeur</span>
+      <ExtraValue f={f} set={(v) => update({ default: v, sample: undefined })} />
+      <button onClick={() => p.commit(removeField(p.tree, path))} className="mt-2 text-xs text-mute underline hover:text-pink">
+        Retirer ce champ
+      </button>
     </div>
   )
 }
@@ -421,7 +551,7 @@ export function FieldsPanel(p: Props) {
       {(p.tree.fields?.length ?? 0) > 0 && (
         <>
           <div className="px-1 pt-3">
-            <h2 className="font-display font-semibold">Variables du code</h2>
+            <h2 className="font-display font-semibold">Champs du code et du fields.json</h2>
             <p className="text-xs text-mute">
               Champs créés automatiquement pour les variables que ton code utilise. La variable reste en place dans le contenu : modifie ici la valeur
               affichée dans l'aperçu et exportée dans fields.json.
@@ -432,6 +562,13 @@ export function FieldsPanel(p: Props) {
           ))}
         </>
       )}
+      <div className="rounded-lg border border-dashed border-line p-3">
+        <p className="mb-2 text-xs text-mute">
+          Un champ manque ou a été mal reconnu à l’import ? Ajoute-le ici, ou dans un groupe (à n’importe quel niveau) depuis sa carte. Change son type,
+          son nom ou « Répété » : les valeurs suivent, et le code qui l’utilise est renommé avec lui.
+        </p>
+        <AddField parent={[]} p={p} label="Ajouter un champ au module" />
+      </div>
       {fields.length === 0 && !p.tree.fields?.length && (
         <p className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-mute">
           Aucun champ pour l'instant. Ajoute un titre, un texte, un bouton ou une image depuis la structure.

@@ -291,6 +291,10 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
                     </ul>
                   </div>
                 )}
+                <p className="mt-2 text-xs text-mute">
+                  Un champ manque ou est mal reconnu ? Importe quand même : dans l’onglet <strong className="text-white">Champs</strong>, tu peux l’ajouter ou corriger son
+                  nom, son type et « Répété », à chaque niveau, y compris dans les groupes imbriqués.
+                </p>
                 {prep?.ok && prep.wiring.settings.length > 0 && (
                   <p className="mt-2 flex gap-1.5 text-xs text-mute">
                     <Check className="mt-0.5 size-3.5 shrink-0 text-cyan" /> Gardés comme réglages (onglet Champs, exportés), sans effet tant que le code ne les utilise pas : {prep.wiring.settings.join(', ')}
