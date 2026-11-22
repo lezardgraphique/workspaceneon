@@ -19,6 +19,7 @@ import { slugify } from '@/lib/custom-blocks'
 import type { CustomBlock } from '@/lib/custom-blocks'
 import { createLocalFirst, isNetworkError, isOffline, loadBlocks, loadModules, saveBlock, useDataStatus } from '@/lib/data'
 import { localReply } from '@/lib/maily-local'
+import { applyPatch } from '@/lib/maily-patch'
 import { isQuestion, runCommands } from '@/lib/maily-commands'
 import { formatReport, runSelfTests } from '@/lib/self-test'
 import { codeFromFields } from '@/lib/import-repair'
@@ -100,8 +101,9 @@ async function toAttachment(file: File): Promise<Attachment | null> {
 
 interface NeonBlock {
   // `new`: a new module for the library; `block`: a reusable custom block;
-  // `test`: run the tool's internal tests (src/lib/self-test.ts)
-  kind: 'current' | 'new' | 'block' | 'test'
+  // `test`: run the tool's internal tests (src/lib/self-test.ts);
+  // `patch`: targeted edit of the open module (src/lib/maily-patch.ts)
+  kind: 'current' | 'new' | 'block' | 'test' | 'patch'
   name?: string
   code: string
 }
@@ -128,11 +130,11 @@ function splitReply(acc: string, build = false): { text: string; blocks: NeonBlo
     text += rest.slice(0, start)
     if (!close) return { text: text.trim(), blocks, building: true }
     const end = close.index
-    const m = /^\s*(new|block|test)\b\s*(.*)$/i.exec(head[1])
-    const kind = m ? (m[1].toLowerCase() as 'new' | 'block' | 'test') : 'current'
+    const m = /^\s*(new|block|test|patch)\b\s*(.*)$/i.exec(head[1])
+    const kind = m ? (m[1].toLowerCase() as 'new' | 'block' | 'test' | 'patch') : 'current'
     blocks.push({
       kind,
-      name: m && kind !== 'test' ? m[2].trim().replace(/^["«']|["»']$/g, '') || (kind === 'new' ? 'Nouveau module' : 'Nouveau bloc') : undefined,
+      name: m && kind !== 'test' && kind !== 'patch' ? m[2].trim().replace(/^["«']|["»']$/g, '') || (kind === 'new' ? 'Nouveau module' : 'Nouveau bloc') : undefined,
       code: after.slice(0, end),
     })
     rest = after.slice(end + close[0].length)
@@ -520,8 +522,18 @@ export function MailyPanel({
     let applied = false
     // Modules already in the library, to never create the same one twice.
     let library: { id: string; name: string }[] | null = null
-    for (const block of reply.blocks) {
-      if (block.kind === 'test') continue
+    for (const raw of reply.blocks) {
+      if (raw.kind === 'test') continue
+      // A targeted edit: applied to the code Maily was given, then checked like a whole module.
+      let block = raw
+      if (raw.kind === 'patch') {
+        const p = applyPatch(ctx.requestCode, raw.code)
+        if (!p.code) {
+          problems.push(`la modification ciblée : ${p.error}`)
+          continue
+        }
+        block = { kind: 'current', code: p.code }
+      }
       const label = block.kind === 'block' ? `le bloc « ${block.name} »` : block.name ? `« ${block.name} »` : 'le module ouvert'
       // Mechanical slips (a missing {% endif %}, an unfinished {{ x }…) are
       // repaired exactly by the validator instead of costing a correction round.
@@ -602,7 +614,7 @@ export function MailyPanel({
       const fix: Msg = {
         role: 'user',
         hidden: true,
-        content: `Vérification automatique du moteur : ${problems.join(' ; ')}. Renvoie le module complet corrigé dans un bloc neon (garde \`new\` et le nom pour un module de la bibliothèque, ne renvoie que les modules refusés).`,
+        content: `Vérification automatique du moteur : ${problems.join(' ; ')}. Renvoie le module complet corrigé dans un bloc neon (garde \`new\` et le nom pour un module de la bibliothèque, ne renvoie que les modules refusés ; pas de patch cette fois).`,
       }
       const past: Msg = { role: 'assistant', content: `${reply.text}\n\n[Module refusé par la vérification du moteur]`, hidden: true }
       return converse([...history, past, fix], ctx, attempt + 1, signal)

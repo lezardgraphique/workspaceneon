@@ -9,7 +9,7 @@ import { customBlocks, modules } from '../../db/schema.js'
 import { ai, attemptsFor, configRefused, renewAi, retryable, sleep, statusOf, thinkingFor } from '@/lib/gemini.server'
 import type { Attempt } from '@/lib/gemini.server'
 import { CONTINUE_MARK, CONTINUE_PROMPT, KEEPALIVE, failMark, trimOverlap } from '@/lib/continuation'
-import { CLAUDE_MODELS, CLAUDE_NOTE, claudeEnabled, claudeStream, takeClaudeTurn, type ClaudeTurn } from '@/server/claude.server'
+import { CLAUDE_NOTE, claudeOrder, claudeEnabled, claudeStream, takeClaudeTurn, type ClaudeTurn } from '@/server/claude.server'
 import { libraryNote, onlineSystemPrompt } from '@/lib/maily-prompts'
 
 // Screenshots or mockups the user wants Maily to recreate (base64, no data: prefix).
@@ -136,15 +136,16 @@ export const Route = createFileRoute('/api/maily')({
 
         // Opens a Claude stream that has started to answer (null if none could).
         const openClaude = async (before?: string): Promise<{ first: Chunk; rest: AsyncIterator<Chunk>; attempt: Attempt } | null> => {
-          for (let i = 0; i < CLAUDE_MODELS.length; i++) {
-            const model = CLAUDE_MODELS[i]
+          const models = claudeOrder(prompt.heavy)
+          for (let i = 0; i < models.length; i++) {
+            const model = models[i]
             const left = BUDGET_MS - (Date.now() - started) - 10_000
             if (left < 8_000) return null
             const ctrl = new AbortController()
             const onAbort = () => ctrl.abort()
             request.signal.addEventListener('abort', onAbort, { once: true })
             try {
-              const it = claudeStream(model, claudeSystem, claudeTurnsFor(before), ctrl.signal)[Symbol.asyncIterator]()
+              const it = claudeStream(model, claudeSystem, claudeTurnsFor(before), ctrl.signal, prompt.stable)[Symbol.asyncIterator]()
               for (;;) {
                 const r = await withTimeout(it.next(), Math.min(i === 0 ? 24_000 : 14_000, left), onAbort)
                 if (r.done) throw new Error('empty answer')

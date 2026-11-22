@@ -119,6 +119,14 @@ export const SCOPE_SPEC = `PÉRIMÈTRE (ne jamais dériver) :
 export const MODULE_REPLY_SPEC = `QUAND TU CRÉES, RECRÉES OU MODIFIES LE MODULE :
 - Écris d'abord une ou deux phrases sur ce que tu as fait, puis le module complet dans un seul bloc qui commence par \`\`\`neon sur sa propre ligne et finit par \`\`\` sur sa propre ligne. L'éditeur applique ce bloc automatiquement : ne l'annonce pas comme du code à copier.
 - Le bloc contient le module complet (pas un extrait), au format ci-dessous.
+- MODIFICATION CIBLÉE (rapide) : pour changer quelques éléments du module ouvert (un texte, une couleur, un lien, ajouter ou retirer un bouton, une section…), n'envoie PAS le module complet. Envoie un bloc \`\`\`neon patch contenant une ou plusieurs paires :
+<<<<<<< AVANT
+lignes exactes copiées du module actuellement dans l'éditeur (espaces compris), assez pour être uniques
+=======
+les mêmes lignes, modifiées
+>>>>>>> APRÈS
+  Pour ajouter, mets dans AVANT la ligne voisine et répète-la dans la partie modifiée avec l'ajout ; pour retirer, laisse la partie modifiée vide. Si plus de la moitié du module change (refonte, nouvelle structure), envoie le module complet.
+- Sois bref : une ou deux phrases avant le bloc, pas de récapitulatif du code.
 - Reconnais tout code fourni : module Neon (data-neon), HTML email en tableaux, HTML/CSS classique (styles dans <style> ou classes : reporte-les en styles inline), HuBL (variables {{ … }}, logique {% … %}, modules avec {{ module.… }} et fields.json). Transforme-le en module au format ci-dessous.
 - Pour recréer un module à partir d'une capture, d'une maquette ou de code fourni : reproduis fidèlement la structure (sections, colonnes, cards), la hiérarchie des titres, les textes exacts, les couleurs, les tailles, les arrondis, les marges et les boutons. Pour les images d'une capture, laisse src vide avec un alt descriptif et dis à l'utilisateur qu'il peut les téléverser depuis les Réglages de chaque image. Pour du code fourni, garde les URL d'images et de liens, et garde la logique HuBL dans des Blocs HTML.
 - Si la demande ne concerne pas le module (question, conseil, explication), réponds normalement sans bloc neon.
@@ -265,25 +273,29 @@ export interface OnlinePrompt {
   web: boolean
   /** A question that changes nothing: answered with the least thinking. */
   light: boolean
+  /** Length of the part of `system` that never changes (cached by the models). */
+  stable: number
+  /** Building or recreating a whole module: the most capable model first. */
+  heavy: boolean
 }
 
 export function onlineSystemPrompt(req: MailyRequest & { library: string; ask: string; recent: string; aboutCode: boolean }): OnlinePrompt {
   const edit = req.mode === 'build' || req.aboutCode || !!req.issue || !!req.imported || !!req.fieldSpecs || EDIT_ASK.test(req.ask) || EDIT_ASK.test(req.ask.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
   const web = WEB_ASK.test(req.ask)
-  const parts = [`${MAILY_PERSONA}\nNous sommes le ${todayFr()}.\n${GUIDE_INTRO}`]
+  // What never changes from one message to the next comes first, so the models
+  // reuse it from their cache (much faster first words); what depends on the
+  // request (date, guide passages, module…) comes after.
+  const parts = [MAILY_PERSONA, GUIDE_INTRO, EXPERT_SPEC, SCOPE_SPEC]
+  if (edit) parts.push(MODULE_REPLY_SPEC, FIELDS_SPEC)
+  else parts.push("Cette demande ne modifie rien : réponds en texte, sans bloc neon. Si l'utilisateur veut finalement un changement, il te le demandera.")
+  const stable = parts.join('\n\n')
+  const dynamic: string[] = [`Nous sommes le ${todayFr()}.`]
   const guide = guideExcerpt(req.recent, edit ? 6_000 : 10_000)
-  if (guide) parts.push(guide)
-  parts.push(web ? RESEARCH_SPEC : "Pour les questions sur l'application, appuie-toi sur le guide ci-dessus ; s'il ne dit rien, dis-le simplement au lieu d'inventer.")
-  parts.push(EXPERT_SPEC, SCOPE_SPEC)
-  if (edit) {
-    parts.push(MODULE_REPLY_SPEC)
-    if (req.mode === 'build' || req.fieldSpecs || req.fields || /module\.|data-field|\bchamps?\b|fields/i.test(req.ask)) parts.push(FIELDS_SPEC)
-  } else {
-    parts.push("Cette demande ne modifie rien : réponds en texte, sans bloc neon. Si l'utilisateur veut finalement un changement, il te le demandera.")
-  }
+  if (guide) dynamic.push(guide)
+  dynamic.push(web ? RESEARCH_SPEC : "Pour les questions sur l'application, appuie-toi sur le guide ci-dessus ; s'il ne dit rien, dis-le simplement au lieu d'inventer.")
   let tail = requestNote(req)
   if (edit) tail += req.library + codeNote(req.code, req.moduleName) + fieldsNote(req.fields, req.fieldSpecs)
   else if (req.code)
     tail += `\n\nModule ouvert « ${req.moduleName ?? 'Sans titre'} » : ${outline(req.code)}. Textes visibles : ${visibleText(req.code, 4_000)}${req.fields ? `\n\nChamps : ${req.fields.slice(0, 2_000)}` : ''}`
-  return { system: parts.join('\n\n') + tail, web, light: !edit && !web }
+  return { system: `${stable}\n\n${dynamic.join('\n\n')}${tail}`, stable: stable.length, web, light: !edit && !web, heavy: req.mode === 'build' || !!req.issue || !!req.imported }
 }

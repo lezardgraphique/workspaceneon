@@ -8,6 +8,8 @@ import { getStore } from '@netlify/blobs'
 
 // Best for code first, the faster one next (then Gemini, in api.maily.ts).
 export const CLAUDE_MODELS = ['claude-sonnet-5-5', 'claude-haiku-5-5']
+/** Light first: Haiku answers several times faster; Sonnet for whole modules. */
+export const claudeOrder = (heavy: boolean) => (heavy ? CLAUDE_MODELS : ['claude-haiku-5-5', 'claude-sonnet-5-5'])
 
 // Claude costs more Netlify credits than Gemini: at most this many Claude
 // answers per account and per day, then Maily goes on with Gemini.
@@ -60,7 +62,7 @@ export const CLAUDE_NOTE = `\n\nDANS CETTE RÉPONSE : tu n'as pas accès au web.
  * Starts a streamed Claude answer and returns its text pieces. Messages are
  * made to alternate (Claude requires it) and start with the user.
  */
-export function claudeStream(model: string, system: string, turns: ClaudeTurn[], signal: AbortSignal): AsyncIterable<string> {
+export function claudeStream(model: string, system: string, turns: ClaudeTurn[], signal: AbortSignal, stable = system.length): AsyncIterable<string> {
   const messages: Anthropic.MessageParam[] = []
   for (const t of turns) {
     const content: Anthropic.ContentBlockParam[] = [
@@ -78,8 +80,12 @@ export function claudeStream(model: string, system: string, turns: ClaudeTurn[],
       model,
       max_tokens: 16_000,
       // No temperature: the current Claude models refuse it (400 « temperature is deprecated »).
-      // The long instructions are the same from one message to the next: cached 5 minutes.
-      system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+      // The long instructions are the same from one message to the next: cached
+      // 5 minutes; the part that changes with the request follows, uncached.
+      system: [
+        { type: 'text', text: system.slice(0, stable), cache_control: { type: 'ephemeral' } },
+        ...(stable < system.length ? [{ type: 'text' as const, text: system.slice(stable) }] : []),
+      ],
       messages,
     },
     { signal },
