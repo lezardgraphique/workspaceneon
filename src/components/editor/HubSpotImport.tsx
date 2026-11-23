@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Braces, Check, Eye, FileUp, Wrench, X } from 'lucide-react'
 
 import { EmailFrame } from '@/components/EmailFrame'
+import { ImportImages } from '@/components/editor/ImportImages'
 import { previewEmail } from '@/lib/hubl'
 import { countLogic } from '@/lib/logic'
 
@@ -50,6 +51,8 @@ export interface ImportPayload {
   source: string
   specs?: FieldSpec[]
   values: Record<string, unknown> | null
+  /** module.js (web pages only), '' when none. */
+  js: string
 }
 
 export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; onImport: (p: ImportPayload) => string | null | Promise<string | null>; onClose: () => void }) {
@@ -57,6 +60,7 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
   // and / or any other tool's JSON). What each holds is sorted here.
   const [codeText, setCodeText] = useState('')
   const [fieldsText, setFieldsText] = useState('')
+  const [jsText, setJsText] = useState('')
   const { html, css } = useMemo(() => splitCode(codeText), [codeText])
   const { json, other, parts } = useMemo(() => splitFields(fieldsText), [fieldsText])
   const [error, setError] = useState('')
@@ -138,15 +142,21 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
   const load = async (files: FileList | null) => {
     let code = codeText
     let fields = fieldsText
+    let js = jsText
     for (const f of Array.from(files ?? [])) {
       const text = await f.text()
       if (/^meta\.json$/i.test(f.name)) continue
+      if (/\.(m?js)$/i.test(f.name)) {
+        js = js.trim() ? `${js.trim()}\n\n${text}` : text
+        continue
+      }
       if (/\.json$/i.test(f.name)) fields = fields.trim() ? `${fields.trim()}\n\n${text}` : text
       else if (/\.css$/i.test(f.name)) code = `${code.trim() ? `${code.trim()}\n` : ''}<style>\n${text}\n</style>`
       else if (/\.(html?|hubl|hbs|handlebars|mustache|liquid|mjml|j2|jinja|twig)$/i.test(f.name)) code = code.includes('<style') && !/<(table|div|tr|td|p|h\d)\b/i.test(code) ? `${text}\n${code}` : text
     }
     setCodeText(code)
     setFieldsText(fields)
+    setJsText(js)
   }
 
 
@@ -173,8 +183,8 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
         <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-2">
           <div className="space-y-3">
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-line p-3 text-sm text-mute hover:border-cyan hover:text-white">
-              <FileUp className="size-4" /> Choisir les fichiers (module.html, module.css, fields.json…) : chacun va dans la bonne zone
-              <input type="file" multiple accept=".html,.htm,.hbs,.handlebars,.liquid,.mjml,.json,.css,text/html,application/json,text/css" className="sr-only" onChange={(e) => void load(e.target.files)} />
+              <FileUp className="size-4" /> Choisir les fichiers (module.html, module.css, fields.json, module.js…) : chacun va dans la bonne zone
+              <input type="file" multiple accept=".html,.htm,.hbs,.handlebars,.liquid,.mjml,.json,.css,.js,.mjs,text/html,application/json,text/css,text/javascript" className="sr-only" onChange={(e) => void load(e.target.files)} />
             </label>
             <label className="block">
               <span className={caption}>1 · Code du module (HTML et CSS)</span>
@@ -216,6 +226,24 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
                 </span>
               )}
             </label>
+            <label className="block">
+              <span className={caption}>3 · JavaScript (module.js) · facultatif</span>
+              <textarea
+                className={`${input} min-h-20`}
+                value={jsText}
+                onChange={(e) => setJsText(e.target.value)}
+                placeholder={'Colle ici le module.js (modules de pages web). Gardé et réexporté tel quel ; testé dans une fenêtre isolée, jamais exécuté dans un e-mail.'}
+              />
+              {jsText.trim() && (
+                <span className="mt-1 flex items-start gap-1.5 text-xs text-cyan">
+                  <Check className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    JavaScript gardé ({jsText.trim().split('\n').length} ligne{jsText.trim().split('\n').length > 1 ? 's' : ''}) : onglet Code › « JavaScript du module » pour le modifier et le tester.
+                  </span>
+                </span>
+              )}
+            </label>
+            <ImportImages code={codeText} fields={fieldsText} setCode={setCodeText} setFields={setFieldsText} />
           </div>
 
           <section aria-label="Champs reconnus" className="min-w-0">
@@ -321,7 +349,7 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
               if (!prep?.ok || busy) return
               // The images are copied into the tool first (can take a few seconds).
               setBusy(true)
-              const err = await onImport({ source: prep.source, specs: prep.specs, values: prep.values })
+              const err = await onImport({ source: prep.source, specs: prep.specs, values: prep.values, js: jsText.trim() })
               setBusy(false)
               if (err) setError(err)
               else onClose()

@@ -225,7 +225,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'exporter_module',
     title: 'Exporter un module',
-    description: 'Renvoie les fichiers d\'export du module, comme le bouton « Exporter » : module.html (avec les variables des champs), module.css, fields.json et meta.json.',
+    description: 'Renvoie les fichiers d\'export du module, comme le bouton « Exporter » : module.html (avec les variables des champs), module.css, fields.json, meta.json et module.js (vide si le module n\'a pas de JavaScript).',
     inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'Identifiant du module.' } }, required: ['id'], additionalProperties: false },
     annotations: R,
     run: async (args, ctx) => {

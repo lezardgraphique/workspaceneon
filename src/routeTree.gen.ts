@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BacASableRouteImport } from './routes/bac-a-sable'
 import { Route as CompteRouteImport } from './routes/compte'
 import { Route as ConnexionRouteImport } from './routes/connexion'
 import { Route as CountdownDotgifRouteImport } from './routes/countdown[.]gif'
@@ -31,6 +32,11 @@ import { Route as ApiImagesKeyRouteImport } from './routes/api.images_.$key'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BacASableRoute = BacASableRouteImport.update({
+  id: '/bac-a-sable',
+  path: '/bac-a-sable',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CompteRoute = CompteRouteImport.update({
@@ -121,6 +127,7 @@ const ApiImagesKeyRoute = ApiImagesKeyRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/bac-a-sable': typeof BacASableRoute
   '/compte': typeof CompteRoute
   '/connexion': typeof ConnexionRoute
   '/countdown.gif': typeof CountdownDotgifRoute
@@ -141,6 +148,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/bac-a-sable': typeof BacASableRoute
   '/compte': typeof CompteRoute
   '/connexion': typeof ConnexionRoute
   '/countdown.gif': typeof CountdownDotgifRoute
@@ -162,6 +170,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/bac-a-sable': typeof BacASableRoute
   '/compte': typeof CompteRoute
   '/connexion': typeof ConnexionRoute
   '/countdown.gif': typeof CountdownDotgifRoute
@@ -184,6 +193,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/bac-a-sable'
     | '/compte'
     | '/connexion'
     | '/countdown.gif'
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/bac-a-sable'
     | '/compte'
     | '/connexion'
     | '/countdown.gif'
@@ -224,6 +235,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/bac-a-sable'
     | '/compte'
     | '/connexion'
     | '/countdown.gif'
@@ -245,6 +257,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BacASableRoute: typeof BacASableRoute
   CompteRoute: typeof CompteRoute
   ConnexionRoute: typeof ConnexionRoute
   CountdownDotgifRoute: typeof CountdownDotgifRoute
@@ -271,6 +284,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bac-a-sable': {
+      id: '/bac-a-sable'
+      path: '/bac-a-sable'
+      fullPath: '/bac-a-sable'
+      preLoaderRoute: typeof BacASableRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/compte': {
@@ -397,6 +417,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BacASableRoute: BacASableRoute,
   CompteRoute: CompteRoute,
   ConnexionRoute: ConnexionRoute,
   CountdownDotgifRoute: CountdownDotgifRoute,

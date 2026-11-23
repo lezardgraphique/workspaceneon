@@ -34,6 +34,7 @@ import { NeonLogo } from '@/components/Maily'
 import { OPEN_MAILY_EVENT } from '@/components/OfflineManager'
 import { CodeEditor } from '@/components/editor/CodeEditor'
 import { ValidatorPanel } from '@/components/editor/ValidatorPanel'
+import { ModuleScript } from '@/components/editor/ModuleScript'
 import { ClientsDialog } from '@/components/editor/ClientsDialog'
 import { VmlWindow } from '@/components/editor/VmlWindow'
 import { ExportDialog } from '@/components/editor/ExportDialog'
@@ -232,7 +233,10 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
   }, [])
 
   const commit = (raw: ModuleTree, select?: string | null) => {
-    const next = syncExtraFields(raw)
+    // The module's JavaScript is not in its HTML code: a tree rebuilt from the
+    // code keeps it (only an explicit js key, even empty, changes it).
+    const withJs = 'js' in raw ? (raw.js ? raw : (({ js: _j, ...r }) => r)(raw)) : tree.js ? { ...raw, js: tree.js } : raw
+    const next = syncExtraFields(withJs)
     pushHistory(tree, next)
     setTree(next)
     setCode(treeToCode(next, name))
@@ -349,12 +353,12 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
 
   // Module copied from another tool (« Importer »): its images are copied into
   // the tool first and their addresses swapped (src/lib/import-images.ts).
-  const importWithImages = async ({ source, specs, values }: { source: string; specs?: FieldSpec[]; values?: Record<string, unknown> | null }) => {
+  const importWithImages = async ({ source, specs, values, js }: { source: string; specs?: FieldSpec[]; values?: Record<string, unknown> | null; js?: string }) => {
     const text = [source, ...(specs ?? []).map((f) => JSON.stringify(f)), values ? JSON.stringify(values) : ''].join('\n')
     const got = await bringImages(text)
     for (const t of Object.keys(got.map)) brought.current.add(t)
     const p = swapUrls({ source, specs, values }, got.map)
-    return applyCode(p.source, p.specs, p.values, imagesNote(got))
+    return applyCode(p.source, p.specs, p.values, imagesNote(got), js ?? '')
   }
   // Addresses already handled for code pasted in the Code tab (asked once each).
   const brought = useRef(new Set<string>())
@@ -402,11 +406,13 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     return err
   }
 
-  const applyCode = (generated: string, specs?: FieldSpec[], values?: Record<string, unknown> | null, extraNote?: string | null) => {
+  const applyCode = (generated: string, specs?: FieldSpec[], values?: Record<string, unknown> | null, extraNote?: string | null, js?: string) => {
     const res = codeToTree(generated, tree, specs)
     if (!res.ok) return res.error
     const synced = syncExtraFields({ ...res.tree, fields: undefined }, specs, generated)
-    const next = applyValues((res.imported && keepTemplateWhole(generated, synced, specs)) || synced, values ?? null).tree
+    const built = applyValues((res.imported && keepTemplateWhole(generated, synced, specs)) || synced, values ?? null).tree
+    // An import brings its own module.js (or none: the previous one goes).
+    const next = js === undefined ? built : { ...built, js }
     setNewFields((next.fields ?? []).map((f) => f.name))
     commit(next, null)
     const logic = countLogic(next)
@@ -920,6 +926,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
                 </div>
                 <CodeEditor value={code} onChange={onCodeChange} jump={codeJump} />
                 <ValidatorPanel code={code} notes={previewNotes} onFix={onCodeChange} onJump={(line) => setCodeJump((j) => ({ line, n: (j?.n ?? 0) + 1 }))} onAskMaily={askMaily} onReimport={() => setHsImport(true)} />
+                <ModuleScript tree={tree} name={name.trim() || 'Sans titre'} commit={(t) => commit(t)} />
               </div>
             </aside>
           </div>

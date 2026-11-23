@@ -115,3 +115,97 @@ export function imagesNote(r: BroughtImages): string | null {
   }
   return parts.join(' ')
 }
+
+// ── Images listed in the import dialog, before anything is applied ──────────
+
+export type ImageStatus = 'copy' | 'own' | 'data' | 'format' | 'relative'
+
+export interface FoundImage {
+  /** As written in the code / JSON (what « Remplacer » swaps). */
+  token: string
+  status: ImageStatus
+  /** Address to show the thumbnail, '' when there is none. */
+  thumb: string
+  /** alt of the <img> tags using it in the code; null when no <img> uses it. */
+  alt: string | null
+  where: Array<'code' | 'champs'>
+}
+
+const IMG_TAG = /<img\b[^>]*>/gi
+const ATTR = (name: string) => new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i')
+const attrOf = (tag: string, name: string): string | null => {
+  const m = tag.match(ATTR(name))
+  return m ? (m[2] ?? m[3] ?? m[4] ?? '') : null
+}
+// Formats the e-mail clients don't all show: kept as a link, never copied.
+const REFUSED = /\.(webp|svg|avif|bmp|tiff?|heic)$/i
+
+function statusOf(token: string, origin: string): ImageStatus {
+  if (/^data:image\//i.test(token)) return 'data'
+  const url = fetchable(token)
+  if (/^https?:\/\//i.test(url)) {
+    if ((origin && url.startsWith(origin)) || OWN.test(url)) return 'own'
+    return REFUSED.test(url.split(/[?#]/)[0]) ? 'format' : 'copy'
+  }
+  if (OWN.test(url)) return 'own'
+  return 'relative'
+}
+
+// Every image of the pasted code and JSON: <img src>, srcset, background=,
+// url(), image keys of a JSON, and any address with an image extension.
+// Addresses made of HuBL ({{ }}) are fields: managed in the Champs tab.
+export function listImages(code: string, fields: string, origin = typeof location !== 'undefined' ? location.origin : ''): FoundImage[] {
+  const found = new Map<string, FoundImage>()
+  const add = (raw: string | null | undefined, where: 'code' | 'champs', alt: string | null = null) => {
+    const token = (raw ?? '').trim()
+    if (!token || /\{\{|\{%|^#|^about:|^javascript:/i.test(token) || token.length > 2000) return
+    if (!/^data:image\//i.test(token) && !/\.(jpe?g|png|gif|webp|svg|avif|bmp|tiff?|heic)(\?|#|$)/i.test(token) && !/^(https?:)?\/\//i.test(token) && !OWN.test(token)) return
+    const status = statusOf(token, origin)
+    const seen = found.get(token)
+    if (seen) {
+      if (!seen.where.includes(where)) seen.where.push(where)
+      if (alt !== null && seen.alt === null) seen.alt = alt
+      return
+    }
+    if (found.size >= 60) return
+    const thumb = status === 'relative' ? '' : status === 'data' ? token : fetchable(token)
+    found.set(token, { token, status, thumb, alt, where: [where] })
+  }
+  for (const [text, where] of [
+    [code, 'code'],
+    [fields, 'champs'],
+  ] as const) {
+    if (!text.trim()) continue
+    for (const m of text.matchAll(IMG_TAG)) {
+      const tag = m[0]
+      add(attrOf(tag, 'src'), where, attrOf(tag, 'alt') ?? '')
+      for (const part of (attrOf(tag, 'srcset') ?? '').split(',')) add(part.trim().split(/\s+/)[0], where)
+    }
+    for (const m of text.matchAll(/\s(?:background|poster|data-src)\s*=\s*["']([^"']+)["']/gi)) add(m[1], where)
+    for (const m of text.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) add(m[1], where)
+    for (const m of text.matchAll(/"(?:src|image|img|url|background_image|backgroundImage|thumbnail|logo)"\s*:\s*"([^"]+)"/gi)) add(m[1].replace(/\\\//g, '/'), where)
+    for (const t of findImageUrls(text, origin)) add(t, where)
+  }
+  return [...found.values()]
+}
+
+// The address swapped everywhere it is written (also as "&amp;" in HTML and
+// "\/" in JSON).
+export function replaceImage(text: string, token: string, next: string): string {
+  if (!text || !token) return text
+  const variants = new Set([token, token.replace(/&(?!amp;)/g, '&amp;'), token.replace(/&amp;/g, '&'), token.replace(/\//g, '\\/')])
+  let out = text
+  for (const v of variants) if (v && out.includes(v)) out = out.split(v).join(v.includes('\\/') ? next.replace(/\//g, '\\/') : next)
+  return out
+}
+
+// The alt text of every <img> of the code showing this address.
+export function setImageAlt(code: string, token: string, alt: string): string {
+  const safe = alt.replace(/"/g, '&quot;').replace(/</g, '&lt;')
+  return code.replace(IMG_TAG, (tag) => {
+    const src = attrOf(tag, 'src')
+    if (src === null || (src !== token && src.replace(/&amp;/g, '&') !== token.replace(/&amp;/g, '&'))) return tag
+    const re = ATTR('alt')
+    return re.test(tag) ? tag.replace(re, ` alt="${safe}"`) : tag.replace(/^<img\b/i, `<img alt="${safe}"`)
+  })
+}

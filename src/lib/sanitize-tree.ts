@@ -329,6 +329,8 @@ export function sanitizeTree(raw: unknown): ModuleTree {
       .filter((s): s is Section => !!s),
     ...(t.vml === true ? { vml: true } : {}),
     ...(typeof t.pad === 'number' && Number.isFinite(t.pad) ? { pad: Math.round(Math.min(120, Math.max(0, t.pad))) } : {}),
+    // Kept as text (200 KB at most): it only ever runs in the isolated sandbox page.
+    ...(typeof t.js === 'string' && t.js.trim() ? { js: t.js.slice(0, 200_000) } : {}),
     ...(() => {
       const seen = new Set<string>()
       const fields = (Array.isArray(t.fields) ? t.fields : [])

@@ -19,7 +19,8 @@ export function ExportDialog({ tree, name, onClose }: { tree: ModuleTree; name: 
     () => ({ 'page.html': standaloneEmail(tree, name), ...treeToHubSpot(tree, name) }),
     [tree, name],
   )
-  const names = Object.keys(files) as (keyof typeof files)[]
+  // module.js only when the module has JavaScript (web pages).
+  const names = (Object.keys(files) as (keyof typeof files)[]).filter((n) => n !== 'module.js' || files[n])
   const [active, setActive] = useState<keyof typeof files>('page.html')
   const [copied, setCopied] = useState(false)
 

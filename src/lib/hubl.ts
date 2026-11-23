@@ -353,6 +353,7 @@ export function syncExtraFields(tree: ModuleTree, specs?: FieldSpec[], source?: 
 export interface HubSpotExport {
   'module.html': string
   'module.css': string
+  'module.js': string
   'fields.json': string
   'meta.json': string
 }
@@ -385,6 +386,8 @@ export function treeToHubSpot(tree: ModuleTree, name: string): HubSpotExport {
     smart_type: 'NOT_SMART',
     tags: [],
     is_available_for_new_content: true,
+    // A module with JavaScript is a web module too.
+    ...(tree.js ? { host_template_types: ['PAGE', 'BLOG_POST', 'EMAIL'] } : {}),
   }
   // A module that is one imported template, kept as written: exported exactly
   // as it was imported (no wrapper, no comment), so it round-trips identically.
@@ -394,6 +397,8 @@ export function treeToHubSpot(tree: ModuleTree, name: string): HubSpotExport {
     // The name sits in a HuBL comment: it must not be able to close it.
     'module.html': template != null ? `${template}\n` : `{# ${name.replace(/[{}#%]/g, ' ').trim()} — généré par Neon Sandbox Pro #}\n${html}\n`,
     'module.css': template != null ? '' : `${STACK_CSS}${responsiveCss(tree)}\n`,
+    // The imported module.js, as it was (web pages only: e-mails never run it).
+    'module.js': tree.js ? `${tree.js.replace(/\s+$/, '')}\n` : '',
     'fields.json': JSON.stringify([...fields, ...extra], null, 2) + '\n',
     'meta.json': JSON.stringify(meta, null, 2) + '\n',
   }
