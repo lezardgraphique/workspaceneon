@@ -7,7 +7,8 @@ import { analyzeFieldRefs } from './extra-fields'
 import { retypeField } from './field-edit'
 import type { FieldPath } from './field-edit'
 import { treeToHubSpot } from './hubl'
-import { upgradeImported } from './import-repair'
+import { prepareImport, upgradeImported } from './import-repair'
+import { isNeonExport } from './template-doctor'
 import type { Block, ExtraField, ExtraFieldType, ModuleTree } from './types'
 
 export interface ImportScan {
@@ -67,6 +68,18 @@ export function scanImport(tree: ModuleTree): ImportScan {
   const hubspot = (tree.fields ?? []).some(fromFieldsJson) || blocks.some((b) => 'field' in b && !!b.field?.specs)
   if (hubspot && !whole) reimport.push('module HubSpot découpé en blocs : réimporte ses fichiers pour que l’export redonne le module d’origine (classes, CSS, structure)')
 
+  // A module the old import cut into blocks (or files exported by an older
+  // version imported again): rebuilt from its own export, which the doctor puts
+  // back to the module's code; its field values, script and meta.json are kept.
+  // (Only when code shows as text: a clean cut module is better left as blocks.)
+  const rebuilt = rebuild(tree, hubspot && !whole && reimport.some((r) => r.startsWith('du code')))
+  if (rebuilt) {
+    const lost = reimport.length
+    reimport.length = 0
+    if (lost) reimport.push('réparé depuis ce qui restait : si un détail manque encore, réimporte les fichiers d’origine')
+    return { skipped: false, fixes: rebuilt.fixes, reimport, fixed: rebuilt.tree }
+  }
+
   // Templates cut by the old import, put back together when that shows them better.
   let fixed = upgradeImported(tree)
   if (fixed) fixes.push('modèle importé remis d’un seul tenant')
@@ -100,4 +113,33 @@ export function scanImport(tree: ModuleTree): ImportScan {
   }
   if (next !== tree) fixed = next
   return { skipped: false, fixes, reimport, ...(fixed && fixes.length ? { fixed } : {}) }
+}
+
+function rebuild(tree: ModuleTree, cut: boolean): { tree: ModuleTree; fixes: string[] } | null {
+  const kept = blocksOf(tree).find((b): b is Extract<Block, { type: 'raw' }> => b.type === 'raw' && !!b.verbatim && b.source != null)
+  let html = ''
+  let css = ''
+  if (kept && isNeonExport(kept.source!)) {
+    html = kept.source!
+    css = kept.sourceCss ?? ''
+  } else if (cut && !kept) {
+    try {
+      const out = treeToHubSpot(tree, '')
+      html = out['module.html']
+      css = out['module.css']
+    } catch {
+      return null
+    }
+  } else return null
+  let fieldsJson = ''
+  try {
+    fieldsJson = treeToHubSpot(tree, '')['fields.json']
+  } catch {
+    fieldsJson = ''
+  }
+  const p = prepareImport({ html, css, fieldsJson, js: tree.js }, tree)
+  if (!p.ok) return null
+  const next: ModuleTree = { ...p.tree, ...(tree.js ? { js: tree.js } : {}), ...(tree.meta ? { meta: tree.meta } : {}) }
+  const fixes = p.repairs.filter((r) => !/^à savoir/.test(r))
+  return fixes.length ? { tree: next, fixes } : null
 }

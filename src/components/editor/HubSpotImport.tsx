@@ -86,8 +86,8 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
   // Everything goes through the repairing import: cleaned code (or a module
   // built from the fields when there is no code), repairs listed.
   const prep = useMemo(
-    () => (html.trim() || json.trim() || other.trim() ? prepareImport({ html, css, fieldsJson: json, other }, tree) : null),
-    [html, css, json, other, tree],
+    () => (html.trim() || json.trim() || other.trim() ? prepareImport({ html, css, fieldsJson: json, other, js: jsText }, tree) : null),
+    [html, css, json, other, tree, jsText],
   )
 
   // Types the user settled for doubtful fields (path → type), and those confirmed as guessed.

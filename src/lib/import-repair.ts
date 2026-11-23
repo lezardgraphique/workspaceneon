@@ -15,6 +15,7 @@ import { parseLenient } from './json-repair'
 import { convertForeign } from './foreign-syntax'
 import { fixCode, validateSyntax } from './validator'
 import { collectFields } from './fields'
+import { doctorTemplate, isNeonExport } from './template-doctor'
 import { legacySpecs } from './hubl-legacy'
 import { uid } from './types'
 import type { ModuleTree } from './types'
@@ -440,6 +441,8 @@ export interface ImportInput {
   fieldsJson?: string
   /** Any other JSON (module JSON, values, another tool's model…). */
   other?: string
+  /** module.js, read to check the elements its script looks for. */
+  js?: string
 }
 
 export type Prepared =
@@ -478,7 +481,14 @@ export function prepareImport(input: ImportInput, current: ModuleTree): Prepared
   }
 
   let html = input.html.trim() ? input.html : (foreign?.html ?? '')
-  const css = input.css?.trim() ? input.css : (foreign?.css ?? '')
+  let css = input.css?.trim() ? input.css : (foreign?.css ?? '')
+  // Files exported by an older version of this tool: back to the module's own code.
+  if (isNeonExport(html) && /\b(module|widget)\./.test(html)) {
+    const d = doctorTemplate({ source: html, css, js: input.js })
+    html = d.source
+    css = d.css
+    repairs.push(...d.fixes, ...d.warnings.map((w) => `à savoir : ${w}`))
+  }
   let fromFields = false
   if (!html.trim()) {
     // Only fields: a module is built from them so nothing shows empty.
