@@ -16,6 +16,7 @@ import { convertForeign } from './foreign-syntax'
 import { fixCode, validateSyntax } from './validator'
 import { collectFields } from './fields'
 import { doctorTemplate, isNeonExport } from './template-doctor'
+import { formatCss, formatTemplate } from './code-format'
 import { legacySpecs } from './hubl-legacy'
 import { uid } from './types'
 import type { ModuleTree } from './types'
@@ -485,8 +486,9 @@ export function prepareImport(input: ImportInput, current: ModuleTree): Prepared
   // Files exported by an older version of this tool: back to the module's own code.
   if (isNeonExport(html) && /\b(module|widget)\./.test(html)) {
     const d = doctorTemplate({ source: html, css, js: input.js })
-    html = d.source
-    css = d.css
+    // Repaired code is no longer the original: written cleanly laid out.
+    html = formatTemplate(d.source)
+    css = d.css.trim() ? formatCss(d.css) : ''
     repairs.push(...d.fixes, ...d.warnings.map((w) => `à savoir : ${w}`))
   }
   let fromFields = false

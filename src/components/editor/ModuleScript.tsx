@@ -8,8 +8,8 @@ import type { ModuleTree } from '@/lib/types'
 // The module's JavaScript (module.js of a web module): edited below the code,
 // exported with the module, and tried out in an isolated window. E-mails never
 // run JavaScript, so the e-mail preview never runs it either.
-export function ModuleScript({ tree, name, commit }: { tree: ModuleTree; name: string; commit: (t: ModuleTree) => void }) {
-  const [open, setOpen] = useState(false)
+export function ModuleScript({ tree, name, commit, defaultOpen = false }: { tree: ModuleTree; name: string; commit: (t: ModuleTree) => void; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
   const [text, setText] = useState(tree.js ?? '')
   const [run, setRun] = useState(false)
   useEffect(() => setText(tree.js ?? ''), [tree.js])

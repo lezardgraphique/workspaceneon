@@ -35,6 +35,8 @@ import { OPEN_MAILY_EVENT } from '@/components/OfflineManager'
 import { CodeEditor } from '@/components/editor/CodeEditor'
 import { ValidatorPanel } from '@/components/editor/ValidatorPanel'
 import { ModuleScript } from '@/components/editor/ModuleScript'
+import { ModuleFiles } from '@/components/editor/ModuleFiles'
+import { keptTemplate } from '@/lib/template-params'
 import { withoutDoubts } from '@/lib/field-edit'
 import { ClientsDialog } from '@/components/editor/ClientsDialog'
 import { VmlWindow } from '@/components/editor/VmlWindow'
@@ -900,6 +902,9 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
                 <Inspector {...treeProps} />
               </div>
               <div className={`${vis('code', rightTab === 'code')} min-h-0 w-full flex-1 flex-col bg-space`}>
+                {(() => {
+                  const toolPane = (
+                    <>
                 <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-xs">
                   {codeNote ? (
                     <span role="status" className={`flex min-w-0 flex-1 items-center gap-1.5 ${codeNote.ok ? 'text-cyan' : 'text-pink'}`}>
@@ -943,6 +948,15 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
                 <CodeEditor value={code} onChange={onCodeChange} jump={codeJump} />
                 <ValidatorPanel code={code} notes={previewNotes} onFix={onCodeChange} onJump={(line) => setCodeJump((j) => ({ line, n: (j?.n ?? 0) + 1 }))} onAskMaily={askMaily} onReimport={() => setHsImport(true)} />
                 <ModuleScript tree={tree} name={name.trim() || 'Sans titre'} commit={(t) => commit(t)} />
+                    </>
+                  )
+                  // A module kept as written: its own files first (module.html, module.css, module.js).
+                  return keptTemplate(tree) ? (
+                    <ModuleFiles tree={tree} name={name.trim() || 'Sans titre'} commit={(t) => commit(t)} tool={toolPane} onAskMaily={askMaily} onReimport={() => setHsImport(true)} />
+                  ) : (
+                    toolPane
+                  )
+                })()}
               </div>
             </aside>
           </div>
