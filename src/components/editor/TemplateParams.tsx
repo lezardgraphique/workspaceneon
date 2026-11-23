@@ -32,13 +32,15 @@ export function TemplateParams({ b, onChange }: { b: RawBlock; onChange: (next: 
 function Param({ p, onSet }: { p: TemplateParam; onSet: (v: string) => void }) {
   const [draft, setDraft] = useState(p.value)
   useEffect(() => setDraft(p.value), [p.value])
-  const commit = (v: string) => v.trim() && v.trim() !== p.value && onSet(v)
+  const commit = (v: string) => v.trim() && v.trim() !== p.value && !(p.input === 'number' && !/^-?\d/.test(v.trim())) && onSet(v)
   const num = p.input === 'number' ? parseFloat(p.value) : NaN
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_8.5rem] items-center gap-2">
       <span className="min-w-0 text-xs">
         <span className="block truncate text-white">{p.label}</span>
         <code className="block truncate font-mono text-[10px] text-mute">{p.key}</code>
+        {p.missing && <span className="block text-[10px] text-[#ffb36b]">{p.value ? `non défini : ${p.value} par défaut` : 'non défini dans la CSS'}</span>}
+        {p.kind === 'data' && <span className="block text-[10px] text-mute">lu par le script : visible avec « Tester le JavaScript »</span>}
       </span>
       {p.input === 'number' ? (
         <span className="flex items-center gap-1">
@@ -46,7 +48,8 @@ function Param({ p, onSet }: { p: TemplateParam; onSet: (v: string) => void }) {
             type="number"
             step={Math.abs(num) < 5 && !Number.isInteger(num) ? 0.1 : 1}
             className={input}
-            value={parseFloat(draft) || 0}
+            value={Number.isFinite(parseFloat(draft)) ? parseFloat(draft) : ''}
+            placeholder="—"
             onChange={(e) => setDraft(`${e.target.value}${p.unit}`)}
             onBlur={(e) => commit(`${e.target.value}${p.unit}`)}
             onKeyDown={(e) => e.key === 'Enter' && commit(`${(e.target as HTMLInputElement).value}${p.unit}`)}

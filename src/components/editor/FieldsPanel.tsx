@@ -301,6 +301,7 @@ function ImageSize({ o, set }: { o: Record<string, Json>; set: (v: Json) => void
             </>
           )}
         </div>
+        {size === 'exact' && <p className="text-[11px] text-mute">Si la CSS du module impose une taille aux images (ex. « Hauteur du logo » dans Réglages du modèle), c’est elle qui l’emporte.</p>}
         {select(String(o.loading ?? 'lazy'), [['lazy', 'Chargement différé (lazy)'], ['eager', 'Chargement immédiat (eager)'], ['disabled', 'Sans attribut loading']], (v) => set({ ...o, loading: v }), 'Chargement de l’image')}
       </div>
     </details>
