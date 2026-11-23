@@ -10,6 +10,7 @@ import { EstimatePanel } from './EstimatePanel'
 import { ImageUpload } from './ImageUpload'
 import { PhotoButton } from './PhotoButton'
 import { ExtraFieldCard } from './FieldsPanel'
+import { TemplateParams } from './TemplateParams'
 import { refreshCustomBlocks } from './useCustomBlocks'
 import { wrapForLibrary } from '@/lib/custom-blocks'
 import { saveBlock } from '@/lib/data'
@@ -444,6 +445,7 @@ function VerbatimFields({ b, set, p }: { b: Extract<Block, { type: 'raw' }>; set
           {used > 0 ? ' Change ses textes, images, liens et options ci-dessous (ou dans l’onglet Champs), sans toucher au code.' : ' Il n’utilise aucun champ : ses contenus se changent dans le code.'}
         </p>
       </div>
+      <TemplateParams b={b} onChange={(next) => set({ html: next.html, css: next.css, source: next.source, sourceCss: next.sourceCss } as Partial<Block>)} />
       <RawFields html={b.html} p={p} />
       <details className="rounded-md border border-line">
         <summary className="cursor-pointer px-2.5 py-2 text-xs text-mute hover:text-white">Voir ou modifier le code du modèle</summary>
@@ -454,10 +456,24 @@ function VerbatimFields({ b, set, p }: { b: Extract<Block, { type: 'raw' }>; set
             value={b.source ?? b.html}
             onChange={(e) => {
               // The exact text is kept for the export; the preview gets its sanitized copy.
-              const v = verbatimBlock(e.target.value)
+              const v = verbatimBlock(e.target.value, b.cols, b.sourceCss)
               set({ html: v.html, css: v.css, source: v.source } as Partial<Block>)
             }}
           />
+          {b.sourceCss != null && (
+            <>
+              <p className="mt-2 font-mono text-[10px] tracking-wider text-mute uppercase">module.css</p>
+              <textarea
+                aria-label="CSS du modèle (module.css)"
+                className={`${input} ${mono} min-h-32`}
+                value={b.sourceCss}
+                onChange={(e) => {
+                  const v = verbatimBlock(b.source ?? b.html, b.cols, e.target.value)
+                  set({ html: v.html, css: v.css, source: v.source, sourceCss: e.target.value } as Partial<Block>)
+                }}
+              />
+            </>
+          )}
         </div>
       </details>
     </>

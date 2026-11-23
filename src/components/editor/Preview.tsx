@@ -253,7 +253,7 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
           <EmailFrame
             title="Modèle importé avec sa CSS"
             width={p.mobile ? 375 : 600}
-            html={`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:${font.replace(/[<>{}]/g, '')}}</style><style>${b.css.replace(/<\/style/gi, '')}</style></head><body>${inertHubl(sanitizeHtml(b.html))}</body></html>`}
+            html={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{overflow:hidden}body{margin:0;font-family:${font.replace(/[<>{}]/g, '')}}</style><style>${b.css.replace(/<\/style/gi, '')}</style></head><body>${inertHubl(sanitizeHtml(b.html))}</body></html>`}
           />,
         )
       // The tree reaching the preview is already interpreted: show the result.

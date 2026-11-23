@@ -10,6 +10,8 @@ import type { FieldPath } from '@/lib/field-edit'
 import { FIELD_KIND, collectFields } from '@/lib/fields'
 import type { FieldBlock, ModuleField } from '@/lib/fields'
 import { updateNode } from '@/lib/tree'
+import { keptTemplate } from '@/lib/template-params'
+import { TemplateParams } from './TemplateParams'
 import type { Block, ExtraField, ExtraFieldType, Json, ModuleTree } from '@/lib/types'
 
 // Simplified design manager: one card per module field, with its definition
@@ -225,7 +227,10 @@ function ValueEditor({ f, value, set }: { f: ExtraField; value: Json | undefined
           <input className={`${input} ${mono}`} value={String(o.src ?? '')} onChange={(e) => set({ ...o, src: e.target.value })} placeholder="https://…" aria-label="URL de l'image" />
           <ImageUpload compact onUploaded={(src) => set({ ...o, src })} />
           {f.type === 'image' ? (
-            <input className={input} value={String(o.alt ?? '')} onChange={(e) => set({ ...o, alt: e.target.value })} aria-label="Texte alternatif" placeholder="Texte alternatif" />
+            <>
+              <input className={input} value={String(o.alt ?? '')} onChange={(e) => set({ ...o, alt: e.target.value })} aria-label="Texte alternatif" placeholder="Texte alternatif" />
+              <ImageSize o={o} set={set} />
+            </>
           ) : (
             <div className="grid grid-cols-2 gap-2">
               {select(String(o.background_position ?? 'MIDDLE_CENTER'), ['TOP_LEFT', 'TOP_CENTER', 'TOP_RIGHT', 'MIDDLE_LEFT', 'MIDDLE_CENTER', 'MIDDLE_RIGHT', 'BOTTOM_LEFT', 'BOTTOM_CENTER', 'BOTTOM_RIGHT'].map((p) => [p, p.toLowerCase().replace('_', ' ')]), (v) => set({ ...o, background_position: v }), 'Position')}
@@ -264,6 +269,42 @@ function ValueEditor({ f, value, set }: { f: ExtraField; value: Json | undefined
     case 'json':
       return <JsonValue value={d} set={set} />
   }
+}
+
+// Size and loading of an image field (HubSpot's image settings): automatic,
+// exact width × height, or automatic with a maximum width / height.
+function ImageSize({ o, set }: { o: Record<string, Json>; set: (v: Json) => void }) {
+  const size = String(o.size_type ?? 'auto')
+  const num = (k: string) => (typeof o[k] === 'number' ? (o[k] as number) : '')
+  const put = (k: string, v: string) => set({ ...o, [k]: v === '' ? null : Math.max(0, Math.round(Number(v))) })
+  const box = (k: string, label: string) => (
+    <label className="grid gap-1 text-[11px] text-mute">
+      {label}
+      <input type="number" min={0} className={input} value={num(k)} onChange={(e) => put(k, e.target.value)} placeholder="auto" />
+    </label>
+  )
+  return (
+    <details className="rounded-md border border-line" open={size !== 'auto' || o.width != null}>
+      <summary className="cursor-pointer px-2.5 py-1.5 text-xs text-mute hover:text-white">Taille et chargement</summary>
+      <div className="grid gap-2 p-2.5 pt-1">
+        {select(size, [['auto', 'Automatique (taille de l’image)'], ['exact', 'Exacte (largeur × hauteur)'], ['auto_custom_max', 'Automatique, avec un maximum']], (v) => set({ ...o, size_type: v }), 'Taille de l’image')}
+        <div className="grid grid-cols-2 gap-2">
+          {size === 'auto_custom_max' ? (
+            <>
+              {box('max_width', 'Largeur max (px)')}
+              {box('max_height', 'Hauteur max (px)')}
+            </>
+          ) : (
+            <>
+              {box('width', 'Largeur (px)')}
+              {box('height', 'Hauteur (px)')}
+            </>
+          )}
+        </div>
+        {select(String(o.loading ?? 'lazy'), [['lazy', 'Chargement différé (lazy)'], ['eager', 'Chargement immédiat (eager)'], ['disabled', 'Sans attribut loading']], (v) => set({ ...o, loading: v }), 'Chargement de l’image')}
+      </div>
+    </details>
+  )
 }
 
 function ExtraValue({ f, set }: { f: ExtraField; set: (v: Json) => void }) {
@@ -536,6 +577,7 @@ function FieldCard({ f, p }: { f: ModuleField; p: Props }) {
 
 export function FieldsPanel(p: Props) {
   const fields = collectFields(p.tree)
+  const kept = keptTemplate(p.tree)
   return (
     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
       <div className="px-1">
@@ -545,6 +587,7 @@ export function FieldsPanel(p: Props) {
           <code className="font-mono text-[#e3a6ff]">{'{{ module.nom }}'}</code> est celui du module exporté.
         </p>
       </div>
+      {kept && <TemplateParams b={kept} onChange={(next) => p.commit(updateNode(p.tree, kept.id, next))} />}
       {fields.map((f) => (
         <FieldCard key={f.block.id} f={f} p={p} />
       ))}
