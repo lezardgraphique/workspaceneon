@@ -294,18 +294,42 @@ function verbatimCode(b: RawBlock, mode: Mode | 'shown', p: string): string {
   const css = b.css ? `<style type="text/css">\n${b.css}\n</style>\n` : ''
   // The preview shows the interpreted, sanitized copy; the export the exact source.
   if (mode === 'shown') return `${p}${css}${b.html}`
-  if (mode === 'hubspot') return b.source != null ? b.source : `${p}${css}${b.html}`
-  const body = (b.source ?? `${css}${b.html}`).replace(/<\/(script)/gi, '<\\/$1')
+  if (mode === 'hubspot') return b.source != null ? (b.sourceCss != null && b.sourceCss.trim() ? `<style>\n${b.sourceCss.trim()}\n</style>\n${b.source}` : b.source) : `${p}${css}${b.html}`
+  // Its own module.css travels with it, marked, so it comes back apart.
+  const own = b.sourceCss != null ? `<style data-neon-css>\n${b.sourceCss}\n</style>\n` : ''
+  const body = (b.source != null ? own + b.source : `${css}${b.html}`).replace(/<\/(script)/gi, '<\\/$1')
   return `${p}<script type="text/hubl" data-neon="raw"${b.cols ? ` data-cols="${b.cols}"` : ''}>\n${body}\n${p}</script>`
 }
 const SOURCE_MAX = 200_000
 /** A verbatim template from its code: <style> sheets apart, the rest sanitized as is. */
-export function verbatimBlock(src: string, cols?: number): RawBlock {
+export function verbatimBlock(src: string, cols?: number, moduleCss?: string): RawBlock {
   const sheets: string[] = []
-  const source = src.replace(/<\\\/script/gi, '</script').trim()
-  const html = source.replace(STYLE_RE, (_m, css: string) => (sheets.push(css.trim()), '')).trim()
-  const css = sanitizeCssText(sheets.filter(Boolean).join('\n\n'))
-  return { id: uid(), type: 'raw', html: strictHtml(html).trim(), verbatim: true, ...(css ? { css } : {}), ...(cols === 2 || cols === 3 ? { cols } : {}), ...(source.length <= SOURCE_MAX ? { source } : {}) }
+  let source = src.replace(/<\\\/script/gi, '</script').trim()
+  // module.css of the template, as given (marked in the editor's code).
+  let sourceCss = moduleCss
+  const own = source.match(/^<style data-neon-css>\n?([\s\S]*?)\n?<\/style>\n?/)
+  if (own) {
+    sourceCss = own[1]
+    source = source.slice(own[0].length).trim()
+  }
+  // <{{ heading }} …>…</{{ heading }}>: a tag named by HuBL. The preview copy
+  // gets a real tag (a heading when the name says so); the export keeps the source.
+  const tagOf = (expr: string) => (/head|title|titre|level|niveau|hn\b/i.test(expr) ? 'h2' : 'div')
+  const html = source
+    .replace(STYLE_RE, (_m, css: string) => (sheets.push(css.trim()), ''))
+    .replace(/<(\/?)\{\{-?([\s\S]*?)-?\}\}/g, (_m, slash: string, expr: string) => `<${slash}${tagOf(expr)}`)
+    .trim()
+  const css = sanitizeCssText([sourceCss ?? '', ...sheets].map((x) => x.trim()).filter(Boolean).join('\n\n'))
+  const exact = source.length <= SOURCE_MAX && (sourceCss ?? '').length <= SOURCE_MAX
+  return {
+    id: uid(),
+    type: 'raw',
+    html: strictHtml(html).trim(),
+    verbatim: true,
+    ...(css ? { css } : {}),
+    ...(cols === 2 || cols === 3 ? { cols } : {}),
+    ...(exact ? { source, ...(sourceCss != null && sourceCss.trim() ? { sourceCss } : {}) } : {}),
+  }
 }
 
 export function treeToCode(tree: ModuleTree, name: string): string {
@@ -337,9 +361,11 @@ export function syncExtraFields(tree: ModuleTree, specs?: FieldSpec[], source?: 
       .map((f) => (specs?.length || source ? f : (prev.get(f.name) ?? f)))
   }
   if (source) fields = fields.map((f) => (f.keep ? f : { ...f, keep: true }))
-  // Imported with a fields.json: its order is kept (the export comes out identical).
-  if (specs?.length) {
-    const rank = new Map(specs.map((s, i) => [s.name, i]))
+  // Imported with a fields.json: its order is kept (the export comes out identical);
+  // afterwards, the order the module already has.
+  const order = specs?.length ? specs.map((s) => s.name) : [...prev.keys()]
+  if (order.length) {
+    const rank = new Map(order.map((n, i) => [n, i]))
     fields = fields.map((f, i) => [f, i] as const).sort(([a, i], [b, j]) => (rank.get(a.name) ?? 1e6 + i) - (rank.get(b.name) ?? 1e6 + j)).map(([f]) => f)
   }
   const names = new Set(fields.map((f) => f.name))
@@ -389,18 +415,21 @@ export function treeToHubSpot(tree: ModuleTree, name: string): HubSpotExport {
     // A module with JavaScript is a web module too.
     ...(tree.js ? { host_template_types: ['PAGE', 'BLOG_POST', 'EMAIL'] } : {}),
   }
+  // An imported meta.json comes back as it was (its label, types, assets…).
+  const metaOut = tree.meta ? { ...tree.meta } : meta
   // A module that is one imported template, kept as written: exported exactly
   // as it was imported (no wrapper, no comment), so it round-trips identically.
   const only = tree.sections.length === 1 && tree.sections[0].cells.length === 1 && tree.sections[0].cells[0].length === 1 ? tree.sections[0].cells[0][0] : null
   const template = only?.type === 'raw' && only.verbatim && only.source != null ? only.source : null
+  const templateCss = only?.type === 'raw' && only.sourceCss ? `${only.sourceCss.replace(/\s+$/, '')}\n` : ''
   return {
     // The name sits in a HuBL comment: it must not be able to close it.
     'module.html': template != null ? `${template}\n` : `{# ${name.replace(/[{}#%]/g, ' ').trim()} — généré par Neon Sandbox Pro #}\n${html}\n`,
-    'module.css': template != null ? '' : `${STACK_CSS}${responsiveCss(tree)}\n`,
+    'module.css': template != null ? templateCss : `${STACK_CSS}${responsiveCss(tree)}\n`,
     // The imported module.js, as it was (web pages only: e-mails never run it).
     'module.js': tree.js ? `${tree.js.replace(/\s+$/, '')}\n` : '',
     'fields.json': JSON.stringify([...fields, ...extra], null, 2) + '\n',
-    'meta.json': JSON.stringify(meta, null, 2) + '\n',
+    'meta.json': JSON.stringify(metaOut, null, 2) + '\n',
   }
 }
 

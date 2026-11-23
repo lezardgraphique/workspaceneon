@@ -35,6 +35,7 @@ import { OPEN_MAILY_EVENT } from '@/components/OfflineManager'
 import { CodeEditor } from '@/components/editor/CodeEditor'
 import { ValidatorPanel } from '@/components/editor/ValidatorPanel'
 import { ModuleScript } from '@/components/editor/ModuleScript'
+import { withoutDoubts } from '@/lib/field-edit'
 import { ClientsDialog } from '@/components/editor/ClientsDialog'
 import { VmlWindow } from '@/components/editor/VmlWindow'
 import { ExportDialog } from '@/components/editor/ExportDialog'
@@ -58,6 +59,7 @@ import { KOFI_URL } from '@/lib/links'
 import type { FieldSpec } from '@/lib/module-fields'
 import { applyValues } from '@/lib/json-import'
 import { HubSpotImport } from '@/components/editor/HubSpotImport'
+import type { ImportPayload } from '@/components/editor/HubSpotImport'
 import { findNode, findPath, insertInCell, moveNode, moveNodeTo, removeNode, replaceNode, updateNode } from '@/lib/tree'
 import { BLOCK_LABELS, createBlock } from '@/lib/types'
 import type { Block, ImageBlock, ModuleRecord, ModuleTree, Section } from '@/lib/types'
@@ -236,7 +238,9 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     // The module's JavaScript is not in its HTML code: a tree rebuilt from the
     // code keeps it (only an explicit js key, even empty, changes it).
     const withJs = 'js' in raw ? (raw.js ? raw : (({ js: _j, ...r }) => r)(raw)) : tree.js ? { ...raw, js: tree.js } : raw
-    const next = syncExtraFields(withJs)
+    // Same for an imported meta.json (an import without one sets meta: undefined).
+    const withMeta = 'meta' in withJs ? (withJs.meta ? withJs : (({ meta: _m, ...r }) => r)(withJs)) : tree.meta ? { ...withJs, meta: tree.meta } : withJs
+    const next = syncExtraFields(withMeta)
     pushHistory(tree, next)
     setTree(next)
     setCode(treeToCode(next, name))
@@ -293,7 +297,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     pushHistory(tree)
     const synced = syncExtraFields({ ...reconcileIds(res.tree, tree), fields: res.imported ? undefined : tree.fields }, undefined, res.imported ? code : undefined)
     // Pasted template whose layout the blocks would lose: kept whole.
-    const next = (res.imported && keepTemplateWhole(code, synced)) || synced
+    const next = (res.imported && keepTemplateWhole(code, synced)?.tree) || synced
     const known = new Set((tree.fields ?? []).map((f) => f.name))
     setNewFields((next.fields ?? []).map((f) => f.name).filter((n) => !known.has(n)))
     setTree(next)
@@ -341,7 +345,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     }
     codeTyped.current = false
     const synced = syncExtraFields({ ...reconcileIds(res.tree, tree), fields: res.imported ? undefined : tree.fields }, undefined, res.imported ? src : undefined)
-    const next = (res.imported && keepTemplateWhole(src, synced)) || synced
+    const next = (res.imported && keepTemplateWhole(src, synced)?.tree) || synced
     pushHistory(tree, next)
     setTree(next)
     const out = treeToCode(next, name)
@@ -353,12 +357,16 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
 
   // Module copied from another tool (« Importer »): its images are copied into
   // the tool first and their addresses swapped (src/lib/import-images.ts).
-  const importWithImages = async ({ source, specs, values, js }: { source: string; specs?: FieldSpec[]; values?: Record<string, unknown> | null; js?: string }) => {
-    const text = [source, ...(specs ?? []).map((f) => JSON.stringify(f)), values ? JSON.stringify(values) : ''].join('\n')
-    const got = await bringImages(text)
+  // The module applied is exactly the one the dialog showed (same decisions:
+  // kept whole or cut into blocks, fields), with its module.js and meta.json.
+  const importWithImages = async ({ tree: prepared, js, meta }: ImportPayload) => {
+    const got = await bringImages(textsOf(prepared).join('\n'))
     for (const t of Object.keys(got.map)) brought.current.add(t)
-    const p = swapUrls({ source, specs, values }, got.map)
-    return applyCode(p.source, p.specs, p.values, imagesNote(got), js ?? '')
+    const { js: _j, meta: _m, ...rest } = withoutDoubts(swapUrls(prepared, got.map))
+    void _j
+    void _m
+    applyBuilt({ ...rest, js: js ?? '', meta }, true, imagesNote(got))
+    return null
   }
   // Addresses already handled for code pasted in the Code tab (asked once each).
   const brought = useRef(new Set<string>())
@@ -410,14 +418,17 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
     const res = codeToTree(generated, tree, specs)
     if (!res.ok) return res.error
     const synced = syncExtraFields({ ...res.tree, fields: undefined }, specs, generated)
-    const built = applyValues((res.imported && keepTemplateWhole(generated, synced, specs)) || synced, values ?? null).tree
+    const built = applyValues((res.imported && keepTemplateWhole(generated, synced, specs)?.tree) || synced, values ?? null).tree
     // An import brings its own module.js (or none: the previous one goes).
-    const next = js === undefined ? built : { ...built, js }
+    applyBuilt(js === undefined ? built : { ...built, js }, !!res.imported, extraNote)
+    return null
+  }
+  const applyBuilt = (next: ModuleTree, imported: boolean, extraNote?: string | null) => {
     setNewFields((next.fields ?? []).map((f) => f.name))
     commit(next, null)
     const logic = countLogic(next)
     const logicNote =
-      res.imported && logic && getPref(SHOW_LOGIC_KEY) !== '1'
+      imported && logic && getPref(SHOW_LOGIC_KEY) !== '1'
         ? `Import appliqué. ${logic} ligne${logic > 1 ? 's' : ''} de logique (conditions, boucles, variables) ${logic > 1 ? 'sont masquées' : 'est masquée'} dans la Structure : elle${logic > 1 ? 's' : ''} ne s’affiche${logic > 1 ? 'nt' : ''} pas dans l’e-mail. « Annuler » revient au module d’avant.`
         : null
     const note = [extraNote, logicNote].filter(Boolean).join(' ')

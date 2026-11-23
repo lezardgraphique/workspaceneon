@@ -13,7 +13,9 @@ import { parseForeignJson } from '@/lib/json-import'
 import { parseFieldsJson } from '@/lib/module-fields'
 import type { FieldSpec } from '@/lib/module-fields'
 import { prepareImport } from '@/lib/import-repair'
-import type { ExtraField, ModuleTree } from '@/lib/types'
+import type { ExtraField, ExtraFieldType, Json, ModuleTree } from '@/lib/types'
+import { retypeField } from '@/lib/field-edit'
+import { TYPE_LABEL } from '@/components/editor/FieldsPanel'
 
 // Import of a HubSpot module as it is downloaded (module.html + fields.json,
 // optionally module.css), plus any JSON copied from another tool (values of
@@ -29,6 +31,11 @@ const caption = 'mb-1 block font-mono text-[10px] uppercase tracking-wider text-
 type Origin = 'fields.json' | 'JSON' | 'balise' | 'code'
 
 interface Row {
+  /** Path of the field from the top (extra fields only). */
+  path?: string[]
+  /** Other likely types: the guess needs a look. */
+  doubt?: ExtraFieldType[]
+  kind?: ExtraFieldType
   name: string
   label: string
   type: string
@@ -53,6 +60,10 @@ export interface ImportPayload {
   values: Record<string, unknown> | null
   /** module.js (web pages only), '' when none. */
   js: string
+  /** The module exactly as the dialog shows it (kept whole or cut into blocks). */
+  tree: ModuleTree
+  /** meta.json given with the files, exported back as it was. */
+  meta?: { [key: string]: Json }
 }
 
 export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; onImport: (p: ImportPayload) => string | null | Promise<string | null>; onClose: () => void }) {
@@ -61,8 +72,11 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
   const [codeText, setCodeText] = useState('')
   const [fieldsText, setFieldsText] = useState('')
   const [jsText, setJsText] = useState('')
+  const [meta, setMeta] = useState<{ [key: string]: Json } | null>(null)
   const { html, css } = useMemo(() => splitCode(codeText), [codeText])
   const { json, other, parts } = useMemo(() => splitFields(fieldsText), [fieldsText])
+  // meta.json pasted in the fields zone counts too.
+  const pastedMeta = useMemo(() => metaIn(fieldsText), [fieldsText])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   useEscape(onClose)
@@ -76,10 +90,21 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
     [html, css, json, other, tree],
   )
 
+  // Types the user settled for doubtful fields (path → type), and those confirmed as guessed.
+  const [types, setTypes] = useState<Record<string, ExtraFieldType>>({})
+  const [confirmed, setConfirmed] = useState<Set<string>>(new Set())
+  const effective = useMemo(() => {
+    if (!prep?.ok) return null
+    let t = prep.tree
+    for (const [path, type] of Object.entries(types)) t = retypeField(t, path.split('.'), type)
+    return t
+  }, [prep, types])
+
   const report = useMemo((): Report | null => {
     if (!prep) return null
     if (!prep.ok) return { error: prep.error }
-    const { tree: valued, source, specs } = prep
+    const { source, specs } = prep
+    const valued = effective ?? prep.tree
     const fromFj = new Set((fieldsJson ?? []).map((s) => s.name))
     // Fields declared by old template tags come from the code, not from a JSON.
     const tags = new Set(legacySpecs(source).map((s) => s.name))
@@ -90,6 +115,9 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
       const full = prefix ? `${prefix}.${f.name}` : f.name
       return [
         {
+          path: full.split('.'),
+          doubt: f.doubt && !types[full] && !confirmed.has(full) ? f.doubt : undefined,
+          kind: f.type,
           name: f.name,
           label: f.label,
           type: `${f.hsType ?? f.type}${f.repeater ? ' (répété)' : ''}`,
@@ -121,14 +149,14 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
     const missing = (fieldsJson ?? []).filter((s) => !s.name.includes('.') && !used.has(s.name)).map((s) => s.name)
     const unknown = fieldsJson ? [...used].filter((n) => !fromFj.has(n) && !fromJson.has(n)) : []
     return { rows: [...blockRows, ...extra], missing, unknown }
-  }, [prep, fieldsJson])
+  }, [prep, fieldsJson, effective, types, confirmed])
 
   // What the module will look like, before replacing anything (debounced: large pastes stay fluid).
   const [shownTree, setShownTree] = useState<ModuleTree | null>(null)
   useEffect(() => {
-    const t = setTimeout(() => setShownTree(prep?.ok ? prep.tree : null), 300)
+    const t = setTimeout(() => setShownTree(prep?.ok ? effective : null), 300)
     return () => clearTimeout(t)
-  }, [prep])
+  }, [prep, effective])
   const preview = useMemo(() => {
     if (!shownTree) return null
     try {
@@ -145,14 +173,23 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
     let js = jsText
     for (const f of Array.from(files ?? [])) {
       const text = await f.text()
-      if (/^meta\.json$/i.test(f.name)) continue
+      if (/^meta(\s*\(\d+\))?\.json$|^meta[_-]?\d*\.json$/i.test(f.name) || isMetaJson(text)) {
+        try {
+          const m = JSON.parse(text)
+          if (m && typeof m === 'object' && !Array.isArray(m)) setMeta(m)
+        } catch {
+          /* not JSON: ignored */
+        }
+        continue
+      }
       if (/\.(m?js)$/i.test(f.name)) {
         js = js.trim() ? `${js.trim()}\n\n${text}` : text
         continue
       }
       if (/\.json$/i.test(f.name)) fields = fields.trim() ? `${fields.trim()}\n\n${text}` : text
-      else if (/\.css$/i.test(f.name)) code = `${code.trim() ? `${code.trim()}\n` : ''}<style>\n${text}\n</style>`
-      else if (/\.(html?|hubl|hbs|handlebars|mustache|liquid|mjml|j2|jinja|twig)$/i.test(f.name)) code = code.includes('<style') && !/<(table|div|tr|td|p|h\d)\b/i.test(code) ? `${text}\n${code}` : text
+      // module.css goes after the HTML as it is (read back apart as module.css).
+      else if (/\.css$/i.test(f.name)) code = code.trim() ? `${code.trim()}\n\n${text.trim()}` : text.trim()
+      else if (/\.(html?|hubl|hbs|handlebars|mustache|liquid|mjml|j2|jinja|twig)$/i.test(f.name)) code = code.trim() && !splitCode(code).html.trim() ? `${text.trim()}\n\n${code.trim()}` : text
     }
     setCodeText(code)
     setFieldsText(fields)
@@ -222,6 +259,7 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
                       `${foreign.format}${foreign.specs.length ? ` · ${foreign.specs.filter((x) => !x.name.includes('.')).length} définition${foreign.specs.length > 1 ? 's' : ''}` : ''}${foreign.values ? ` · ${Object.keys(foreign.values).length} valeur${Object.keys(foreign.values).length > 1 ? 's' : ''}` : ''}${foreign.html ? ' · code du module' : ''}`}
                     {!fieldsJson && !foreign && 'Rien de reconnu : ce n’est ni un fields.json ni un JSON lisible, même après réparation.'}
                     {parts > 2 && ` · ${parts - 2} JSON en plus ignoré${parts > 3 ? 's' : ''}`}
+                    {pastedMeta && ' · meta.json gardé pour l’export'}
                   </span>
                 </span>
               )}
@@ -244,6 +282,11 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
               )}
             </label>
             <ImportImages code={codeText} fields={fieldsText} setCode={setCodeText} setFields={setFieldsText} />
+            {meta && (
+              <p className="flex items-start gap-1.5 text-xs text-cyan">
+                <Check className="mt-0.5 size-3.5 shrink-0" /> meta.json gardé : l’export le redonne tel quel (nom, types de contenu, ressources).
+              </p>
+            )}
           </div>
 
           <section aria-label="Champs reconnus" className="min-w-0">
@@ -290,6 +333,14 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
                     : report.rows.some((r) => r.origin === 'balise') ? '' : ' · types déduits du code (ajoute le fields.json ou le JSON d’un autre outil pour plus d’exactitude)'}
                   {report.rows.some((r) => r.valued) && ` · ${report.rows.filter((r) => r.valued).length} valeur${report.rows.filter((r) => r.valued).length > 1 ? 's' : ''} reprise${report.rows.filter((r) => r.valued).length > 1 ? 's' : ''} du JSON`}
                 </p>
+                {report.rows.some((r) => r.doubt) && (
+                  <p className="mb-2 flex gap-1.5 rounded-md border border-[#ffb36b]/50 bg-[#ffb36b]/5 p-2 text-xs text-[#ffb36b]">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                      {report.rows.filter((r) => r.doubt).length} type{report.rows.filter((r) => r.doubt).length > 1 ? 's' : ''} à confirmer : le code seul ne permet pas de trancher. Choisis le bon type ou « OK » pour garder la proposition. Le fields.json du module, s’il existe, règle tout.
+                    </span>
+                  </p>
+                )}
                 <ul className="divide-y divide-line overflow-hidden rounded-md border border-line text-xs">
                   {report.rows.map((r, i) => (
                     <li key={i} className="flex items-center gap-2 px-2.5 py-1.5" style={{ paddingLeft: 10 + r.depth * 14 }}>
@@ -298,7 +349,31 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
                         {r.detail && <span className="ml-1.5 font-sans text-mute">· {r.detail}</span>}
                         {r.valued && <span className="ml-1.5 font-sans text-cyan">· valeur du JSON</span>}
                       </code>
-                      <span className="shrink-0 rounded-full border border-line px-2 py-0.5 font-mono text-[10px] text-cyan">{r.type}</span>
+                      {r.doubt && r.path && r.kind ? (
+                        <span className="flex shrink-0 items-center gap-1">
+                          <select
+                            aria-label={`Type du champ ${r.name} (à confirmer)`}
+                            value={r.kind}
+                            onChange={(e) => setTypes((t) => ({ ...t, [r.path!.join('.')]: e.target.value as ExtraFieldType }))}
+                            className="rounded-full border border-[#ffb36b] bg-void px-1.5 py-0.5 text-[10px] text-[#ffb36b] outline-none focus:border-cyan"
+                          >
+                            {[r.kind, ...r.doubt].map((t) => (
+                              <option key={t} value={t}>
+                                {TYPE_LABEL[t]}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmed((c) => new Set(c).add(r.path!.join('.')))}
+                            className="rounded-full border border-line px-1.5 py-0.5 text-[10px] text-mute hover:text-white"
+                          >
+                            OK<span className="sr-only"> : garder {TYPE_LABEL[r.kind]} pour {r.name}</span>
+                          </button>
+                        </span>
+                      ) : (
+                        <span className="shrink-0 rounded-full border border-line px-2 py-0.5 font-mono text-[10px] text-cyan">{r.type}</span>
+                      )}
                       <span className={`w-16 shrink-0 text-right text-[10px] ${r.origin !== 'code' ? 'text-white' : 'text-mute'}`} title={ORIGIN_TITLE[r.origin]}>
                         {r.origin === 'code' ? 'déduit' : r.origin}
                       </span>
@@ -349,7 +424,7 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
               if (!prep?.ok || busy) return
               // The images are copied into the tool first (can take a few seconds).
               setBusy(true)
-              const err = await onImport({ source: prep.source, specs: prep.specs, values: prep.values, js: jsText.trim() })
+              const err = await onImport({ source: prep.source, specs: prep.specs, values: prep.values, js: jsText.trim(), tree: effective ?? prep.tree, meta: meta ?? pastedMeta ?? undefined })
               setBusy(false)
               if (err) setError(err)
               else onClose()
@@ -369,7 +444,8 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
 export function splitCode(text: string): { html: string; css: string } {
   const t = text.trim()
   if (!t) return { html: '', css: '' }
-  const looksCss = (x: string) => /^[^<{}]*\{[^{}]*:[^{}]*\}/.test(x.trim()) && !/<[a-z!]/i.test(x)
+  // A rule, or an at-rule (@media, @keyframes…) first.
+  const looksCss = (x: string) => (/^[^<{}]*\{[^{}]*:[^{}]*\}/.test(x.trim()) || /^@(media|keyframes|font-face|import|supports|charset|layer|container)\b[^{;]*[{;]/i.test(x.trim()) || /^\/\*/.test(x.trim())) && !/<[a-z!]/i.test(x)
   if (looksCss(t)) return { html: '', css: t }
   // module.css pasted after the HTML: everything after the last closing tag that reads as CSS.
   // (a CSS selector may hold « > », so the end of the HTML is its last closing tag)
@@ -411,6 +487,8 @@ export function splitFields(text: string): { json: string; other: string; parts:
   let json = ''
   let other = ''
   for (const d of docs) {
+    // A meta.json pasted with the rest: read by the dialog, not a field list.
+    if (isMetaJson(d)) continue
     if (!json && isFieldsJson(d)) json = d
     else if (!other) other = d
   }
@@ -422,4 +500,21 @@ const isFieldsJson = (t: string) => {
   if (!/^\s*\[/.test(t)) return false
   const f = parseFieldsJson(t)
   return (!!f && f.length > 0) || (/\bname\b/.test(t) && /\btype\b/.test(t))
+}
+
+// HubSpot's meta.json (module settings), whatever the file is called.
+const isMetaJson = (t: string) => /^\s*\{/.test(t) && /"host_template_types"|"smart_type"|"is_available_for_new_content"/.test(t) && !/"type"\s*:\s*"(text|richtext|image|group)"/.test(t)
+
+function metaIn(text: string): { [key: string]: Json } | null {
+  if (!/host_template_types|smart_type/.test(text)) return null
+  for (const m of text.matchAll(/\{[^{}]*(?:\[[^\]]*\][^{}]*)*\}/g)) {
+    if (!isMetaJson(m[0])) continue
+    try {
+      const v = JSON.parse(m[0])
+      if (v && typeof v === 'object' && !Array.isArray(v)) return v
+    } catch {
+      /* not this one */
+    }
+  }
+  return null
 }

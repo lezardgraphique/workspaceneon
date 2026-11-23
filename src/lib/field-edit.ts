@@ -250,3 +250,14 @@ export const textToOptions = (t: string): NonNullable<ExtraField['options']> =>
       const value = v.trim()
       return { value, label: rest.join('|').trim() || value }
     })
+
+/** The fields without their « à confirmer » marks (once the import is applied). */
+export function withoutDoubts(tree: ModuleTree): ModuleTree {
+  if (!tree.fields?.length) return tree
+  const clean = (f: ExtraField): ExtraField => {
+    const { doubt: _d, ...rest } = f
+    void _d
+    return rest.children ? { ...rest, children: rest.children.map(clean) } : rest
+  }
+  return { ...tree, fields: tree.fields.map(clean) }
+}

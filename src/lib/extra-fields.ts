@@ -30,16 +30,19 @@ interface UseNode {
   cond: number
   filters: Set<string>
   ctx: string[] // text just before each {{ }} (attribute, URL…)
+  after: string[] // text just after each {{ }}
   tags: Set<string> // HuBL tags the value is used in: cta, icon, form, inline_text…
   funcs: Set<string> // functions it is passed to: cta(), menu(), content_by_id()…
   compared: Set<string> // literals it is compared with
   repeater: boolean
+  fallback?: string // literal of |default("…"): the value it starts with
+  prefixes: Set<string> // class="card--{{ x }}": the class prefix (its CSS lists the choices)
   item?: UseNode // a repeater's item
   kids: Map<string, UseNode>
   direct: number // used as a whole (not only through its properties)
 }
 
-const node = (): UseNode => ({ out: 0, cond: 0, filters: new Set(), ctx: [], tags: new Set(), funcs: new Set(), compared: new Set(), repeater: false, kids: new Map(), direct: 0 })
+const node = (): UseNode => ({ out: 0, cond: 0, filters: new Set(), ctx: [], after: [], tags: new Set(), funcs: new Set(), compared: new Set(), repeater: false, prefixes: new Set(), kids: new Map(), direct: 0 })
 
 const child = (n: UseNode, key: string): UseNode => {
   if (key === '*') return (n.item ??= node())
@@ -48,8 +51,10 @@ const child = (n: UseNode, key: string): UseNode => {
   return k
 }
 
-// Properties that belong to the field itself, never to a sub-field.
-const LOOP_PROPS = new Set(['length', 'items', 'keys', 'values'])
+// Properties that belong to the field itself, never to a sub-field. items /
+// keys / values are dict methods only when called (module.items is a field).
+const LOOP_PROPS = new Set(['length'])
+const METHODS = new Set(['items', 'keys', 'values', 'get', 'append', 'extend', 'update', 'pop', 'insert', 'upper', 'lower', 'split', 'strip', 'replace', 'startswith', 'endswith'])
 
 // A reference: name, then .props or ['props'], then filters.
 // No lookbehind (Safari before 16.4 refuses the whole file): the character before the name is group 1.
@@ -112,23 +117,37 @@ class Analyzer {
   }
 
   // Every reference of an expression; returns the paths found.
-  refs(text: string, kind: 'out' | 'cond', ctx?: string, tag?: string): { path: Path; filters: string[] }[] {
+  refs(text: string, kind: 'out' | 'cond', ctx?: string, tag?: string, after?: string): { path: Path; filters: string[] }[] {
     const found: { path: Path; filters: string[] }[] = []
     const plain = text.replace(STRING, (s) => ' '.repeat(s.length))
     for (const r of plain.matchAll(REF)) {
       const m = Object.assign([r[0], r[2], r[3], r[4]], { index: (r.index ?? 0) + r[1].length })
       const base = this.resolve(m[1])
       if (!base) continue
-      const props = [...text.slice((m.index ?? 0) + m[1].length, (m.index ?? 0) + m[1].length + m[2].length).matchAll(/\.([A-Za-z_]\w*)|\[\s*['"]([^'"]+)['"]\s*\]/g)].map((x) => x[1] ?? x[2])
+      const end = (m.index ?? 0) + m[1].length + m[2].length
+      const props = [...text.slice((m.index ?? 0) + m[1].length, end).matchAll(/\.([A-Za-z_]\w*)|\[\s*['"]([^'"]+)['"]\s*\]/g)].map((x) => x[1] ?? x[2])
+      // A method call (x.items(), x.get('a')): not a property of the field.
+      if (props.length && /^\s*\(/.test(plain.slice(end)) && METHODS.has(props[props.length - 1])) props.pop()
       const path = [...base, ...props.filter((p) => !LOOP_PROPS.has(p))]
       if (!path.length) continue
       const filters = [...m[3].matchAll(/\|\s*([A-Za-z_]\w*)/g)].map((f) => f[1])
       const n = this.at(path)!
       filters.forEach((f) => n.filters.add(f))
-      if (kind === 'cond') n.cond++
+      // |default("h2"): the value the field starts with.
+      const fb = /\|\s*default\s*\(\s*('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?)/.exec(text.slice(end, end + m[3].length + 40))
+      if (fb && n.fallback === undefined) n.fallback = unquote(fb[1])
+      // `'x' if flag else 'y'` inside an output: the flag is tested, not printed.
+      const tested = kind !== 'cond' && /\b(?:if|and|or)\s+(?:not\s+)?$/.test(plain.slice(0, m.index ?? 0))
+      if (kind === 'cond' || tested) n.cond++
       else {
         n.out++
-        if (ctx !== undefined) n.ctx.push(ctx)
+        if (ctx !== undefined) {
+          n.ctx.push(ctx)
+          n.after.push(after ?? '')
+          // class="stats--{{ x }}": the module's CSS lists what x can be.
+          const pre = /\sclass\s*=\s*["'][^"']*?([A-Za-z][\w-]*[-_])$/.exec(ctx)
+          if (pre) n.prefixes.add(pre[1])
+        }
       }
       if (tag) n.tags.add(tag)
       // Used as a whole: printed or tested as is (not only one of its properties).
@@ -163,7 +182,7 @@ class Analyzer {
     for (const m of clean.matchAll(/\{\{-?([\s\S]*?)-?\}\}|\{%-?([\s\S]*?)-?%\}/g)) {
       const at = m.index ?? 0
       if (m[1] !== undefined) {
-        this.refs(m[1], 'out', clean.slice(Math.max(0, at - 60), at))
+        this.refs(m[1], 'out', clean.slice(Math.max(0, at - 200), at), undefined, clean.slice(at + m[0].length, at + m[0].length + 40))
         continue
       }
       const stmt = m[2].trim()
@@ -197,7 +216,9 @@ class Analyzer {
         const f = /^\s*([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/.exec(body)
         if (f) {
           const target = f[2].trim()
-          const segs = /^([A-Za-z_]\w*)((?:\.[A-Za-z_]\w*)*)$/.exec(target)
+          // An alias, also through filters that keep the value (|default(…), |lower…).
+          const segs = /^([A-Za-z_]\w*)((?:\.[A-Za-z_]\w*)*)(\s*\|\s*(?:default|lower|upper|trim|string|d)\b(?:\s*\([^)]*\))?)*$/.exec(target)
+          if (segs?.[3]) this.refs(target, 'out')
           const base = segs ? this.resolve(segs[1]) : null
           if (base && segs) {
             // An alias: its uses are the field's uses.
@@ -223,6 +244,17 @@ class Analyzer {
 }
 
 const unquote = (s: string) => (/^['"]/.test(s) ? s.slice(1, -1) : s)
+
+// class="stats--{{ module.columns }}" with .stats--3 / .stats--4 in the CSS: a choice of 3 or 4.
+function cssChoices(n: UseNode, css: string) {
+  for (const pre of n.prefixes) {
+    const esc = pre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const vals = new Set([...css.matchAll(new RegExp(`\\.${esc}([A-Za-z0-9][\\w-]*)`, 'g'))].map((m) => m[1]))
+    if (vals.size >= 2 && !n.compared.size) vals.forEach((v) => n.compared.add(v))
+  }
+  for (const k of n.kids.values()) cssChoices(k, css)
+  if (n.item) cssChoices(n.item, css)
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -264,6 +296,9 @@ export const KIND_OF: Record<string, ExtraFieldType> = {
 }
 
 const named = (name: string, re: RegExp) => re.test(name)
+const BOX_TAGS = new Set(['div', 'td', 'section', 'article', 'aside', 'main'])
+const BOOL_NAME = /^(autoplay|auto_?play|loop|muted|controls|autostart|show|hide|enable|disable|sticky|rounded|dark|light|is|has|afficher|masquer|activer|desactiver|with)(_\w+)?$|_(enabled|visible|actif|active)$/i
+const NUMBER_NAME = /^(count|delay|speed|interval|timeout|limit|offset|max|min|step|rating|stars|etoiles|delai|vitesse|duree_ms)(_\w+)?$|_(ms|px|count|delay|speed)$/i
 
 // Exact HubSpot type of a used value (without fields.json).
 function hubspotType(name: string, n: UseNode): string {
@@ -313,6 +348,10 @@ function hubspotType(name: string, n: UseNode): string {
   if (n.tags.has('inline_text')) return 'text'
   const lits = [...n.compared]
   if (lits.length && lits.every((l) => /^(true|false)$/i.test(l))) return 'boolean'
+  // Printed in a data-* attribute read by a script: a number or a switch.
+  const dataAttr = n.ctx.map((c) => /\sdata-([\w-]+)\s*=\s*["']?$/i.exec(c)?.[1]).filter((x): x is string => !!x)
+  if (!lits.length && (named(name, BOOL_NAME) || dataAttr.some((a) => BOOL_NAME.test(a))) && (n.filters.has('lower') || n.filters.has('string') || dataAttr.length || (!n.out && n.cond))) return 'boolean'
+  if (!lits.length && (dataAttr.some((a) => NUMBER_NAME.test(a)) || named(name, NUMBER_NAME))) return 'number'
   if (lits.length && lits.every((l) => /^-?\d+(\.\d+)?$/.test(l)) && !n.out) return 'number'
   if (lits.length) return 'choice'
   const f = [...n.filters]
@@ -326,6 +365,10 @@ function hubspotType(name: string, n: UseNode): string {
   // A document to download: a plain value in href="…" named like a file.
   if (n.ctx.some((c) => /href\s*=\s*["']?$/i.test(c)) && /(fichier|file|pdf|brochure|document|doc\b|telecharg|download|piece|plaquette|catalogue_pdf)/i.test(name)) return 'file'
   if (f.some((x) => RICH_FILTERS.has(x)) || /(rich|body|corps|contenu|content|description|paragraph|paragraphe|html|intro)/i.test(name)) return 'richtext'
+  // Printed alone in a box (<div>, <td>…): rich text, which brings its own
+  // paragraphs; inside a paragraph, a heading, a link…: plain text.
+  const boxes = n.ctx.map((c, i) => (/^\s*<\//.test(n.after[i] ?? '') ? /<([a-z][a-z0-9]*)\b[^<>]*>\s*$/i.exec(c)?.[1]?.toLowerCase() : 'shared'))
+  if (boxes.length && boxes.every((t) => !!t && BOX_TAGS.has(t)) && !f.some((x) => x !== 'safe')) return 'richtext'
   return 'text'
 }
 
@@ -512,7 +555,55 @@ const CHOICES: { re: RegExp; options: { value: string; label: string }[]; defaul
     ],
   },
 ]
+// align="{{ x }}" / text-align:{{ x }}: left, centre or right.
+CHOICES.push(
+  {
+    re: /\salign\s*=\s*["']?$/i,
+    default: 'left',
+    options: [
+      { value: 'left', label: 'Gauche' },
+      { value: 'center', label: 'Centre' },
+      { value: 'right', label: 'Droite' },
+    ],
+  },
+  {
+    re: /text-align\s*:\s*$/i,
+    default: 'left',
+    options: [
+      { value: 'left', label: 'Gauche' },
+      { value: 'center', label: 'Centre' },
+      { value: 'right', label: 'Droite' },
+      { value: 'justify', label: 'Justifié' },
+    ],
+  },
+)
 const choiceOf = (n: UseNode) => CHOICES.find((c) => n.ctx.some((x) => c.re.test(x)))
+
+// Types the code alone can't settle: the guess, then what else it may well be.
+function doubtOf(n: UseNode, hs: string): ExtraFieldType[] | undefined {
+  if (n.tags.size || n.funcs.size || n.kids.size) return undefined
+  const f = [...n.filters]
+  const opener = (i: number) => /<([a-z][a-z0-9]*)\b[^<>]*>\s*$/i.exec(n.ctx[i] ?? '')?.[1]?.toLowerCase()
+  const alone = n.ctx.map((_, i) => (/^\s*<\//.test(n.after[i] ?? '') ? opener(i) : undefined))
+  switch (hs) {
+    case 'text':
+      if (n.compared.size || f.length) return undefined
+      if (n.ctx.some((c) => /href\s*=\s*["']?$/i.test(c))) return ['url', 'link']
+      // Alone in a paragraph or a list item: maybe a rich text.
+      return alone.length && alone.every((t) => t === 'p' || t === 'li' || t === 'span') ? ['richtext'] : undefined
+    case 'richtext':
+      return f.some((x) => RICH_FILTERS.has(x)) ? undefined : ['text']
+    case 'number':
+      return f.some((x) => NUMBER_FILTERS.has(x)) || n.compared.size ? undefined : ['text']
+    case 'boolean':
+      return n.out ? ['text'] : undefined
+    case 'choice':
+      return n.prefixes.size ? ['text'] : undefined
+    case 'file':
+      return ['image', 'text']
+  }
+  return undefined
+}
 
 // A field from how it is used (no fields.json).
 function fromUse(name: string, n: UseNode): ExtraField {
@@ -529,15 +620,18 @@ function fromUse(name: string, n: UseNode): ExtraField {
     ...(kind !== hs && hs !== 'group' ? { hsType: hs } : {}),
   }
   if (repeater) field.repeater = true
+  const doubt = doubtOf(shape, hs)
+  if (doubt) field.doubt = doubt
   if (kind === 'group') field.children = [...shape.kids].map(([k, v]) => fromUse(k, v))
   if (kind === 'choice') {
     const preset = choiceOf(shape)
     if (preset) {
       field.options = preset.options
-      field.default = preset.default
+      field.default = shape.fallback !== undefined && preset.options.some((o) => o.value === shape.fallback) ? shape.fallback : preset.default
     } else {
       field.options = [...shape.compared].map((v) => ({ value: v, label: humanize(v) }))
-      field.default = field.options[0]?.value ?? ''
+      // |default("h2") names the starting value.
+      field.default = shape.fallback !== undefined && field.options.some((o) => o.value === shape.fallback) ? shape.fallback : (field.options[0]?.value ?? '')
       if (repeater) field.default = [field.default, field.default]
     }
     return field
@@ -580,6 +674,7 @@ export function fromSpec(raw: Record<string, unknown>): ExtraField | null {
   const d = asJson(def)
   field.default = d !== undefined && d !== null ? d : def === null ? null : standIn(field)
   if (!('default' in raw)) field.noDefault = true
+  field.order = Object.keys(raw)
   // A list that starts empty (default: []) would show nothing at all:
   // example items stand in for it until the user changes them.
   if (field.repeater && Array.isArray(field.default) && field.default.length === 0) {
@@ -636,6 +731,8 @@ export function analyzeFieldRefs(code: string, given: FieldSpec[] = []): ExtraFi
   const specs = withLegacySpecs(code, given) ?? []
   const a = new Analyzer()
   a.run(code)
+  const css = [...code.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n')
+  if (css) for (const n of a.roots.values()) cssChoices(n, css)
   const out: ExtraField[] = []
   const top = specs.filter((s) => !s.name.includes('.') && s.raw)
   const bySpec = new Map(top.map((s) => [s.name, s]))
@@ -736,6 +833,17 @@ export function scopeValue(f: ExtraField): Json {
 // One entry of fields.json: the imported definition when there is one (exact),
 // otherwise a complete HubSpot definition of the type.
 export function hubspotField(f: ExtraField): Record<string, unknown> {
+  return inOrder(fieldOut(f), f.order)
+}
+// The keys of an imported definition in their original order, new ones after.
+function inOrder(o: Record<string, unknown>, order?: string[]): Record<string, unknown> {
+  if (!order?.length) return o
+  const out: Record<string, unknown> = {}
+  for (const k of order) if (k in o) out[k] = o[k]
+  for (const k of Object.keys(o)) if (!(k in out)) out[k] = o[k]
+  return out
+}
+function fieldOut(f: ExtraField): Record<string, unknown> {
   const type = f.hsType ?? f.type
   const base: Record<string, unknown> = { name: f.name, label: f.label, type, required: false, locked: false, ...(f.spec ?? {}) }
   base.type = type

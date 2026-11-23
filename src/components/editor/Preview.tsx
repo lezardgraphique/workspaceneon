@@ -5,6 +5,7 @@ import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEven
 
 import { firstImage } from '@/lib/images'
 import { HtmlBlockEditor } from './HtmlBlockEditor'
+import { EmailFrame } from '@/components/EmailFrame'
 import { inertHubl, isSafeUrl, sanitizeHtml } from '@/lib/sanitize'
 
 import type { MoveTarget } from '@/lib/tree'
@@ -245,6 +246,16 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
       // Selected HTML block: its own code, editable in place (texts, images,
       // links, elements dragged within the block).
       if (active && !b.verbatim && /<[a-zA-Z]/.test(b.html)) return node(<HtmlBlockEditor html={b.html} font={font} onChange={(html) => edit({ html })} />)
+      // A kept module with its own CSS (classes, animations, :hover…): shown in an
+      // isolated frame, so its CSS applies without ever touching the app.
+      if (b.verbatim && b.css && b.html.trim())
+        return node(
+          <EmailFrame
+            title="Modèle importé avec sa CSS"
+            width={p.mobile ? 375 : 600}
+            html={`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:${font.replace(/[<>{}]/g, '')}}</style><style>${b.css.replace(/<\/style/gi, '')}</style></head><body>${inertHubl(sanitizeHtml(b.html))}</body></html>`}
+          />,
+        )
       // The tree reaching the preview is already interpreted: show the result.
       return node(
         b.html.trim() ? (

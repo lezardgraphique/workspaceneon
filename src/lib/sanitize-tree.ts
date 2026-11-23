@@ -195,6 +195,7 @@ function blockInner(raw: unknown, depth: number, count: { n: number }): Block | 
         ...(raw.verbatim === true && typeof raw.css === 'string' && sanitizeCssText(raw.css) ? { css: sanitizeCssText(raw.css) } : {}),
         // The exact imported text, for the code and the export only (never rendered).
         ...(raw.verbatim === true && typeof raw.source === 'string' && raw.source.length <= 200_000 ? { source: raw.source } : {}),
+        ...(raw.verbatim === true && typeof raw.sourceCss === 'string' && raw.sourceCss.length <= 200_000 ? { sourceCss: raw.sourceCss } : {}),
       }
     case 'section':
       return depth < MAX_DEPTH ? section(raw, depth + 1, count) : null
@@ -289,6 +290,7 @@ function extraField(raw: unknown, depth = 0): ExtraField | null {
   if (raw.repeater === true) out.repeater = true
   if (raw.keep === true) out.keep = true
   if (raw.noDefault === true) out.noDefault = true
+  if (Array.isArray(raw.order) && raw.order.length <= 60 && raw.order.every((k: unknown) => typeof k === 'string' && k.length <= 60)) out.order = raw.order as string[]
   if (raw.sample === true) out.sample = true
   const spec = specObj(raw.spec)
   if (spec) out.spec = spec
@@ -331,6 +333,7 @@ export function sanitizeTree(raw: unknown): ModuleTree {
     ...(typeof t.pad === 'number' && Number.isFinite(t.pad) ? { pad: Math.round(Math.min(120, Math.max(0, t.pad))) } : {}),
     // Kept as text (200 KB at most): it only ever runs in the isolated sandbox page.
     ...(typeof t.js === 'string' && t.js.trim() ? { js: t.js.slice(0, 200_000) } : {}),
+    ...(t.meta && typeof t.meta === 'object' && !Array.isArray(t.meta) && JSON.stringify(t.meta).length <= 20_000 && safeJson(t.meta) ? { meta: safeJson(t.meta) as { [key: string]: Json } } : {}),
     ...(() => {
       const seen = new Set<string>()
       const fields = (Array.isArray(t.fields) ? t.fields : [])

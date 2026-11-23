@@ -69,7 +69,7 @@ function Value({ b, set }: { b: FieldBlock; set: (patch: Partial<Block>) => void
   }
 }
 
-const TYPE_LABEL: Record<ExtraFieldType, string> = {
+export const TYPE_LABEL: Record<ExtraFieldType, string> = {
   text: 'Texte',
   richtext: 'Texte enrichi',
   number: 'Nombre',

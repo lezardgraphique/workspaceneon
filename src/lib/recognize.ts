@@ -143,7 +143,7 @@ export function recognizeCode(input: string, current: ModuleTree, given?: FieldS
   // Every variable no block owns becomes a module field (the variable stays in the content).
   const synced = syncExtraFields({ ...res.tree, fields: undefined }, specs, code)
   // A template whose layout blocks would lose (macros, computed widths…) is kept whole.
-  const kept = keepTemplateWhole(code, synced, specs)
+  const kept = keepTemplateWhole(code, synced, specs)?.tree
   const tree = kept ?? synced
   const created = tree.fields ?? []
 

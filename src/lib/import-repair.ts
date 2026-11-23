@@ -14,6 +14,8 @@ import type { FieldSpec } from './module-fields'
 import { parseLenient } from './json-repair'
 import { convertForeign } from './foreign-syntax'
 import { fixCode, validateSyntax } from './validator'
+import { collectFields } from './fields'
+import { legacySpecs } from './hubl-legacy'
 import { uid } from './types'
 import type { ModuleTree } from './types'
 
@@ -504,10 +506,16 @@ export function prepareImport(input: ImportInput, current: ModuleTree): Prepared
   const res = codeToTree(source, current, specs)
   if (!res.ok) return { ok: false, error: res.error, repairs }
   let { tree, applied } = applyValues(syncExtraFields({ ...res.tree, fields: undefined }, specs, source), foreign?.values ?? null)
-  const whole = fromFields ? null : keepTemplateWhole(source, tree, specs)
+  // module.css given apart: the template kept whole gives it back apart.
+  const head = css.trim() ? `<style>\n${css}\n</style>\n` : ''
+  const moduleCss = head && source.startsWith(head) ? css : undefined
+  // A HubSpot module as downloaded (its fields.json, or code reading module.x
+  // before any conversion; {% module %} tags of a template are converted, not kept).
+  const hubspot = !clean.specs.length && (!!fj?.length || /\b(module|widget)\./.test(html))
+  const whole = fromFields ? null : keepTemplateWhole(source, tree, specs, moduleCss, hubspot)
   if (whole) {
-    ;({ tree, applied } = applyValues(whole, foreign?.values ?? null))
-    repairs.push(KEPT_WHOLE)
+    ;({ tree, applied } = applyValues(whole.tree, foreign?.values ?? null))
+    repairs.push(whole.reason)
   }
   return { ok: true, tree, source, specs, values: foreign?.values ?? null, repairs, fromFields, foreign, fieldsJson: fj, applied, wiring }
 }
@@ -520,14 +528,59 @@ export const KEPT_WHOLE = 'modèle gardé tel quel (macros, largeurs calculées,
  * and fields); when its blocks show less than the template itself, the module
  * with the template kept whole, exactly as written, is returned (else null).
  */
-export function keepTemplateWhole(source: string, tree: ModuleTree, specs?: FieldSpec[]): ModuleTree | null {
-  if (/data-neon=["'](module|section)/.test(source) || !looksLikeTemplate(source)) return null
-  const whole = renderedSize(renderHubl(source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ''), previewScope(tree)))
-  const cut = renderedSize(previewEmail(tree, 'x'))
-  // Macros hold the content in code: blocks could only show their calls, so the
-  // template stays whole (and its export identical to what was imported).
-  if (!showsMore(whole, cut) && !mostlyCode(tree) && !/\{%-?\s*macro\b/.test(source)) return null
-  return syncExtraFields({ ...tree, fields: undefined, sections: [wholeSection(source)] }, specs, source)
+export function keepTemplateWhole(source: string, tree: ModuleTree, specs?: FieldSpec[], moduleCss?: string, hubspot?: boolean): { tree: ModuleTree; reason: string } | null {
+  if (/data-neon=["'](module|section)/.test(source)) return null
+  // Cutting into blocks would change what the module does: kept as written.
+  const loss = lossyCut(source, tree, hubspot)
+  if (!loss) {
+    if (!looksLikeTemplate(source)) return null
+    const whole = renderedSize(renderHubl(source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ''), previewScope(tree)))
+    const cut = renderedSize(previewEmail(tree, 'x'))
+    // Macros hold the content in code: blocks could only show their calls, so the
+    // template stays whole (and its export identical to what was imported).
+    if (!showsMore(whole, cut) && !mostlyCode(tree) && !/\{%-?\s*macro\b/.test(source)) return null
+  }
+  const body = moduleCss != null ? source.slice(`<style>\n${moduleCss}\n</style>\n`.length) : source
+  // Without a fields.json, what the blocks recognised (a text block = rich
+  // text, a button = text + link…) still types the fields of the whole module.
+  const fromBlocks = blockSpecs(tree).filter((b) => !(specs ?? []).some((s) => s.name === b.name))
+  const learnt = [...(specs ?? []), ...fromBlocks]
+  const kept = syncExtraFields({ ...tree, fields: undefined, sections: [wholeSection(body, moduleCss)] }, learnt.length ? learnt : undefined, source)
+  // Those learnt types are guesses: the export writes them like any guessed field.
+  if (fromBlocks.length && kept.fields) kept.fields = kept.fields.map((f) => (fromBlocks.some((l) => l.name === f.name) ? (({ noDefault: _n, order: _o, ...r }) => r)(f) : f))
+  return { tree: kept, reason: loss ? `${loss === 'module HubSpot' ? 'Module HubSpot' : `Module (${loss})`} ${KEPT_EXACT}` : KEPT_WHOLE }
+}
+
+export const KEPT_EXACT = 'gardé tel quel pour ressortir identique à l’export : ses contenus se règlent dans l’onglet Champs'
+
+/**
+ * Why cutting this code into blocks would lose something the original module
+ * does (null when nothing is lost): tag names built by HuBL, code that would
+ * print as text, and any HubSpot module (`hubspot`; by default: code reading
+ * module.x), which must come out of the export exactly as it came in.
+ */
+export function lossyCut(source: string, tree: ModuleTree, hubspot?: boolean): string | null {
+  const code = source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+  if (/<\/?\{\{|<\/?\{%/.test(code)) return 'balise dont le nom est calculé en HuBL'
+  let cutShown = ''
+  try {
+    cutShown = previewEmail(tree, 'x')
+  } catch {
+    return 'découpage impossible'
+  }
+  const scope = previewScope(tree)
+  let wholeJunk = 0
+  try {
+    wholeJunk = renderedSize(renderHubl(code, scope)).junk
+  } catch {
+    wholeJunk = 0
+  }
+  if (renderedSize(cutShown).junk > wholeJunk) return 'du code se serait affiché comme du texte'
+  // A HubSpot module (given with its fields.json, or reading module.x) comes
+  // back out of the export as it came in: blocks would rewrite its markup.
+  // (Old template tags, {% text "x" %}…, are converted instead: the preview can't show them.)
+  if ((hubspot ?? /\b(module|widget)\./.test(code)) && !legacySpecs(code).length && !/\{%-?\s*widget_block\b/.test(code)) return 'module HubSpot'
+  return null
 }
 
 // Cutting a template into blocks is worth it only when most of what it shows
@@ -542,7 +595,7 @@ function mostlyCode(tree: ModuleTree): boolean {
   return raw > 0 && editable < raw
 }
 
-const wholeSection = (html: string): ModuleTree['sections'][number] => ({ id: uid(), type: 'section', columns: 1, behavior: 'stack', bg: 'transparent', padding: 0, radius: 0, cells: [[verbatimBlock(html)]] })
+const wholeSection = (html: string, moduleCss?: string): ModuleTree['sections'][number] => ({ id: uid(), type: 'section', columns: 1, behavior: 'stack', bg: 'transparent', padding: 0, radius: 0, cells: [[verbatimBlock(html, undefined, moduleCss)]] })
 const showsMore = (a: { imgs: number; text: number }, b: { imgs: number; text: number }) => (a.imgs || a.text) > 0 && (a.imgs > b.imgs || a.text > b.text * 1.25 + 20)
 
 /**
@@ -613,4 +666,24 @@ function renderedSize(html: string): { imgs: number; text: number; junk: number 
   )
   p.end(html)
   return { imgs, text, junk }
+}
+
+// Fields of the blocks bound to `{{ module.x }}` (types the analyzer alone can't tell).
+function blockSpecs(tree: ModuleTree): FieldSpec[] {
+  const out: FieldSpec[] = []
+  for (const f of collectFields(tree)) {
+    const b = f.block
+    const d = b.field
+    if (!d) continue
+    if (b.type === 'button') {
+      if (d.textName) out.push({ name: d.textName, label: d.label ?? f.label, type: 'text', default: b.label })
+      if (d.linkName) out.push({ name: d.linkName, label: `${d.label ?? f.label} (lien)`, type: 'link', default: { url: { content_id: null, type: 'EXTERNAL', href: b.href }, open_in_new_tab: false, no_follow: false } })
+      continue
+    }
+    const exact = d.specs?.[f.name]
+    if (exact) continue
+    if (b.type === 'heading') out.push({ name: f.name, label: d.label ?? f.label, type: 'text', default: b.text })
+    else if (b.type === 'image') out.push({ name: f.name, label: d.label ?? f.label, type: 'image', default: { src: b.src, alt: b.alt } })
+  }
+  return out.filter((s) => !s.name.includes('.')).map((s) => ({ ...s, raw: { name: s.name, label: s.label, type: s.type, required: false, locked: false, default: s.default } }))
 }

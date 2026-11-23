@@ -169,6 +169,8 @@ export interface RawBlock {
    * in the DOM: the preview uses `html`, its sanitized copy.
    */
   source?: string
+  /** The module.css given with the template (export: module.css, exactly). */
+  sourceCss?: string
 }
 
 export type Columns = 1 | 2 | 3
@@ -271,6 +273,10 @@ export interface ExtraField {
   keep?: boolean
   /** The imported definition had no default: the value shown is only a preview stand-in, not exported. */
   noDefault?: boolean
+  /** Guessed from the code with weak evidence: the other likely types (import dialog asks). Never stored. */
+  doubt?: ExtraFieldType[]
+  /** Key order of the imported definition (the export writes it back in that order). */
+  order?: string[]
   /** An empty list in its definition: the items shown are examples (sampleItems), exported as [] while unchanged. */
   sample?: boolean
 }
@@ -288,6 +294,8 @@ export interface ModuleTree {
   /** module.js of an imported web module: kept, exported as is, run only in the
    * isolated « Tester le JavaScript » window (never in an e-mail). */
   js?: string
+  /** meta.json of an imported module (label, host_template_types, assets…): exported back, our keys on top only where it has none. */
+  meta?: { [key: string]: Json }
 }
 
 export interface ModuleRecord {
