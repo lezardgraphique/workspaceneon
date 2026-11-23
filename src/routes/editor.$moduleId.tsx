@@ -82,7 +82,11 @@ function structureKey(t: ModuleTree): string {
 
 export const Route = createFileRoute('/editor/$moduleId')({
   // ?maily=1: open straight on Maily's chat (the "Parler à Maily" button of the home page).
-  validateSearch: (search: Record<string, unknown>): { maily?: 1 } => (search.maily === 1 || search.maily === '1' ? { maily: 1 } : {}),
+  // ?importer=1: open on the « Importer » window (re-import asked by the check of imports).
+  validateSearch: (search: Record<string, unknown>): { maily?: 1; importer?: 1 } => ({
+    ...(search.maily === 1 || search.maily === '1' ? { maily: 1 as const } : {}),
+    ...(search.importer === 1 || search.importer === '1' ? { importer: 1 as const } : {}),
+  }),
   loader: async ({ params }) => {
     const mod = await loadModule(params.moduleId).catch(() => null)
     if (!mod) throw notFound()
@@ -175,7 +179,8 @@ function EditorGate() {
 }
 
 function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boolean } }) {
-  const openMaily = !!Route.useSearch().maily
+  const search = Route.useSearch()
+  const openMaily = !!search.maily
   const [name, setName] = useState(initial.name)
   const [tree, setTree] = useState<ModuleTree>(initial.tree)
   const [code, setCode] = useState(() => treeToCode(initial.tree, initial.name))
@@ -192,7 +197,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
   const [exporting, setExporting] = useState(false)
   const [testing, setTesting] = useState(false)
   const [vmlOpen, setVmlOpen] = useState(false)
-  const [hsImport, setHsImport] = useState(false)
+  const [hsImport, setHsImport] = useState(!!search.importer)
   const [save, setSave] = useState<SaveState>('saved')
   const [conflictCopy, setConflictCopy] = useState<string | null>(null)
   const [past, setPast] = useState<ModuleTree[]>([])

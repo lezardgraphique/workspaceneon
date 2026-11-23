@@ -5,6 +5,7 @@ import { ArrowRight, BookOpen, ChevronDown, Columns3, Code2, Download, Eye, Fold
 import { AccountMenu } from '@/components/AccountMenu'
 import { BackupPanel } from '@/components/BackupPanel'
 import { DeletedModules } from '@/components/DeletedModules'
+import { ImportCheck } from '@/components/ImportCheck'
 import { AppHeader, headerButton } from '@/components/AppHeader'
 import { ByLzg, LegalLink } from '@/components/LegalLink'
 import { EmailFrame } from '@/components/EmailFrame'
@@ -403,6 +404,7 @@ function Library() {
 
         <MyBlocksSection />
 
+        <ImportCheck modules={modules} />
         <BackupPanel />
         <DeletedModules />
       </main>
