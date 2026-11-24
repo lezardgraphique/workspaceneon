@@ -8,6 +8,9 @@ import { createFileRoute } from '@tanstack/react-router'
 // The page receives the rendered module and the script by postMessage from its
 // parent, writes them, and sends back the console messages and errors.
 const CSP = [
+  // Opaque origin even if the page is opened on its own (new tab, window.open)
+  // or framed without the sandbox attribute: the script never runs as the app.
+  'sandbox allow-scripts',
   "default-src 'none'",
   // The module's own script, and the libraries it loads (jQuery, Swiper…) from a CDN.
   "script-src 'unsafe-inline' 'unsafe-eval' https:",
