@@ -291,6 +291,8 @@ export interface ModuleTree {
   vml?: boolean
   /** Space above and below the module, px (24 when absent). */
   pad?: number
+  /** A HubSpot module cut into editable blocks on purpose (« Découper en blocs » at import): not kept whole. */
+  cut?: boolean
   /** module.js of an imported web module: kept, exported as is, run only in the
    * isolated « Tester le JavaScript » window (never in an e-mail). */
   js?: string

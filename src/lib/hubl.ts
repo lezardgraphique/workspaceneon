@@ -275,7 +275,7 @@ function renderModule(tree: ModuleTree, ctx: Ctx): string {
   const body = tree.sections.map((s) => renderSection(s, ctx, 3, tree.font, false, tree.width)).join('\n')
   // The conditional "ghost" table gives Outlook on Windows (which ignores
   // max-width) a fixed width; other clients skip it as a comment.
-  return `<div${ctx.attrs({ neon: 'module', width: tree.width, bg: tree.bg, font: tree.font, ...(tree.vml ? { vml: 1 } : {}), ...(tree.pad != null ? { pad: tree.pad } : {}) })} style="background:${esc(tree.bg)};padding:${tree.pad ?? 24}px 0;">
+  return `<div${ctx.attrs({ neon: 'module', width: tree.width, bg: tree.bg, font: tree.font, ...(tree.vml ? { vml: 1 } : {}), ...(tree.pad != null ? { pad: tree.pad } : {}), ...(tree.cut ? { cut: 1 } : {}) })} style="background:${esc(tree.bg)};padding:${tree.pad ?? 24}px 0;">
   <!--[if mso]><table role="presentation" width="${tree.width}" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:${tree.width}px;margin:0 auto;">
     <tr><td>
@@ -705,6 +705,7 @@ export function codeToTree(code: string, fallback: ModuleTree, specs?: FieldSpec
       sections: restoreTree(sectionEls.map(parseSection), prot.tokens),
       ...(g('vml') === '1' ? { vml: true } : {}),
       ...optNum(g('pad'), 'pad', 0, 120),
+      ...(g('cut') === '1' ? { cut: true } : {}),
     },
   }
 }

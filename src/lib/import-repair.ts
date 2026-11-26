@@ -5,6 +5,7 @@
 // its fields when only a fields.json / module JSON is given, and every repair
 // is listed for the person. Browser only (codeToTree uses DOMParser).
 import { Parser } from 'htmlparser2'
+import { expandMacros } from './macro-expand'
 import { codeToTree, previewEmail, syncExtraFields, treeToHubSpot, verbatimBlock } from './hubl'
 import { isLogicBlock, previewScope, renderHubl } from './hubl-render'
 import { applyValues, importSpecs, parseForeignJson } from './json-import'
@@ -444,6 +445,8 @@ export interface ImportInput {
   other?: string
   /** module.js, read to check the elements its script looks for. */
   js?: string
+  /** Cut a HubSpot module into editable blocks instead of keeping it whole. */
+  split?: boolean
 }
 
 export type Prepared =
@@ -515,6 +518,16 @@ export function prepareImport(input: ImportInput, current: ModuleTree): Prepared
     source = w.source
     wiring = { wired: w.wired, settings: w.settings }
   }
+  // Cut into blocks on request: macro calls are inlined first, or their content
+  // would stay hidden in code (blocks could only show the calls).
+  if (input.split && !fromFields) {
+    const x = expandMacros(source)
+    if (x.inlined.length) {
+      source = x.code
+      repairs.push(`découpé en blocs : macro${x.inlined.length > 1 ? 's' : ''} ${x.inlined.join(', ')} développée${x.inlined.length > 1 ? 's' : ''} dans le code`)
+    }
+    if (x.kept.length) repairs.push(`macro${x.kept.length > 1 ? 's' : ''} ${x.kept.join(', ')} gardée${x.kept.length > 1 ? 's' : ''} (appel${x.kept.length > 1 ? 's' : ''} dans une expression)`)
+  }
   const res = codeToTree(source, current, specs)
   if (!res.ok) return { ok: false, error: res.error, repairs }
   let { tree, applied } = applyValues(syncExtraFields({ ...res.tree, fields: undefined }, specs, source), foreign?.values ?? null)
@@ -524,11 +537,11 @@ export function prepareImport(input: ImportInput, current: ModuleTree): Prepared
   // A HubSpot module as downloaded (its fields.json, or code reading module.x
   // before any conversion; {% module %} tags of a template are converted, not kept).
   const hubspot = !clean.specs.length && (!!fj?.length || /\b(module|widget)\./.test(html))
-  const whole = fromFields ? null : keepTemplateWhole(source, tree, specs, moduleCss, hubspot)
+  const whole = fromFields || input.split ? null : keepTemplateWhole(source, tree, specs, moduleCss, hubspot)
   if (whole) {
     ;({ tree, applied } = applyValues(whole.tree, foreign?.values ?? null))
     repairs.push(whole.reason)
-  }
+  } else if (input.split && hubspot) tree = { ...tree, cut: true }
   return { ok: true, tree, source, specs, values: foreign?.values ?? null, repairs, fromFields, foreign, fieldsJson: fj, applied, wiring }
 }
 

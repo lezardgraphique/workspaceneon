@@ -66,7 +66,7 @@ export function scanImport(tree: ModuleTree): ImportScan {
     reimport.push('du code s’affiche comme du texte (une balise a été coupée à l’import)')
   // A HubSpot module cut into blocks: its export can't be the module it was.
   const hubspot = (tree.fields ?? []).some(fromFieldsJson) || blocks.some((b) => 'field' in b && !!b.field?.specs)
-  if (hubspot && !whole) reimport.push('module HubSpot découpé en blocs : réimporte ses fichiers pour que l’export redonne le module d’origine (classes, CSS, structure)')
+  if (hubspot && !whole && !tree.cut) reimport.push('module HubSpot découpé en blocs : réimporte ses fichiers pour que l’export redonne le module d’origine (classes, CSS, structure)')
 
   // A module the old import cut into blocks (or files exported by an older
   // version imported again): rebuilt from its own export, which the doctor puts

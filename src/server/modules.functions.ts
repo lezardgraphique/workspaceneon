@@ -31,6 +31,7 @@ const treeSchema = z
     fields: z.array(z.any()).max(100).optional(),
     vml: z.boolean().optional(),
     pad: z.number().optional(),
+    cut: z.boolean().optional(),
   })
   .refine((t) => JSON.stringify(t).length < 500_000, 'Module trop volumineux')
   .transform((t) => sanitizeTree(t))
