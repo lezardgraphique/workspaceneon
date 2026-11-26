@@ -274,7 +274,8 @@ function fieldDefault(type: ExtraFieldType, v: unknown): Json | undefined {
       return { ...(safeJson(v) as { [k: string]: Json }), src: isSafeUrl(src, true) ? src : '', alt: stripTags(str(v.alt, 200)), width: num(v.width, 600, 1, 4000), height: num(v.height, 300, 1, 4000) }
     }
     case 'color':
-      return isObj(v) ? { color: safeColor(v.color, '#000000'), opacity: num(v.opacity, 100, 0, 100) } : undefined
+      // An empty colour stays empty (the module's |default(…) then applies, as in HubSpot), never black.
+      return isObj(v) ? { color: v.color == null || (typeof v.color === 'string' && !v.color.trim()) ? '' : safeColor(v.color, '#000000'), opacity: num(v.opacity, 100, 0, 100) } : undefined
     default:
       return undefined
   }
