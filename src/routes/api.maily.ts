@@ -11,6 +11,7 @@ import type { Attempt } from '@/lib/gemini.server'
 import { CONTINUE_MARK, CONTINUE_PROMPT, KEEPALIVE, failMark, trimOverlap } from '@/lib/continuation'
 import { CLAUDE_NOTE, claudeOrder, claudeEnabled, claudeStream, takeClaudeTurn, type ClaudeTurn } from '@/server/claude.server'
 import { libraryNote, onlineSystemPrompt } from '@/lib/maily-prompts'
+import { brandNote, memoriesNote, parseBrand, parseMemories } from '@/lib/brand'
 
 // Screenshots or mockups the user wants Maily to recreate (base64, no data: prefix).
 const Image = z.object({
@@ -43,6 +44,9 @@ const Body = z.object({
   fieldSpecs: z.string().max(20_000).optional(),
   // The answer so far, when the editor asks for the rest of a cut answer.
   partial: z.string().max(400_000).optional(),
+  // « Ma marque » and « Mémoires de Maily » (synced preferences, see brand.ts).
+  brand: z.string().max(4_000).optional(),
+  memories: z.string().max(4_000).optional(),
 })
 
 // Google Search and URL reading keep Maily's answers current; the model decides
@@ -95,6 +99,8 @@ export const Route = createFileRoute('/api/maily')({
           return Response.json({ error: 'Ta demande est trop volumineuse ou incomplète : allège les pièces jointes (images, gros fichiers) et réessaie.' }, { status: 400 })
         }
         const { messages, mode, code, moduleName, imported, issue, fields, fieldSpecs, partial } = parsed.data
+        // The account's context, written after the cached part of the prompt.
+        const context = brandNote(parseBrand(parsed.data.brand ?? '')) + memoriesNote(parseMemories(parsed.data.memories ?? ''))
 
         // What already exists, so Maily reuses it instead of creating a twin.
         const library = await Promise.all([
@@ -125,7 +131,7 @@ export const Route = createFileRoute('/api/maily')({
           .map((m) => m.content.slice(0, 2_000))
           .join('\n')
         const prompt = onlineSystemPrompt({ mode, code, moduleName, imported, issue, fields, fieldSpecs, library, ask: lastAsk.slice(0, 4_000), recent, aboutCode })
-        const systemInstruction = prompt.system
+        const systemInstruction = prompt.system + context
         // Building a module deserves a little more thought; a chat answer must come fast.
         const level = mode === 'build' || issue ? 'medium' : prompt.light ? 'minimal' : 'low'
         const useClaude = claudeEnabled() && aboutCode && (await takeClaudeTurn(user.id, !!partial))
