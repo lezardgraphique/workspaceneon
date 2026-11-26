@@ -19,6 +19,7 @@ import { htmlToBlocks, sanitizeHtml, verbatimBlock } from '@/lib/hubl'
 import { isLogicBlock } from '@/lib/hubl-render'
 import { countLogic, governed, logicFrames, logicInfo, removeLogic, setLogicExpr } from '@/lib/logic'
 import { getPref, setPref, SETTINGS_EVENT } from '@/lib/settings-sync'
+import { BRAND_KEY, hasBrand, parseBrand } from '@/lib/brand'
 import { SHOW_LOGIC_KEY } from '@/lib/settings-keys'
 import { collectFields } from '@/lib/fields'
 import { BLOCK_LABELS } from '@/lib/types'
@@ -300,6 +301,8 @@ const FONTS = [
   "'Courier New', Courier, monospace",
 ]
 
+// Offered when « Ma marque » is set (Mon compte): the brand is sent with every rewrite anyway.
+const APPLY_BRAND = 'Appliquer ma marque'
 const REWRITES = ['Plus percutant', 'Plus court', 'Plus chaleureux', 'Plus formel', 'Corrige les fautes', 'Traduis en anglais']
 
 function MailyRewrite({ text, html, onResult }: { text: string; html: boolean; onResult: (t: string) => void }) {
@@ -312,7 +315,7 @@ function MailyRewrite({ text, html, onResult }: { text: string; html: boolean; o
       const res = await guardedFetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: 'rewrite', text, instruction, html }),
+        body: JSON.stringify({ kind: 'rewrite', text, instruction, html, brand: getPref(BRAND_KEY) ?? undefined }),
       })
       const data = await res.json()
       if (!res.ok || !data.text) throw new Error(data.error ?? 'Erreur')
@@ -329,14 +332,14 @@ function MailyRewrite({ text, html, onResult }: { text: string; html: boolean; o
         <Sparkles className="size-3.5" /> Réécrire avec Maily
       </p>
       <div className="flex flex-wrap gap-1.5">
-        {REWRITES.map((r) => (
+        {(hasBrand(parseBrand(getPref(BRAND_KEY) ?? '')) ? [APPLY_BRAND, ...REWRITES] : REWRITES).map((r) => (
           <button
             key={r}
             disabled={!!busy || !text.trim()}
-            onClick={() => run(r)}
+            onClick={() => run(r === APPLY_BRAND ? "Réécris ce texte selon l'identité de marque (ton, mots à utiliser et à éviter, mentions) sans changer son sens, sa longueur approximative ni ses variables {{ }}" : r)}
             className="inline-flex items-center gap-1 rounded-full border border-line bg-void px-3 py-1.5 text-xs text-[#c9c9de] hover:border-violet hover:text-white disabled:opacity-50 lg:px-2.5 lg:py-1 lg:text-[11px]"
           >
-            {busy === r && <Loader2 className="size-3 animate-spin" />}
+            {(busy === r || (r === APPLY_BRAND && !!busy && busy.startsWith('Réécris ce texte selon'))) && <Loader2 className="size-3 animate-spin" />}
             {r}
           </button>
         ))}

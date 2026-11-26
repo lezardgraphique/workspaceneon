@@ -6,6 +6,7 @@ import { Bot, Check, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react'
 
 import { AccountMenu } from '@/components/AccountMenu'
 import { AppHeader } from '@/components/AppHeader'
+import { BrandPanel, MemoriesPanel } from '@/components/BrandSettings'
 import { DeleteAccount } from '@/components/DeleteAccount'
 import { LegalLink } from '@/components/LegalLink'
 import { SiteSecurity } from '@/components/SiteSecurity'
@@ -109,6 +110,8 @@ function Compte() {
           </button>
         </form>
 
+        <BrandPanel />
+        <MemoriesPanel />
         <McpTokens />
         <DeleteAccount />
       </main>

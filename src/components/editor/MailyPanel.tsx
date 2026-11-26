@@ -21,6 +21,8 @@ import { createLocalFirst, isNetworkError, isOffline, loadBlocks, loadModules, s
 import { localReply } from '@/lib/maily-local'
 import { applyPatch } from '@/lib/maily-patch'
 import { isQuestion, runCommands } from '@/lib/maily-commands'
+import { BRAND_KEY, MAX_MEMORIES, MEMORIES_KEY, matchMemories, memoryCommand, parseMemories, storeMemories } from '@/lib/brand'
+import { getPref, setPref } from '@/lib/settings-sync'
 import { formatReport, runSelfTests } from '@/lib/self-test'
 import { codeFromFields } from '@/lib/import-repair'
 import { CONTINUE_MARK, KEEPALIVE, readFail, stripMark, wantsContinue } from '@/lib/continuation'
@@ -459,6 +461,9 @@ export function MailyPanel({
           issue: ctx.issue?.slice(0, 500),
           fields: fields.slice(0, 8_000),
           fieldSpecs: ctx.specs.length ? JSON.stringify(ctx.specs).slice(0, 20_000) : undefined,
+          // « Ma marque » and « Mémoires de Maily » (Mon compte), read at each request.
+          brand: getPref(BRAND_KEY)?.slice(0, 4_000) || undefined,
+          memories: getPref(MEMORIES_KEY)?.slice(0, 4_000) || undefined,
         },
         signal,
         onWait,
@@ -722,6 +727,38 @@ export function MailyPanel({
     }
     let history: Msg[] = [...base, userMsg]
     const note = imported ?? partialImport
+
+    // « Retiens que… », « Oublie… », « Qu'est-ce que tu retiens ? »: Maily's
+    // memories (brand.ts) are kept by the tool itself, never sent to the AI.
+    const mem = !source && !sent.length ? memoryCommand(instruction) : null
+    if (mem) {
+      const list = parseMemories(getPref(MEMORIES_KEY) ?? '')
+      const store = (next: typeof list) => setPref(MEMORIES_KEY, next.length ? storeMemories(next) : null)
+      let reply: string
+      if (mem.kind === 'list') {
+        reply = list.length
+          ? `Voici ce que je retiens pour toutes nos conversations :\n${list.map((m) => `- ${m.text}`).join('\n')}\n\nDis « Oublie… » pour en retirer une, ou gère-les dans Mon compte › Mémoires de Maily.`
+          : 'Je ne retiens rien de particulier pour l’instant. Dis-moi « Retiens que… » et je m’en souviendrai dans toutes nos conversations.'
+      } else if (mem.kind === 'forget-all') {
+        store([])
+        reply = list.length ? `C’est oublié : j’ai effacé mes ${list.length} mémoire${list.length > 1 ? 's' : ''}.` : 'Je n’avais rien en mémoire.'
+      } else if (mem.kind === 'forget') {
+        const gone = matchMemories(list, mem.query)
+        if (gone.length) store(list.filter((m) => !gone.includes(m)))
+        reply = gone.length
+          ? `C’est oublié :\n${gone.map((m) => `- ${m.text}`).join('\n')}`
+          : `Je ne trouve rien de tel dans mes mémoires.${list.length ? ` Voici ce que je retiens :\n${list.map((m) => `- ${m.text}`).join('\n')}` : ''}`
+      } else {
+        const dup = list.some((m) => m.text.toLowerCase() === mem.text.toLowerCase())
+        if (!dup) store([...list, { id: Math.random().toString(36).slice(2, 10), text: mem.text, t: Date.now() }].slice(-MAX_MEMORIES))
+        reply = dup
+          ? 'Je le retenais déjà 😉'
+          : `C’est noté, je m’en souviendrai dans toutes nos conversations :\n- ${mem.text}${list.length >= MAX_MEMORIES ? `\n\n(J’ai oublié la plus ancienne : ${MAX_MEMORIES} mémoires au plus.)` : ''}`
+      }
+      setMessages([...history, { role: 'assistant', content: reply }])
+      setMood('success')
+      return
+    }
 
     // Built-in engine (src/lib/maily-commands.ts): the adjustments it understands
     // are made at once by the tool, with or without a connection. Only what is

@@ -354,6 +354,10 @@ function addBlock(tree: ModuleTree, f: string, order: string): Step {
 function oneOrder(order: string, tree: ModuleTree, selectedId?: string | null): Step {
   const f = fold(order).trim()
   if (!f) return null
+  // Writing requests (« Propose-moi un objet… », « Écris une accroche… ») are for
+  // the AI: the words « titre » or « accroche » in them aren't orders on a block.
+  // (« Écris « Bonjour » dans le titre », with the exact text quoted, stays an order.)
+  if (/^(propose|suggere|ecris|redige|donne[- ]moi|trouve[- ]moi|imagine|invente|genere|cree[- ]moi|aide[- ]moi)\b/.test(f) && !/[«"“]/.test(order)) return null
 
   const fields = fieldOrder(order, tree)
   if (fields) return fields
@@ -375,7 +379,8 @@ function oneOrder(order: string, tree: ModuleTree, selectedId?: string | null): 
 
   const target = findTarget(order, tree, selectedId)
   if (!target) return null
-  if (target.kind !== 'module' && !target.ids.length) return { tree, said: `Je ne trouve pas ${target.label} dans ce module.` }
+  // Nothing of that kind here: the AI gets the request (it may mean something else).
+  if (target.kind !== 'module' && !target.ids.length) return null
 
   // Removal.
   if (/\b(supprime|supprimer|enleve|enlever|retire|retirer|efface|effacer)\b/.test(f) && target.kind !== 'module') {
