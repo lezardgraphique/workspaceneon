@@ -72,6 +72,8 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
   const [codeText, setCodeText] = useState('')
   const [fieldsText, setFieldsText] = useState('')
   const [jsText, setJsText] = useState('')
+  // Cut a HubSpot module into editable blocks instead of keeping it whole.
+  const [split, setSplit] = useState(false)
   const [meta, setMeta] = useState<{ [key: string]: Json } | null>(null)
   const { html, css } = useMemo(() => splitCode(codeText), [codeText])
   const { json, other, parts } = useMemo(() => splitFields(fieldsText), [fieldsText])
@@ -86,8 +88,8 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
   // Everything goes through the repairing import: cleaned code (or a module
   // built from the fields when there is no code), repairs listed.
   const prep = useMemo(
-    () => (html.trim() || json.trim() || other.trim() ? prepareImport({ html, css, fieldsJson: json, other, js: jsText }, tree) : null),
-    [html, css, json, other, tree, jsText],
+    () => (html.trim() || json.trim() || other.trim() ? prepareImport({ html, css, fieldsJson: json, other, js: jsText, split }, tree) : null),
+    [html, css, json, other, tree, jsText, split],
   )
 
   // Types the user settled for doubtful fields (path → type), and those confirmed as guessed.
@@ -308,6 +310,17 @@ export function HubSpotImport({ tree, onImport, onClose }: { tree: ModuleTree; o
             <h2 className="mb-2 font-display font-semibold">Champs reconnus</h2>
             {!report && <p className="text-sm text-mute">Le détail des champs s'affiche ici dès que le code, le fields.json ou un JSON est collé : un JSON seul suffit, le module est alors construit à partir de ses champs.</p>}
             {report && 'error' in report && <p className="text-sm text-pink">{report.error}</p>}
+            {prep?.ok && !prep.fromFields && (split || prep.repairs.some((r) => r.includes('gardé tel quel'))) && (
+              <label className="mb-3 flex cursor-pointer items-start gap-2 rounded-md border border-line p-2.5 text-xs">
+                <input type="checkbox" className="mt-0.5 accent-pink" checked={split} onChange={(e) => setSplit(e.target.checked)} />
+                <span>
+                  <span className="font-semibold text-white">Découper en blocs modifiables</span>
+                  <span className="block text-mute">
+                    Titres, textes, images et boutons deviennent des blocs à modifier dans l’aperçu (les macros sont développées). L’export n’est alors plus le module d’origine à l’identique : décoché, il reste entier et ressort tel quel.
+                  </span>
+                </span>
+              </label>
+            )}
             {prep && prep.repairs.length > 0 && (
               <div className="mb-3 rounded-md border border-cyan/40 bg-cyan/5 p-2.5 text-xs">
                 <p className="mb-1 flex items-center gap-1.5 font-semibold text-cyan">

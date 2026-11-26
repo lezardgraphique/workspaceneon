@@ -183,6 +183,8 @@ function BlockView({ b, font, ...p }: { b: Block; font: string } & Omit<Props, '
     case 'text':
       return node(
         <div
+          // Images in a text sit in the line, as in an e-mail (the app's base CSS makes them blocks).
+          className="[&_img]:inline [&_img]:align-baseline"
           style={{ fontFamily: font, fontSize: b.size, lineHeight: textLine(b), letterSpacing: b.letterSpacing || undefined, color: b.color, textAlign: b.align }}
           dangerouslySetInnerHTML={{ __html: inertHubl(sanitizeHtml(b.html)) || '&nbsp;' }}
         />,
