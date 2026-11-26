@@ -830,6 +830,8 @@ function cellButton(el: Element): Element | null {
 
 const isButtonLink = (el: Element): boolean =>
   el.tagName === 'A' &&
+  // A link around a whole box (a banner: table, paragraphs, headings) is not a button.
+  !el.querySelector('div,table,p,h1,h2,h3,h4,h5,h6,ul,ol') &&
   (!!toHex(css(el)?.backgroundColor) ||
     /inline-block|block/.test(css(el)?.display ?? '') ||
     /\b(btn|button|cta)\b/i.test(el.getAttribute('class') ?? '') ||
@@ -919,6 +921,7 @@ function imageBlock(img: Element, s: Inherit): Block {
     alt: img.getAttribute('alt') ?? '',
     width: Math.round(Math.min(100, Math.max(5, pct || 100))),
     align: s.align ?? 'center',
+    ...(px(css(img)?.borderRadius) ? { radius: Math.min(200, px(css(img)?.borderRadius)!) } : {}),
   }
 }
 
@@ -1184,6 +1187,9 @@ function convertTable(table: Element, inh: Inherit): Block[] {
 
 function convertElement(el: Element, inh: Inherit): Block[] {
   const tag = el.tagName
+  // A link around a whole box (a clickable banner): blocks can't carry the link,
+  // so the box stays one HTML block (editable in place) and keeps it.
+  if (tag === 'A' && el.getAttribute('href') && el.querySelector('div,table,p,h1,h2,h3,h4,h5,h6,ul,ol')) return [rawBlock(el.outerHTML)]
   const s = styleOf(el, inh)
   if (/^H[1-6]$/.test(tag)) {
     const level = Math.min(3, Number(tag[1])) as 1 | 2 | 3
@@ -1203,6 +1209,9 @@ function convertElement(el: Element, inh: Inherit): Block[] {
   }
   switch (tag) {
     case 'IMG':
+      // A size set by variables ({{ w }}) or a round picture (border-radius:50%) can't be an
+      // image block (width in %, radius in px): the image stays HTML, exactly as written.
+      if (/\{\{/.test(`${el.getAttribute('width') ?? ''}${el.getAttribute('height') ?? ''}`) || /border-radius\s*:\s*[^;]*%/i.test(el.getAttribute('style') ?? '')) return [rawBlock(el.outerHTML)]
       return [imageBlock(el, s)]
     case 'HR':
       return [{ id: uid(), type: 'divider', color: toHex(css(el)?.borderTopColor) ?? toHex(el.getAttribute('color')) ?? '#e3e3ee' }]

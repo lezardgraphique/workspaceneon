@@ -1110,11 +1110,12 @@ export function interpretTree(tree: ModuleTree, data: Scope, keepId?: string | n
         if (b.verbatim) return { ...b, html: text(b.html, sc), ...(b.css ? { css: text(b.css, sc) } : {}) }
         return b.id === keepId ? b : { ...b, html: text(b.html, sc) }
       case 'heading':
-        return b.id === keepId ? b : { ...b, text: text(b.text, sc), color: text(b.color, sc) }
+        // A heading is plain text: a rich text value printed in it (<p>Title</p>) shows its words, not its tags.
+        return b.id === keepId ? b : { ...b, text: hasHubl(b.text) ? plainText(text(b.text, sc)) : b.text, color: text(b.color, sc) }
       case 'text':
         return b.id === keepId ? b : { ...b, html: text(b.html, sc), color: text(b.color, sc) }
       case 'button':
-        return b.id === keepId ? b : { ...b, label: text(b.label, sc), href: text(b.href, sc), bg: text(b.bg, sc), color: text(b.color, sc) }
+        return b.id === keepId ? b : { ...b, label: hasHubl(b.label) ? plainText(text(b.label, sc)) : b.label, href: text(b.href, sc), bg: text(b.bg, sc), color: text(b.color, sc) }
       case 'image':
         return b.id === keepId ? b : { ...b, src: text(b.src, sc), alt: text(b.alt, sc) }
       case 'divider':
@@ -1178,4 +1179,18 @@ export function interpretForPreview(tree: ModuleTree, contact: SampleContact = '
   revealing[REVEAL] = true
   const shown = interpretTree(tree, revealing, keepId)
   return hasVisibleContent(shown) ? { tree: shown, forced: [], revealed: true } : { tree: out, forced: [] }
+}
+
+/** Text of printed HTML (tags removed, common entities decoded), for plain-text blocks. */
+function plainText(html: string): string {
+  if (!/[<&]/.test(html)) return html
+  return stripTags(html.replace(/<br\s*\/?>|<\/p>\s*<p[^>]*>/gi, ' '))
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
