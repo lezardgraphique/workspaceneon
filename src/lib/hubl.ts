@@ -1043,10 +1043,53 @@ function convertNodes(nodes: NodeListOf<ChildNode> | ChildNode[], inh: Inherit):
   return out
 }
 
+/** An empty element drawing a line (border-top/bottom:1px dotted …): a divider block. */
+function separatorOf(el: Element): Block | null {
+  if (!isBlank(el.innerHTML) || el.querySelector('img')) return null
+  const line = /border(?:-(?:bottom|top))?\s*:\s*(\d+)px\s+(solid|dotted|dashed)\s+([^;]+)/i.exec(el.getAttribute('style') ?? '')
+  if (!line) return null
+  const col = line[3].trim()
+  const m = /margin\s*:\s*(\d+)px(?:\s+\S+)?(?:\s+(\d+)px)?/i.exec(el.getAttribute('style') ?? '')
+  const mt = m ? Number(m[1]) : undefined
+  const mb = m ? Number(m[2] ?? m[1]) : undefined
+  return {
+    id: uid(),
+    type: 'divider',
+    color: toHex(col) ?? (COLOR_TOKEN.test(col) ? col : '#e3e3ee'),
+    ...(Number(line[1]) !== 1 ? { thickness: Math.min(10, Number(line[1])) } : {}),
+    ...(line[2].toLowerCase() !== 'solid' ? { lineStyle: line[2].toLowerCase() as 'dotted' | 'dashed' } : {}),
+    ...(mt != null ? { mt } : {}),
+    ...(mb != null ? { mb } : {}),
+  } as Block
+}
+
+/**
+ * A row of small items written by a loop over cells with no width
+ * (`{% for b in list %}<td style="padding:0 4px"><table>…badge…</table></td>{% endfor %}`):
+ * the items sit side by side at their own width, which blocks can't show
+ * (they would stack as full-width boxes). The table stays one HTML block.
+ */
+function inlineLoopRow(rows: Element[]): boolean {
+  if (rows.length !== 1) return false
+  const tr = rows[0]
+  const logic = Array.from(tr.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && /\{%-?\s*for\b/.test(n.textContent ?? ''))
+  if (!logic) return false
+  const tds = Array.from(tr.children).filter((c) => c.tagName === 'TD')
+  if (tds.length !== 1) return false
+  const td = tds[0]
+  if (td.getAttribute('width') || css(td)?.width) return false
+  // Small items only: short text, no big image, no button-like link.
+  const text = (td.textContent ?? '').replace(/\{\{[\s\S]*?\}\}/g, 'xxxxxxxx').trim()
+  if (text.length > 80) return false
+  if (Array.from(td.querySelectorAll('img')).some((i) => Number(i.getAttribute('width') ?? 0) > 64)) return false
+  return !td.querySelector('h1,h2,h3,p,ul,ol')
+}
+
 function convertTable(table: Element, inh: Inherit): Block[] {
   const rows = Array.from(table.querySelectorAll('tr')).filter((tr) => tr.closest('table') === table)
   // Data tables (with headers) are content, not layout: keep them verbatim.
   if (rows.some((tr) => tr.querySelector(':scope > th'))) return [rawBlock(table.outerHTML)]
+  if (inlineLoopRow(rows)) return [rawBlock(table.outerHTML)]
   const ts = styleOf(table, inh)
   const out: Block[] = []
   const tableBg = bgOf(table)
@@ -1101,10 +1144,11 @@ function convertTable(table: Element, inh: Inherit): Block[] {
         }
         const td = n as Element
         if (n.nodeType !== Node.ELEMENT_NODE || td.tagName !== 'TD') continue
-        const blocks = convertNodes(td.childNodes, td.querySelector(':scope > table') ? rs : styleOf(td, rs))
+        const sepCell = separatorOf(td)
+        const blocks = sepCell ? [sepCell] : convertNodes(td.childNodes, td.querySelector(':scope > table') ? rs : styleOf(td, rs))
         if (!blocks.length) continue
         const bg = bgOf(td)
-        const boxed = (bg || hublStyle(td)) && !loneButton(blocks)
+        const boxed = (bg || (hublStyle(td) && !sepCell)) && !loneButton(blocks)
         out.push(...(boxed || bgImageOf(td) ? [makeSection([blocks], bg ?? 'transparent', px(css(td)?.paddingTop) ?? 16, 0, td)] : blocks))
       }
       continue
@@ -1112,14 +1156,20 @@ function convertTable(table: Element, inh: Inherit): Block[] {
     const cells = Array.from(tr.children)
       .filter((td) => td.tagName === 'TD')
       // A cell's align="center" around a nested table centres the table, not its text.
-      .map((td) => ({ td, blocks: convertNodes(td.childNodes, td.querySelector(':scope > table') ? rs : shrink && tr.children.length === 1 ? shrinkStyle(td) : styleOf(td, rs)) }))
+      .map((td) => {
+        // An empty cell drawing a line (border-top:1px dotted …) is a separator.
+        const sep = separatorOf(td)
+        return { td, blocks: sep ? [sep] : convertNodes(td.childNodes, td.querySelector(':scope > table') ? rs : shrink && tr.children.length === 1 ? shrinkStyle(td) : styleOf(td, rs)) }
+      })
       .filter((c) => c.blocks.length) // drop empty gutter cells
     if (cells.length === 1) {
       const { td, blocks } = cells[0]
       const bg = bgOf(td)
       const tdPad = px(css(td)?.paddingTop) ?? px(css(td)?.padding)
       // A bulletproof button's coloured cell is the button itself, not a card.
-      const boxed = (bg || hublStyle(td)) && !loneButton(blocks)
+      // A separator cell (border line, style with variables) is the line itself, not a card.
+      const line = blocks.length === 1 && blocks[0].type === 'divider' && !bg
+      const boxed = (bg || (hublStyle(td) && !line)) && !loneButton(blocks)
       out.push(...(boxed || bgImageOf(td) ? [makeSection([blocks], bg ?? 'transparent', tdPad ?? 16, 0, td)] : flushCard && tdPad && !loneButton(blocks) ? [makeSection([blocks], 'transparent', tdPad, 0)] : blocks))
     } else if (cells.length > 1) {
       const bg = bgOf(tr) ?? bgOf(cells[0].td) ?? 'transparent'
@@ -1171,24 +1221,8 @@ function convertElement(el: Element, inh: Inherit): Block[] {
   if (CONTAINERS.has(tag) || INLINE.has(tag)) {
     if (isBlank(el.innerHTML) && !el.querySelector('img')) {
       // An empty box drawing a line (border-bottom:1px dotted …) is a separator.
-      const line = /border(?:-(?:bottom|top))?\s*:\s*(\d+)px\s+(solid|dotted|dashed)\s+([^;]+)/i.exec(el.getAttribute('style') ?? '')
-      if (line) {
-        const col = line[3].trim()
-        const m = /margin\s*:\s*(\d+)px(?:\s+\S+)?(?:\s+(\d+)px)?/i.exec(el.getAttribute('style') ?? '')
-        const mt = m ? Number(m[1]) : undefined
-        const mb = m ? Number(m[2] ?? m[1]) : undefined
-        return [
-          {
-            id: uid(),
-            type: 'divider',
-            color: toHex(col) ?? (COLOR_TOKEN.test(col) ? col : '#e3e3ee'),
-            ...(Number(line[1]) !== 1 ? { thickness: Math.min(10, Number(line[1])) } : {}),
-            ...(line[2].toLowerCase() !== 'solid' ? { lineStyle: line[2].toLowerCase() as 'dotted' | 'dashed' } : {}),
-            ...(mt != null ? { mt } : {}),
-            ...(mb != null ? { mb } : {}),
-          } as Block,
-        ]
-      }
+      const sep = separatorOf(el)
+      if (sep) return [sep]
       const h = px(css(el)?.height) ?? px(el.getAttribute('height'))
       return h ? [{ id: uid(), type: 'spacer', height: Math.min(400, h) }] : []
     }
