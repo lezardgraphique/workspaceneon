@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSampleContact } from '@/lib/preview-contact'
 import { Check, Copy, Minus, Plus, Shapes, X } from 'lucide-react'
 
 import { EmailFrame } from '@/components/EmailFrame'
@@ -204,13 +205,14 @@ function OutlookPreview({
   // "normal" reproduces the editor's preview (modern mail client); the two
   // others show what Outlook for Windows draws without / with the VML.
   const [mode, setMode] = useState<'normal' | 'sans' | 'avec'>('normal')
+  const [contact] = useSampleContact()
   const docRef = useRef<Document | null>(null)
 
   const { html, ids } = useMemo(() => {
-    const interp = interpretForPreview({ ...tree, vml: mode === 'avec', ...(mode === 'sans' ? { sections: tree.sections.map(noBgVml) } : {}) }, 'known').tree
+    const interp = interpretForPreview({ ...tree, vml: mode === 'avec', ...(mode === 'sans' ? { sections: tree.sections.map(noBgVml) } : {}) }, contact).tree
     const client = CLIENTS.find((c) => c.id === (mode === 'normal' ? 'apple-mail' : 'outlook-win'))!
     return { html: renderForClient(standaloneEmail(interp, name), client, { imagesOff: false }), ids: orderedIds(interp.sections) }
-  }, [tree, name, mode])
+  }, [tree, name, mode, contact])
 
   const idsRef = useRef(ids)
   idsRef.current = ids

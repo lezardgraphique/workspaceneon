@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { useSampleContact } from '@/lib/preview-contact'
+import { ContactSwitch } from '@/components/editor/ContactSwitch'
 import { Link, createFileRoute, notFound } from '@tanstack/react-router'
 import { Check, Link2, MailCheck, Monitor, Moon, Pencil, Smartphone, Sun } from 'lucide-react'
 
@@ -38,7 +40,8 @@ function ModulePreview() {
   const [testing, setTesting] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  const page = useMemo(() => previewEmail(mod.tree, mod.name), [mod])
+  const [contact, setContact] = useSampleContact()
+  const page = useMemo(() => previewEmail(mod.tree, mod.name, contact), [mod, contact])
   // Dark mode needs the DOM (DOMParser): computed on the client only.
   const html = useMemo(
     () => (dark && typeof DOMParser !== 'undefined' ? renderForClient(page, DARK, { imagesOff: false }) : page),
@@ -82,6 +85,7 @@ function ModulePreview() {
             <Moon className="size-4" />
           </button>
         </div>
+        <ContactSwitch tree={mod.tree} contact={contact} onChange={setContact} className="py-2 max-sm:flex-1" />
         <button onClick={copyLink} title="Copier le lien de l'aperçu" aria-label="Copier le lien de l'aperçu" className="inline-flex items-center justify-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-sm hover:border-cyan">
           {copied ? <Check className="size-4 text-cyan" /> : <Link2 className="size-4" />}
           <span className="hidden sm:inline">{copied ? 'Copié' : 'Lien'}</span>
