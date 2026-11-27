@@ -898,6 +898,37 @@ const CONTACT = {
   country: 'France',
 }
 
+/**
+ * First and last name read from an e-mail address (« thomas.champeau@… » →
+ * Thomas Champeau), or null when its local part doesn't look like a name.
+ */
+export function nameFromEmail(email: string | null | undefined): { firstname: string; lastname?: string } | null {
+  const local = (email ?? '').split('@')[0]?.toLowerCase() ?? ''
+  const parts = local.split(/[._]+/).filter(Boolean)
+  // Compound first names keep their hyphen (jean-pierre.dupont → Jean-Pierre Dupont).
+  const word = (w: string | undefined) => !!w && /^[a-z]{2,20}(-[a-z]{2,20})?$/.test(w)
+  if (!word(parts[0]) || /^(contact|info|admin|hello|bonjour|noreply|no|mail|test|support|team|equipe)$/.test(parts[0])) return null
+  const cap = (w: string) => w.replace(/(^|-)([a-z])/g, (_m, d: string, c: string) => d + c.toUpperCase())
+  return { firstname: cap(parts[0]), ...(word(parts[1]) ? { lastname: cap(parts[1]) } : {}) }
+}
+
+/**
+ * The previews' known contact is the signed-in person (their first and last
+ * name read from the account's e-mail, and that e-mail), so a personalised
+ * e-mail reads as it will reach them; Camille Martin when there is no account
+ * in this browser (server, MCP) or the address gives no name.
+ */
+export function sampleContact(): typeof CONTACT {
+  let email: string | null = null
+  try {
+    if (typeof localStorage !== 'undefined') email = JSON.parse(localStorage.getItem('nsp-user') || 'null')?.email ?? null
+  } catch {
+    email = null
+  }
+  const n = nameFromEmail(email)
+  return n && email ? { ...CONTACT, firstname: n.firstname, lastname: n.lastname ?? '', email } : CONTACT
+}
+
 // Data the previews feed to the interpreter: a sample contact, the sender's
 // site settings and the module's own fields ({{ module.nom }}).
 export function previewScope(tree: ModuleTree, contact: SampleContact = 'known'): Scope {
@@ -917,7 +948,7 @@ export function previewScope(tree: ModuleTree, contact: SampleContact = 'known')
   for (const f of tree.fields ?? []) if (!(f.name in mod)) mod[f.name] = scopeValue(f)
   // A field with no value yet shows its name instead of nothing.
   const module = new Proxy(mod, { get: (t, k) => (typeof k === 'string' && !(k in t) ? `[${k}]` : t[k as string]) })
-  const contactData = contact === 'known' ? CONTACT : {}
+  const contactData = contact === 'known' ? sampleContact() : {}
   return {
     module,
     // HubSpot's name of the module in the email (modules use it for unique CSS classes).
