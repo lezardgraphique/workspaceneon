@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSampleContact } from '@/lib/preview-contact'
 import { AlertOctagon, AlertTriangle, ArrowLeft, ChevronRight, ImageOff, Info, MailCheck, Monitor, Smartphone, X } from 'lucide-react'
 
 import { EmailFrame } from '@/components/EmailFrame'
@@ -49,7 +50,8 @@ export function ClientsDialog({
   const [imagesOff, setImagesOff] = useState(false)
   const [focus, setFocus] = useState<ClientId | null>(null)
 
-  const page = useMemo(() => previewEmail(tree, name), [tree, name])
+  const [contact] = useSampleContact()
+  const page = useMemo(() => previewEmail(tree, name, contact), [tree, name, contact])
   const renders = useMemo(
     () => Object.fromEntries(CLIENTS.map((c) => [c.id, renderForClient(page, c, { imagesOff })])) as Record<ClientId, string>,
     [page, imagesOff],

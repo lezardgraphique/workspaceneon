@@ -50,7 +50,8 @@ import { codeToTree, reconcileIds, syncExtraFields, treeToCode } from '@/lib/hub
 import { uploadImage } from '@/lib/images'
 import { signature, withNewIds } from '@/lib/custom-blocks'
 import { interpretForPreview } from '@/lib/hubl-render'
-import type { SampleContact } from '@/lib/hubl-render'
+import { useSampleContact } from '@/lib/preview-contact'
+import { ContactSwitch } from '@/components/editor/ContactSwitch'
 import { checkPreview } from '@/lib/preview-check'
 import { fixCode, validateSyntax } from '@/lib/validator'
 import { keepTemplateWhole, upgradeImported } from '@/lib/import-repair'
@@ -192,7 +193,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
   const [codeJump, setCodeJump] = useState<{ line: number; n: number }>()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [mobile, setMobile] = useState(false)
-  const [contact, setContact] = useState<SampleContact>('known')
+  const [contact, setContact] = useSampleContact()
   const [leftTab, setLeftTab] = useState<'structure' | 'fields' | 'maily'>(openMaily ? 'maily' : 'structure')
   const [rightTab, setRightTab] = useState<'inspector' | 'code'>('inspector')
   const [pane, setPane] = useState<Pane>(openMaily ? 'maily' : 'preview')
@@ -763,16 +764,7 @@ function Editor({ initial, idle }: { initial: ModuleRecord; idle: { current: boo
             </button>
           ))}
         </div>
-        <select
-          value={contact}
-          onChange={(e) => setContact(e.target.value as SampleContact)}
-          aria-label="Contact d'exemple pour l'aperçu"
-          title="Contact d'exemple : les {{ contact.… }} et les conditions {% if %} sont interprétés"
-          className="ml-1 hidden shrink-0 rounded-md border border-line bg-void px-1.5 py-1.5 text-xs text-mute outline-none hover:border-cyan lg:block"
-        >
-          <option value="known">Contact connu</option>
-          <option value="unknown">Contact inconnu</option>
-        </select>
+        <ContactSwitch tree={tree} contact={contact} onChange={setContact} className="ml-1 hidden lg:block" />
         <button
           onClick={() => setVmlOpen((v) => !v)}
           title="Volet VML pour Outlook, structure en direct"

@@ -565,6 +565,14 @@ export function compileExpr(src: string): Fn {
       }
       const name = t.v
       if (name === 'local_dt') return (s) => (name in s ? s[name] : Date.now())
+      // HubSpot's personalization_token('contact.firstname', 'défaut'): the sample
+      // contact's value, or the default when the contact is unknown.
+      if (name === 'personalization_token')
+        return (s) => (path: unknown, fallback: unknown) => {
+          let v: unknown = s
+          for (const k of toStr(path).split('.')) v = v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined
+          return v === undefined || v === null || v === '' ? (fallback ?? '') : v
+        }
       return (s) => (name in s ? s[name] : name in FUNCTIONS ? FUNCTIONS[name] : undefined)
     }
     if (t.v === '(') {
@@ -852,6 +860,31 @@ export function renderHubl(src: string, data: Scope): string {
 // ---------------------------------------------------------------------------
 
 export type SampleContact = 'known' | 'unknown'
+
+/**
+ * Contact data a module reads ({{ contact.firstname }}, personalization_token,
+ * {% if contact.company %}…): property names, in order. Empty = the « Contact
+ * connu / inconnu » switch changes nothing in this module.
+ */
+export function contactUses(tree: ModuleTree): string[] {
+  const code = JSON.stringify([tree.sections, tree.fields ?? []])
+  const names = new Set<string>()
+  for (const m of code.matchAll(/\bcontact\.([a-z_][a-z0-9_]*)/gi)) names.add(m[1].toLowerCase())
+  return [...names]
+}
+
+/** French names of the usual contact properties, for the switch's explanation. */
+export const CONTACT_LABELS: Record<string, string> = {
+  firstname: 'prénom',
+  lastname: 'nom',
+  email: 'e-mail',
+  company: 'entreprise',
+  jobtitle: 'poste',
+  phone: 'téléphone',
+  city: 'ville',
+  zip: 'code postal',
+  country: 'pays',
+}
 
 const CONTACT = {
   firstname: 'Camille',
