@@ -11,7 +11,7 @@ import type { Attempt } from '@/lib/gemini.server'
 import { CONTINUE_MARK, CONTINUE_PROMPT, KEEPALIVE, failMark, trimOverlap } from '@/lib/continuation'
 import { CLAUDE_NOTE, claudeOrder, claudeEnabled, claudeStream, takeClaudeTurn, type ClaudeTurn } from '@/server/claude.server'
 import { libraryNote, onlineSystemPrompt } from '@/lib/maily-prompts'
-import { brandNote, memoriesNote, parseBrand, parseMemories } from '@/lib/brand'
+import { contextNote, parseBrand, parseMemories } from '@/lib/brand'
 
 // Screenshots or mockups the user wants Maily to recreate (base64, no data: prefix).
 const Image = z.object({
@@ -100,7 +100,7 @@ export const Route = createFileRoute('/api/maily')({
         }
         const { messages, mode, code, moduleName, imported, issue, fields, fieldSpecs, partial } = parsed.data
         // The account's context, written after the cached part of the prompt.
-        const context = brandNote(parseBrand(parsed.data.brand ?? '')) + memoriesNote(parseMemories(parsed.data.memories ?? ''))
+        const context = contextNote(parseBrand(parsed.data.brand ?? ''), parseMemories(parsed.data.memories ?? ''))
 
         // What already exists, so Maily reuses it instead of creating a twin.
         const library = await Promise.all([

@@ -21,7 +21,7 @@ import { createLocalFirst, isNetworkError, isOffline, loadBlocks, loadModules, s
 import { localReply } from '@/lib/maily-local'
 import { applyPatch } from '@/lib/maily-patch'
 import { isQuestion, runCommands } from '@/lib/maily-commands'
-import { BRAND_KEY, MAX_MEMORIES, MEMORIES_KEY, matchMemories, memoryCommand, parseMemories, storeMemories } from '@/lib/brand'
+import { BRAND_KEY, MAX_MEMORIES, MEMORIES_KEY, applyContextBlocks, describeChange, hasBrand, matchMemories, memoryCommand, parseBrand, parseMemories, storeMemories } from '@/lib/brand'
 import { getPref, setPref } from '@/lib/settings-sync'
 import { formatReport, runSelfTests } from '@/lib/self-test'
 import { codeFromFields } from '@/lib/import-repair'
@@ -105,7 +105,8 @@ interface NeonBlock {
   // `new`: a new module for the library; `block`: a reusable custom block;
   // `test`: run the tool's internal tests (src/lib/self-test.ts);
   // `patch`: targeted edit of the open module (src/lib/maily-patch.ts)
-  kind: 'current' | 'new' | 'block' | 'test' | 'patch'
+  // `memoire` / `marque`: Maily saves or forgets memories, updates « Ma marque » (brand.ts)
+  kind: 'current' | 'new' | 'block' | 'test' | 'patch' | 'memoire' | 'marque'
   name?: string
   code: string
 }
@@ -132,11 +133,11 @@ function splitReply(acc: string, build = false): { text: string; blocks: NeonBlo
     text += rest.slice(0, start)
     if (!close) return { text: text.trim(), blocks, building: true }
     const end = close.index
-    const m = /^\s*(new|block|test|patch)\b\s*(.*)$/i.exec(head[1])
-    const kind = m ? (m[1].toLowerCase() as 'new' | 'block' | 'test' | 'patch') : 'current'
+    const m = /^\s*(new|block|test|patch|m[ée]moire|marque)\b\s*(.*)$/i.exec(head[1])
+    const kind = m ? (m[1].toLowerCase().replace('é', 'e') as NeonBlock['kind']) : 'current'
     blocks.push({
       kind,
-      name: m && kind !== 'test' && kind !== 'patch' ? m[2].trim().replace(/^["«']|["»']$/g, '') || (kind === 'new' ? 'Nouveau module' : 'Nouveau bloc') : undefined,
+      name: m && (kind === 'new' || kind === 'block') ? m[2].trim().replace(/^["«']|["»']$/g, '') || (kind === 'new' ? 'Nouveau module' : 'Nouveau bloc') : undefined,
       code: after.slice(0, end),
     })
     rest = after.slice(end + close[0].length)
@@ -490,6 +491,18 @@ export function MailyPanel({
     paint()
 
     const reply = splitReply(acc, mode === 'build')
+    // Maily's own memories and brand (```neon memoire / ```neon marque): applied
+    // to the account at once, the change shown under her answer.
+    const ctxBlocks = reply.blocks.filter((b): b is NeonBlock & { kind: 'memoire' | 'marque' } => b.kind === 'memoire' || b.kind === 'marque')
+    if (ctxBlocks.length) {
+      const res = applyContextBlocks(ctxBlocks, parseMemories(getPref(MEMORIES_KEY) ?? ''), parseBrand(getPref(BRAND_KEY) ?? ''))
+      const { added, forgotten, brandFields } = res.change
+      if (added.length || forgotten.length) setPref(MEMORIES_KEY, res.memories.length ? storeMemories(res.memories) : null)
+      if (brandFields.length) setPref(BRAND_KEY, hasBrand(res.brand) ? JSON.stringify(res.brand) : null)
+      const note = describeChange(res.change)
+      reply.blocks = reply.blocks.filter((b) => b.kind !== 'memoire' && b.kind !== 'marque')
+      if (note) reply.text = `${reply.text}\n\n${note}`.trim()
+    }
     // Internal tests asked by Maily (```neon test): run here, shown in the chat,
     // then handed back to her so she explains them and acts on them.
     if (reply.blocks.some((b) => b.kind === 'test')) {
@@ -728,9 +741,10 @@ export function MailyPanel({
     let history: Msg[] = [...base, userMsg]
     const note = imported ?? partialImport
 
-    // « Retiens que… », « Oublie… », « Qu'est-ce que tu retiens ? »: Maily's
-    // memories (brand.ts) are kept by the tool itself, never sent to the AI.
-    const mem = !source && !sent.length ? memoryCommand(instruction) : null
+    // Maily keeps her memories herself (```neon memoire, see converse). Without
+    // a connection, « Retiens que… », « Oublie… », « Qu'est-ce que tu retiens ? »
+    // are still answered on the device.
+    const mem = !source && !sent.length && isOffline() ? memoryCommand(instruction) : null
     if (mem) {
       const list = parseMemories(getPref(MEMORIES_KEY) ?? '')
       const store = (next: typeof list) => setPref(MEMORIES_KEY, next.length ? storeMemories(next) : null)
